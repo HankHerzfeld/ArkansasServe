@@ -3,7 +3,7 @@
 ## Folder structure on your machine
 
 Save everything to:
-  C:\Users\hankherzfeld\ArkansasServe\
+  C:\Users\[USERNAME]\ArkansasServe\
 
 The layout inside that folder:
 
@@ -43,7 +43,7 @@ ArkansasServe/
 ## Step 1 — Open the project in VS Code
 
 1. Open VS Code
-2. File → Open Folder → navigate to C:\Users\hankherzfeld\ArkansasServe
+2. File → Open Folder → navigate to C:\Users\[USERNAME]\ArkansasServe
 3. VS Code will show the full folder tree in the left sidebar
 
 Install these VS Code extensions if you don't have them:
