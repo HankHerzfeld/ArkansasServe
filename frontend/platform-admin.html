@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Platform Admin — Arkansas Serve</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="/platform-admin.html">Admin</a></li>
+    <li><a href="/events.html">Events</a></li>
+    <li><span class="navbar-user" id="nav-user-name"></span></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1>Platform Admin</h1>
+    <p>Manage all schools, JDCs, and community organizations on Arkansas Serve.</p>
+  </div>
+
+  <!-- Tab bar -->
+  <div style="display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid var(--gray-200);padding-bottom:0;">
+    <button class="tab-btn active" data-tab="tenants">Tenants</button>
+    <button class="tab-btn" data-tab="approvals">All Approvals</button>
+  </div>
+
+  <!-- ── Tenants tab ─────────────────────────────────────────────────── -->
+  <div id="tab-tenants">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:1rem;">
+      <button class="btn btn-primary" id="btn-new-tenant">+ Add Tenant</button>
+    </div>
+
+    <div id="tenants-loading" class="loading-state"><div class="spinner"></div></div>
+    <div id="tenants-empty" class="card" style="display:none;text-align:center;color:var(--gray-600);">
+      No tenants yet. Add your first school or organization above.
+    </div>
+    <table class="table" id="tenants-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>SSO Domain</th>
+          <th>Status</th>
+          <th>Contract Start</th>
+        </tr>
+      </thead>
+      <tbody id="tenants-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Approvals tab ───────────────────────────────────────────────── -->
+  <div id="tab-approvals" style="display:none;">
+    <div id="all-approvals-loading" class="loading-state"><div class="spinner"></div></div>
+    <div id="all-approvals-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
+      No pending approvals across any school. ✅
+    </div>
+    <table class="table" id="all-approvals-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>School</th>
+          <th>Event</th>
+          <th>Org</th>
+          <th>Date</th>
+          <th>Hours</th>
+        </tr>
+      </thead>
+      <tbody id="all-approvals-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Tenant Modal -->
+<div class="modal-overlay" id="tenant-modal">
+  <div class="modal">
+    <div class="modal-title">Add Tenant</div>
+    <div class="form-group">
+      <label>Organization / School Name *</label>
+      <input type="text" id="tenant-name" placeholder="Little Rock School District">
+    </div>
+    <div class="form-group">
+      <label>Type *</label>
+      <select id="tenant-type">
+        <option value="">Select…</option>
+        <option value="school">School / District</option>
+        <option value="jdc">Juvenile Detention / Court</option>
+        <option value="organization">Community Organization</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Microsoft 365 SSO Domain (schools)</label>
+      <input type="text" id="tenant-sso" placeholder="littlerockschools.org">
+    </div>
+    <div class="form-group">
+      <label>Google Workspace Domain (if applicable)</label>
+      <input type="text" id="tenant-google" placeholder="lrsd.net">
+    </div>
+    <div class="form-group">
+      <label>Contact Email</label>
+      <input type="email" id="tenant-email" placeholder="admin@district.org">
+    </div>
+    <div class="form-group">
+      <label>Contract Start Date</label>
+      <input type="date" id="tenant-contract">
+    </div>
+    <div id="tenant-error" class="alert alert-error" style="display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="tenant-cancel">Cancel</button>
+      <button class="btn btn-primary" id="tenant-save">Add Tenant</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .tab-btn {
+    background: none;
+    border: none;
+    padding: .6rem 1.2rem;
+    cursor: pointer;
+    font-size: .95rem;
+    font-family: var(--font);
+    color: var(--gray-600);
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+  }
+  .tab-btn.active {
+    color: var(--green);
+    border-bottom-color: var(--green);
+    font-weight: 600;
+  }
+</style>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  Auth.init();
+  const profile = Auth.requireAuth('PlatformAdmin');
+  if (profile) {
+    loadTenants();
+    setupTabs();
+  }
+
+  // ── Tabs ────────────────────────────────────────────────────────────────
+  function setupTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        document.getElementById('tab-tenants').style.display   = tab === 'tenants'   ? 'block' : 'none';
+        document.getElementById('tab-approvals').style.display = tab === 'approvals' ? 'block' : 'none';
+        if (tab === 'approvals') loadAllApprovals();
+      });
+    });
+  }
+
+  // ── Tenants ─────────────────────────────────────────────────────────────
+  async function loadTenants() {
+    try {
+      const tenants = await Api.Admin.getTenants();
+      document.getElementById('tenants-loading').style.display = 'none';
+      if (tenants.length === 0) {
+        document.getElementById('tenants-empty').style.display = 'block';
+        return;
+      }
+      document.getElementById('tenants-table').style.display = 'table';
+      document.getElementById('tenants-tbody').innerHTML = tenants.map(t => `
+        <tr>
+          <td><strong>${t.name}</strong></td>
+          <td style="text-transform:capitalize;">${t.type}</td>
+          <td style="font-size:.85rem;color:var(--gray-600);">${t.ssoDomain || t.googleWorkspaceDomain || '—'}</td>
+          <td><span class="status status-${t.status === 'active' ? 'approved' : 'rejected'}">${t.status}</span></td>
+          <td style="font-size:.85rem;">${t.contractStartDate ? new Date(t.contractStartDate).toLocaleDateString() : '—'}</td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      document.getElementById('tenants-loading').innerHTML =
+        `<div class="alert alert-error">Could not load tenants.</div>`;
+    }
+  }
+
+  // Add tenant modal
+  document.getElementById('btn-new-tenant').addEventListener('click', () => {
+    document.getElementById('tenant-name').value     = '';
+    document.getElementById('tenant-type').value     = '';
+    document.getElementById('tenant-sso').value      = '';
+    document.getElementById('tenant-google').value   = '';
+    document.getElementById('tenant-email').value    = '';
+    document.getElementById('tenant-contract').value = '';
+    document.getElementById('tenant-error').style.display = 'none';
+    document.getElementById('tenant-modal').classList.add('open');
+  });
+
+  document.getElementById('tenant-cancel').addEventListener('click', () =>
+    document.getElementById('tenant-modal').classList.remove('open'));
+
+  document.getElementById('tenant-save').addEventListener('click', async () => {
+    const errEl = document.getElementById('tenant-error');
+    errEl.style.display = 'none';
+    const name = document.getElementById('tenant-name').value.trim();
+    const type = document.getElementById('tenant-type').value;
+    if (!name || !type) {
+      errEl.textContent = 'Name and type are required.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const btn = document.getElementById('tenant-save');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      await Api.Admin.createTenant({
+        name,
+        type,
+        ssoDomain:             document.getElementById('tenant-sso').value.trim() || null,
+        googleWorkspaceDomain: document.getElementById('tenant-google').value.trim() || null,
+        contactEmail:          document.getElementById('tenant-email').value.trim() || null,
+        contractStartDate:     document.getElementById('tenant-contract').value || null,
+        status: 'active'
+      });
+      document.getElementById('tenant-modal').classList.remove('open');
+      loadTenants();
+    } catch (err) {
+      errEl.textContent = err.message || 'Failed to add tenant.';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Add Tenant';
+    }
+  });
+
+  // ── All Approvals (platform-wide) ────────────────────────────────────────
+  async function loadAllApprovals() {
+    document.getElementById('all-approvals-loading').style.display = 'block';
+    document.getElementById('all-approvals-table').style.display   = 'none';
+    document.getElementById('all-approvals-empty').style.display   = 'none';
+    try {
+      // Platform admin gets all approvals (no schoolId filter)
+      const approvals = await Api.Approvals.list();
+      document.getElementById('all-approvals-loading').style.display = 'none';
+      if (approvals.length === 0) {
+        document.getElementById('all-approvals-empty').style.display = 'block';
+        return;
+      }
+      document.getElementById('all-approvals-table').style.display = 'table';
+      document.getElementById('all-approvals-tbody').innerHTML = approvals.map(a => `
+        <tr>
+          <td>${a.studentName}</td>
+          <td style="font-size:.8rem;color:var(--gray-600);">${a.schoolId}</td>
+          <td>${a.eventTitle}</td>
+          <td style="font-size:.85rem;">${a.organizationName}</td>
+          <td>${new Date(a.serviceDate).toLocaleDateString()}</td>
+          <td><strong>${a.hoursLogged}h</strong></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      document.getElementById('all-approvals-loading').innerHTML =
+        `<div class="alert alert-error">Could not load approvals.</div>`;
+    }
+  }
+</script>
+</body>
+</html>

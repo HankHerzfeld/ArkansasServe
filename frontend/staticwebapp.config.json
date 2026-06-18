@@ -1,0 +1,51 @@
+{
+  "routes": [
+    {
+      "route": "/api/*",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/auth-callback.html",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/index.html",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/styles/*",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/js/*",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/icons/*",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/manifest.json",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/*",
+      "allowedRoles": ["anonymous"]
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/api/*", "/styles/*", "/js/*", "/icons/*"]
+  },
+  "responseOverrides": {
+    "404": {
+      "rewrite": "/index.html",
+      "statusCode": 200
+    }
+  },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.blob.core.windows.net data:; connect-src 'self' https://*.ciamlogin.com https://*.blob.core.windows.net"
+  }
+}

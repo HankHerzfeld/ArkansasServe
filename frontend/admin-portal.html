@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Portal — Arkansas Serve</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="/admin-portal.html">Approvals</a></li>
+    <li><span class="navbar-user" id="nav-user-name"></span></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1>School Admin Portal</h1>
+    <p>Review and approve service hours submitted for your students.</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-number" id="stat-pending">—</div>
+      <div class="stat-label">Pending Approvals</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-approved-today">—</div>
+      <div class="stat-label">Approved Today</div>
+    </div>
+  </div>
+
+  <!-- Pending approvals table -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <div class="card-title" style="margin:0;">Pending Approvals</div>
+      <button class="btn btn-secondary btn-sm" onclick="loadApprovals()">↻ Refresh</button>
+    </div>
+    <div id="approvals-loading" class="loading-state"><div class="spinner"></div></div>
+    <div id="approvals-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
+      No pending approvals. All caught up! ✅
+    </div>
+    <table class="table" id="approvals-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>Event</th>
+          <th>Organization</th>
+          <th>Date</th>
+          <th>Hours</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="approvals-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Review modal -->
+<div class="modal-overlay" id="review-modal">
+  <div class="modal">
+    <div class="modal-title" id="review-modal-title">Review Hours</div>
+    <div id="review-details" style="background:var(--gray-100);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;font-size:.9rem;line-height:1.8;"></div>
+    <div class="form-group">
+      <label>Note (optional — required if rejecting)</label>
+      <textarea id="review-note" placeholder="Add a note for the student or organization…"></textarea>
+    </div>
+    <div id="review-error" class="alert alert-error" style="display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="review-cancel">Cancel</button>
+      <button class="btn btn-danger" id="review-reject">Reject</button>
+      <button class="btn btn-primary" id="review-approve">Approve</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  Auth.init();
+  const profile = Auth.requireAuth('SchoolAdmin');
+  let activeApproval = null;
+  let approvedTodayCount = 0;
+
+  if (profile) loadApprovals();
+
+  async function loadApprovals() {
+    document.getElementById('approvals-loading').style.display = 'block';
+    document.getElementById('approvals-table').style.display   = 'none';
+    document.getElementById('approvals-empty').style.display   = 'none';
+
+    try {
+      const approvals = await Api.Approvals.list();
+      document.getElementById('approvals-loading').style.display = 'none';
+      document.getElementById('stat-pending').textContent = approvals.length;
+      document.getElementById('stat-approved-today').textContent = approvedTodayCount;
+
+      if (approvals.length === 0) {
+        document.getElementById('approvals-empty').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('approvals-table').style.display = 'table';
+      document.getElementById('approvals-tbody').innerHTML = approvals.map(a => `
+        <tr>
+          <td><strong>${a.studentName}</strong></td>
+          <td>${a.eventTitle}</td>
+          <td style="font-size:.85rem;color:var(--gray-600);">${a.organizationName}</td>
+          <td>${new Date(a.serviceDate).toLocaleDateString()}</td>
+          <td><strong>${a.hoursLogged}h</strong></td>
+          <td>
+            <button class="btn btn-primary btn-sm" onclick="openReview(${JSON.stringify(a).replace(/"/g, '&quot;')})">Review</button>
+          </td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      document.getElementById('approvals-loading').innerHTML =
+        `<div class="alert alert-error">Could not load approvals. Please refresh.</div>`;
+    }
+  }
+
+  function openReview(approval) {
+    activeApproval = approval;
+    document.getElementById('review-modal-title').textContent = `Review: ${approval.eventTitle}`;
+    document.getElementById('review-details').innerHTML = `
+      <strong>Student:</strong> ${approval.studentName}<br>
+      <strong>Organization:</strong> ${approval.organizationName}<br>
+      <strong>Event:</strong> ${approval.eventTitle}<br>
+      <strong>Date:</strong> ${new Date(approval.serviceDate).toLocaleDateString()}<br>
+      <strong>Hours submitted:</strong> ${approval.hoursLogged}
+    `;
+    document.getElementById('review-note').value = '';
+    document.getElementById('review-error').style.display = 'none';
+    document.getElementById('review-modal').classList.add('open');
+  }
+
+  document.getElementById('review-cancel').addEventListener('click', () =>
+    document.getElementById('review-modal').classList.remove('open'));
+
+  async function submitReview(status) {
+    const errEl = document.getElementById('review-error');
+    const note  = document.getElementById('review-note').value.trim();
+    if (status === 'Rejected' && !note) {
+      errEl.textContent = 'A note is required when rejecting hours.';
+      errEl.style.display = 'block';
+      return;
+    }
+    errEl.style.display = 'none';
+
+    const approveBtn = document.getElementById('review-approve');
+    const rejectBtn  = document.getElementById('review-reject');
+    approveBtn.disabled = rejectBtn.disabled = true;
+
+    try {
+      await Api.ServiceLogs.review(activeApproval.serviceLogId, activeApproval.studentId, status, note);
+      if (status === 'Approved') approvedTodayCount++;
+      document.getElementById('review-modal').classList.remove('open');
+      loadApprovals();
+    } catch (err) {
+      errEl.textContent = err.message || 'Review failed. Please try again.';
+      errEl.style.display = 'block';
+    } finally {
+      approveBtn.disabled = rejectBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('review-approve').addEventListener('click', () => submitReview('Approved'));
+  document.getElementById('review-reject').addEventListener('click',  () => submitReview('Rejected'));
+</script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Organization Portal — Arkansas Serve</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="/org-portal.html">My Events</a></li>
+    <li><span class="navbar-user" id="nav-user-name"></span></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;">
+    <div>
+      <h1>Organization Portal</h1>
+      <p>Create and manage your volunteer events, then log attendance after each one.</p>
+    </div>
+    <button class="btn btn-primary" id="btn-new-event">+ New Event</button>
+  </div>
+
+  <!-- Event list -->
+  <div id="events-loading" class="loading-state"><div class="spinner"></div></div>
+  <div id="events-empty" class="card" style="display:none;text-align:center;color:var(--gray-600);">
+    You haven't created any events yet. Click <strong>+ New Event</strong> to get started.
+  </div>
+  <div id="events-list"></div>
+</div>
+
+<!-- Create / Edit Event Modal -->
+<div class="modal-overlay" id="event-modal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-title" id="event-modal-title">New Event</div>
+    <input type="hidden" id="edit-event-id">
+    <input type="hidden" id="edit-org-id">
+    <div class="form-group">
+      <label>Event Title *</label>
+      <input type="text" id="evt-title" placeholder="Community Garden Cleanup">
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="evt-description" placeholder="What will volunteers be doing?"></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+      <div class="form-group">
+        <label>Start Date & Time *</label>
+        <input type="datetime-local" id="evt-start">
+      </div>
+      <div class="form-group">
+        <label>End Date & Time *</label>
+        <input type="datetime-local" id="evt-end">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Location *</label>
+      <input type="text" id="evt-location" placeholder="123 Main St, Little Rock, AR">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+      <div class="form-group">
+        <label>Hours Credit</label>
+        <input type="number" id="evt-hours" min="0.5" step="0.5" value="2">
+      </div>
+      <div class="form-group">
+        <label>Max Sign-ups (0 = unlimited)</label>
+        <input type="number" id="evt-slots" min="0" value="0">
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="evt-category">
+          <option value="">Select…</option>
+          <option>Environmental</option>
+          <option>Food Bank</option>
+          <option>Tutoring</option>
+          <option>Animal Shelter</option>
+          <option>Senior Care</option>
+          <option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Event Photo (optional)</label>
+      <input type="file" id="evt-photo" accept="image/*">
+      <div id="upload-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.4rem;">Uploading…</div>
+    </div>
+    <input type="hidden" id="evt-photo-url">
+    <div id="event-form-error" class="alert alert-error" style="display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="event-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="event-modal-save">Save Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Hours Modal -->
+<div class="modal-overlay" id="log-modal">
+  <div class="modal" style="max-width:580px;">
+    <div class="modal-title">Log Attendance &amp; Hours</div>
+    <p style="color:var(--gray-600);font-size:.85rem;margin-bottom:1rem;" id="log-event-name"></p>
+    <div id="log-roster-loading" class="loading-state"><div class="spinner"></div></div>
+    <table class="table" id="log-roster-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>School</th>
+          <th>Attended?</th>
+          <th>Hours</th>
+        </tr>
+      </thead>
+      <tbody id="log-roster-tbody"></tbody>
+    </table>
+    <div id="log-error" class="alert alert-error" style="display:none;margin-top:.75rem;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="log-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="log-modal-submit">Submit Hours</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  Auth.init();
+  const profile = Auth.requireAuth('OrgStaff');
+  let orgEvents = [];
+  let activeLogEventId = null;
+
+  if (profile) loadOrgEvents();
+
+  async function loadOrgEvents() {
+    try {
+      orgEvents = await Api.Events.list();  // API filters to org's events server-side
+      document.getElementById('events-loading').style.display = 'none';
+      renderOrgEvents(orgEvents);
+    } catch (err) {
+      document.getElementById('events-loading').innerHTML =
+        `<div class="alert alert-error">Could not load events.</div>`;
+    }
+  }
+
+  function renderOrgEvents(events) {
+    const list  = document.getElementById('events-list');
+    const empty = document.getElementById('events-empty');
+    if (events.length === 0) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    list.innerHTML = events.map(evt => `
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <div class="card-title">${evt.title}</div>
+          <div class="card-meta">
+            📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })}
+            · 📍 ${evt.location}
+            · ${evt.currentSlots} signed up
+          </div>
+          <span class="status status-${evt.status.toLowerCase()}">${evt.status}</span>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="openEdit('${evt.id}')">Edit</button>
+          <button class="btn btn-primary btn-sm" onclick="openLogHours('${evt.id}','${evt.title}')">Log Hours</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ── New / Edit event ────────────────────────────────────────────────────
+  document.getElementById('btn-new-event').addEventListener('click', () => openEventModal());
+
+  function openEventModal(evt = null) {
+    document.getElementById('event-modal-title').textContent = evt ? 'Edit Event' : 'New Event';
+    document.getElementById('edit-event-id').value   = evt?.id || '';
+    document.getElementById('edit-org-id').value     = evt?.organizationId || '';
+    document.getElementById('evt-title').value       = evt?.title || '';
+    document.getElementById('evt-description').value = evt?.description || '';
+    document.getElementById('evt-start').value       = evt?.startDateTime?.slice(0,16) || '';
+    document.getElementById('evt-end').value         = evt?.endDateTime?.slice(0,16) || '';
+    document.getElementById('evt-location').value    = evt?.location || '';
+    document.getElementById('evt-hours').value       = evt?.hoursValue ?? 2;
+    document.getElementById('evt-slots').value       = evt?.maxSlots ?? 0;
+    document.getElementById('evt-category').value    = evt?.category || '';
+    document.getElementById('evt-photo-url').value   = evt?.photoUrl || '';
+    document.getElementById('event-form-error').style.display = 'none';
+    document.getElementById('event-modal').classList.add('open');
+  }
+
+  async function openEdit(eventId) {
+    const evt = orgEvents.find(e => e.id === eventId);
+    if (evt) openEventModal(evt);
+  }
+
+  document.getElementById('event-modal-cancel').addEventListener('click', () => {
+    document.getElementById('event-modal').classList.remove('open');
+  });
+
+  document.getElementById('evt-photo').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById('upload-progress').style.display = 'block';
+    try {
+      const { sasUrl, finalUrl } = await Api.Events.uploadToken(file.name);
+      await fetch(sasUrl, { method: 'PUT', headers: { 'x-ms-blob-type': 'BlockBlob', 'Content-Type': file.type }, body: file });
+      document.getElementById('evt-photo-url').value = finalUrl;
+      document.getElementById('upload-progress').textContent = '✅ Photo uploaded';
+    } catch (err) {
+      document.getElementById('upload-progress').textContent = '❌ Upload failed';
+    }
+  });
+
+  document.getElementById('event-modal-save').addEventListener('click', async () => {
+    const errEl = document.getElementById('event-form-error');
+    errEl.style.display = 'none';
+    const title = document.getElementById('evt-title').value.trim();
+    const start = document.getElementById('evt-start').value;
+    if (!title || !start) {
+      errEl.textContent = 'Title and start date are required.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const payload = {
+      title,
+      description:   document.getElementById('evt-description').value,
+      startDateTime: new Date(document.getElementById('evt-start').value).toISOString(),
+      endDateTime:   new Date(document.getElementById('evt-end').value).toISOString(),
+      location:      document.getElementById('evt-location').value,
+      hoursValue:    Number(document.getElementById('evt-hours').value),
+      maxSlots:      Number(document.getElementById('evt-slots').value),
+      category:      document.getElementById('evt-category').value,
+      photoUrl:      document.getElementById('evt-photo-url').value,
+    };
+    const editId = document.getElementById('edit-event-id').value;
+    const orgId  = document.getElementById('edit-org-id').value;
+    const btn = document.getElementById('event-modal-save');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      if (editId) await Api.Events.update(editId, { ...payload, organizationId: orgId });
+      else        await Api.Events.create(payload);
+      document.getElementById('event-modal').classList.remove('open');
+      loadOrgEvents();
+    } catch (err) {
+      errEl.textContent = err.message || 'Save failed.';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save Event';
+    }
+  });
+
+  // ── Log hours ───────────────────────────────────────────────────────────
+  async function openLogHours(eventId, eventTitle) {
+    activeLogEventId = eventId;
+    document.getElementById('log-event-name').textContent = eventTitle;
+    document.getElementById('log-roster-table').style.display = 'none';
+    document.getElementById('log-roster-loading').style.display = 'block';
+    document.getElementById('log-error').style.display = 'none';
+    document.getElementById('log-modal').classList.add('open');
+
+    try {
+      const registrations = await Api.Events.registrations(eventId);
+      document.getElementById('log-roster-loading').style.display = 'none';
+
+      if (registrations.length === 0) {
+        document.getElementById('log-roster-loading').innerHTML =
+          '<p style="color:var(--gray-600);">No students have signed up for this event.</p>';
+        document.getElementById('log-roster-loading').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('log-roster-table').style.display = 'table';
+      document.getElementById('log-roster-tbody').innerHTML = registrations.map(reg => `
+        <tr>
+          <td>${reg.studentName}</td>
+          <td style="font-size:.8rem;color:var(--gray-600);">${reg.schoolId}</td>
+          <td><input type="checkbox" class="attend-check" data-student="${reg.userId}" data-name="${reg.studentName}" data-school="${reg.schoolId}" checked></td>
+          <td><input type="number" class="hours-input" data-student="${reg.userId}" min="0.5" step="0.5" value="2" style="width:70px;padding:.3rem;border:1px solid var(--gray-400);border-radius:4px;"></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      document.getElementById('log-roster-loading').style.display = 'none';
+      document.getElementById('log-error').textContent = 'Could not load roster.';
+      document.getElementById('log-error').style.display = 'block';
+    }
+  }
+
+  document.getElementById('log-modal-cancel').addEventListener('click', () =>
+    document.getElementById('log-modal').classList.remove('open'));
+
+  document.getElementById('log-modal-submit').addEventListener('click', async () => {
+    const btn = document.getElementById('log-modal-submit');
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    const errEl = document.getElementById('log-error');
+    errEl.style.display = 'none';
+
+    const attending = [...document.querySelectorAll('.attend-check:checked')];
+    if (attending.length === 0) {
+      errEl.textContent = 'Mark at least one student as attended.';
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Submit Hours';
+      return;
+    }
+
+    try {
+      for (const checkbox of attending) {
+        const studentId   = checkbox.dataset.student;
+        const studentName = checkbox.dataset.name;
+        const schoolId    = checkbox.dataset.school;
+        const hours       = Number(document.querySelector(`.hours-input[data-student="${studentId}"]`).value);
+        await Api.ServiceLogs.create({
+          studentId, studentName, schoolId,
+          eventId: activeLogEventId,
+          hoursLogged: hours,
+          serviceDate: new Date().toISOString(),
+        });
+      }
+      document.getElementById('log-modal').classList.remove('open');
+      alert(`Hours submitted for ${attending.length} student(s). Their school admin will now review and approve.`);
+    } catch (err) {
+      errEl.textContent = err.message || 'Submission failed. Please try again.';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Submit Hours';
+    }
+  });
+</script>
+</body>
+</html>
