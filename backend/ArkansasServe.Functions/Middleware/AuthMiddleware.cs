@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Text.Json;
@@ -95,20 +96,19 @@ public static class AuthMiddleware
         return res;
     }
 
-    private static readonly Dictionary<string, List<SecurityKey>> _keyCache = new();
-    private static DateTime _keyCacheExpiry = DateTime.MinValue;
+    private static readonly HttpClient _httpClient = new();
+    private static readonly ConcurrentDictionary<string, (List<SecurityKey> Keys, DateTime Expiry)> _keyCache = new();
 
     private static async Task<List<SecurityKey>> GetSigningKeys(string tenantId, ILogger logger)
     {
         // Cache keys for 1 hour (they rarely change)
-        if (_keyCache.ContainsKey(tenantId) && DateTime.UtcNow < _keyCacheExpiry)
-            return _keyCache[tenantId];
+        if (_keyCache.TryGetValue(tenantId, out var cached) && DateTime.UtcNow < cached.Expiry)
+            return cached.Keys;
 
         try
         {
-            using var http = new HttpClient();
             var url = $"https://{tenantId}.ciamlogin.com/{tenantId}/discovery/v2.0/keys";
-            var json = await http.GetStringAsync(url);
+            var json = await _httpClient.GetStringAsync(url);
             var doc = JsonDocument.Parse(json);
             var keys = new List<SecurityKey>();
 
@@ -128,8 +128,7 @@ public static class AuthMiddleware
                 }
             }
 
-            _keyCache[tenantId] = keys;
-            _keyCacheExpiry = DateTime.UtcNow.AddHours(1);
+            _keyCache[tenantId] = (keys, DateTime.UtcNow.AddHours(1));
             return keys;
         }
         catch (Exception ex)
