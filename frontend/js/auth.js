@@ -7,7 +7,7 @@ const Auth = (() => {
   const TENANT_ID    = '434cf17d-6ab5-48c3-be4a-5541ed0e74d0';
   const CLIENT_ID    = '16150d6e-7d28-4c6b-91b3-4ec839fff75f';
   const REDIRECT_URI = 'https://www.arkansasserve.com/auth-callback.html';
-  const SCOPES       = 'openid profile email api://16150d6e-7d28-4c6b-91b3-4ec839fff75f/user_impersonation';
+  const SCOPES       = 'openid profile email api://16150d6e-7d28-4c6b-91b3-4ec839fff75f/User_Impersonation';
 
   const AUTH_ENDPOINT =
     `https://${TENANT_ID}.ciamlogin.com/${TENANT_ID}/oauth2/v2.0/authorize`;
