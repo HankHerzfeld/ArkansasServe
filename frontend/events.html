@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find Events — Arkansas Serve</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="/dashboard.html">Dashboard</a></li>
+    <li><a href="/events.html">Events</a></li>
+    <li><span class="navbar-user" id="nav-user-name"></span></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1>Upcoming Events</h1>
+    <p>Find volunteer opportunities in your community.</p>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="card" style="padding:.75rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+    <input type="search" id="filter-search" placeholder="Search by name or organization…"
+      style="flex:1;min-width:200px;padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+    <select id="filter-category" style="padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+      <option value="">All categories</option>
+      <option>Environmental</option>
+      <option>Food Bank</option>
+      <option>Tutoring</option>
+      <option>Animal Shelter</option>
+      <option>Senior Care</option>
+      <option>Other</option>
+    </select>
+  </div>
+
+  <!-- Loading / empty / grid -->
+  <div id="events-loading" class="loading-state"><div class="spinner"></div><p>Loading events…</p></div>
+  <div id="events-empty" class="card" style="display:none;text-align:center;color:var(--gray-600);">
+    No upcoming events found. Check back soon!
+  </div>
+  <div class="event-grid" id="events-grid" style="display:none;"></div>
+</div>
+
+<!-- Sign-up confirmation modal -->
+<div class="modal-overlay" id="signup-modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-event-title">Sign Up for Event</div>
+    <p id="modal-event-details" style="color:var(--gray-600);font-size:.9rem;margin-bottom:.5rem;"></p>
+    <p style="font-size:.9rem;">You'll receive a notification once your attendance is recorded and your hours are approved by your school.</p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-confirm">Confirm Sign-Up</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  Auth.init();
+  const profile = Auth.requireAuth();
+  let allEvents = [];
+  let pendingEventId = null;
+  let pendingOrgId   = null;
+
+  if (profile) {
+    loadEvents();
+  }
+
+  async function loadEvents() {
+    try {
+      allEvents = await Api.Events.list();
+      document.getElementById('events-loading').style.display = 'none';
+      renderEvents(allEvents);
+    } catch (err) {
+      document.getElementById('events-loading').innerHTML =
+        `<div class="alert alert-error">Could not load events. Please refresh.</div>`;
+    }
+  }
+
+  function renderEvents(events) {
+    const grid = document.getElementById('events-grid');
+    const empty = document.getElementById('events-empty');
+    if (events.length === 0) {
+      grid.style.display  = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.style.display  = 'grid';
+
+    grid.innerHTML = '';
+    events.forEach(evt => {
+      const card = document.createElement('div');
+      card.className = 'card event-card';
+
+      if (evt.photoUrl) {
+        const img = document.createElement('img');
+        img.src = evt.photoUrl;
+        img.alt = evt.title;
+        card.appendChild(img);
+      }
+
+      const badge = document.createElement('span');
+      badge.className = 'event-badge';
+      badge.textContent = evt.category || 'Volunteer';
+      card.appendChild(badge);
+
+      const title = document.createElement('div');
+      title.className = 'card-title';
+      title.textContent = evt.title;
+      card.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'card-meta';
+      meta.textContent = `📍 ${evt.location} · 📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · ⏱ ${evt.hoursValue} hour${evt.hoursValue !== 1 ? 's' : ''} credit${evt.maxSlots > 0 ? ` · ${evt.maxSlots - evt.currentSlots} spots left` : ''}`;
+      card.appendChild(meta);
+
+      const orgName = document.createElement('p');
+      orgName.style.cssText = 'font-size:.85rem;color:var(--gray-600);margin-bottom:.75rem;';
+      orgName.textContent = evt.organizationName;
+      card.appendChild(orgName);
+
+      const status = document.createElement('span');
+      status.className = `status status-${evt.status.toLowerCase()}`;
+      status.style.cssText = 'margin-bottom:.75rem;display:inline-block;';
+      status.textContent = evt.status;
+      card.appendChild(status);
+      card.appendChild(document.createElement('br'));
+
+      if (profile.role === 'Student' && evt.status === 'Open') {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-primary btn-sm';
+        btn.textContent = 'Sign Up';
+        btn.addEventListener('click', () => openSignup(evt.id, evt.organizationId, evt.title, evt.location));
+        card.appendChild(btn);
+      }
+
+      grid.appendChild(card);
+    });
+  }
+
+  // Filter
+  ['filter-search', 'filter-category'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => {
+      const search   = document.getElementById('filter-search').value.toLowerCase();
+      const category = document.getElementById('filter-category').value;
+      renderEvents(allEvents.filter(e =>
+        (!search   || e.title.toLowerCase().includes(search) || e.organizationName.toLowerCase().includes(search)) &&
+        (!category || e.category === category)
+      ));
+    });
+  });
+
+  // Sign-up modal
+  function openSignup(eventId, orgId, title, location) {
+    pendingEventId = eventId;
+    pendingOrgId   = orgId;
+    document.getElementById('modal-event-title').textContent   = `Sign Up: ${title}`;
+    document.getElementById('modal-event-details').textContent = `📍 ${location}`;
+    document.getElementById('signup-modal').classList.add('open');
+  }
+
+  document.getElementById('modal-cancel').addEventListener('click', () => {
+    document.getElementById('signup-modal').classList.remove('open');
+  });
+
+  document.getElementById('modal-confirm').addEventListener('click', async () => {
+    const btn = document.getElementById('modal-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Signing up…';
+    try {
+      await Api.Registrations.create(pendingEventId, pendingOrgId);
+      document.getElementById('signup-modal').classList.remove('open');
+      await loadEvents(); // refresh to update slot counts
+      showToast('You\'re signed up! We\'ll see you there.', 'success');
+    } catch (err) {
+      showToast(err.message || 'Sign-up failed. Please try again.', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Confirm Sign-Up';
+    }
+  });
+
+  function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type}`;
+    toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,.15);';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  }
+</script>
+</body>
+</html>

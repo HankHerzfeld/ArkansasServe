@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Dashboard — Arkansas Serve</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="/dashboard.html">Dashboard</a></li>
+    <li><a href="/events.html">Find Events</a></li>
+    <li><span class="navbar-user" id="nav-user-name"></span></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1 id="greeting">My Dashboard</h1>
+    <p>Track your community service hours and upcoming events.</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card">
+      <div class="stat-number" id="stat-total">—</div>
+      <div class="stat-label">Total Approved Hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-pending">—</div>
+      <div class="stat-label">Hours Pending Approval</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-events">—</div>
+      <div class="stat-label">Events Attended</div>
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div id="notifications-section" style="display:none;">
+    <h2 style="font-size:1.1rem;margin-bottom:.75rem;">Notifications</h2>
+    <div id="notifications-list"></div>
+  </div>
+
+  <!-- Service Log History -->
+  <div class="card">
+    <div class="card-title">Service Hour History</div>
+    <div id="log-loading" class="loading-state"><div class="spinner"></div></div>
+    <div id="log-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
+      No service logs yet. <a href="/events.html">Find an event to attend →</a>
+    </div>
+    <table class="table" id="log-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Event</th>
+          <th>Organization</th>
+          <th>Hours</th>
+          <th>Status</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody id="log-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  Auth.init();
+  const profile = Auth.requireAuth('Student');
+  if (profile) {
+    document.getElementById('greeting').textContent = `Welcome, ${profile.name.split(' ')[0]}`;
+
+    async function loadDashboard() {
+      try {
+        const { logs, totalApprovedHours } = await Api.ServiceLogs.myLogs();
+
+        // Stats
+        document.getElementById('stat-total').textContent   = totalApprovedHours.toFixed(1);
+        document.getElementById('stat-pending').textContent = logs.filter(l => l.status === 'Pending').reduce((s, l) => s + l.hoursLogged, 0).toFixed(1);
+        document.getElementById('stat-events').textContent  = logs.filter(l => l.status === 'Approved').length;
+
+        // Table
+        document.getElementById('log-loading').style.display = 'none';
+        if (logs.length === 0) {
+          document.getElementById('log-empty').style.display = 'block';
+          return;
+        }
+
+        document.getElementById('log-table').style.display = 'table';
+        const tbody = document.getElementById('log-tbody');
+        tbody.innerHTML = '';
+        logs.forEach(log => {
+          const tr = document.createElement('tr');
+
+          const tdDate = document.createElement('td');
+          tdDate.textContent = new Date(log.serviceDate).toLocaleDateString();
+          tr.appendChild(tdDate);
+
+          const tdEvent = document.createElement('td');
+          tdEvent.textContent = log.eventTitle;
+          tr.appendChild(tdEvent);
+
+          const tdOrg = document.createElement('td');
+          tdOrg.textContent = log.organizationName;
+          tr.appendChild(tdOrg);
+
+          const tdHours = document.createElement('td');
+          tdHours.textContent = String(log.hoursLogged);
+          tr.appendChild(tdHours);
+
+          const tdStatus = document.createElement('td');
+          const statusSpan = document.createElement('span');
+          statusSpan.className = `status status-${log.status.toLowerCase()}`;
+          statusSpan.textContent = log.status;
+          tdStatus.appendChild(statusSpan);
+          tr.appendChild(tdStatus);
+
+          const tdNote = document.createElement('td');
+          tdNote.style.cssText = 'font-size:.8rem;color:var(--gray-600);';
+          tdNote.textContent = log.reviewNote || '';
+          tr.appendChild(tdNote);
+
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        document.getElementById('log-loading').innerHTML =
+          `<div class="alert alert-error">Failed to load your service history. Please refresh.</div>`;
+      }
+    }
+
+    loadDashboard();
+  }
+</script>
+</body>
+</html>

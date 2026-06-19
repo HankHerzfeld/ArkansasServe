@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arkansas Serve — Community Service Made Simple</title>
+  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="#how-it-works">How It Works</a></li>
+    <li><a href="#for-schools">For Schools</a></li>
+    <li><a href="#for-orgs">For Organizations</a></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-login">Sign In</button></li>
+  </ul>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>Community Service,<br>Simplified for Arkansas</h1>
+  <p>Arkansas Serve connects students and juveniles with volunteer opportunities — and gives schools the tools to track and verify every hour.</p>
+  <button class="btn btn-secondary" id="btn-hero-login" style="font-size:1rem;padding:.7rem 2rem;">
+    Get Started — Sign In
+  </button>
+
+  <div class="hero-cards">
+    <div class="hero-card">
+      <h3>📋 For Students</h3>
+      <p>Browse events near you, sign up in one tap, and track your total service hours.</p>
+    </div>
+    <div class="hero-card">
+      <h3>🏫 For Schools & JDCs</h3>
+      <p>Approve hours, run reports, and stay compliant — all in one dashboard.</p>
+    </div>
+    <div class="hero-card">
+      <h3>🤝 For Organizations</h3>
+      <p>Post volunteer events, manage sign-ups, and log attendance with ease.</p>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section id="how-it-works" style="padding:4rem 1.5rem;text-align:center;max-width:800px;margin:0 auto;">
+  <h2 style="color:var(--green);margin-bottom:2rem;">How It Works</h2>
+  <div style="display:flex;gap:2rem;flex-wrap:wrap;justify-content:center;">
+    <div style="flex:1;min-width:180px;">
+      <div style="font-size:2.5rem;margin-bottom:.5rem;">1</div>
+      <h3>Sign In</h3>
+      <p style="color:var(--gray-600);font-size:.9rem;">Use your school Microsoft 365 or Google account — no new password needed.</p>
+    </div>
+    <div style="flex:1;min-width:180px;">
+      <div style="font-size:2.5rem;margin-bottom:.5rem;">2</div>
+      <h3>Find Events</h3>
+      <p style="color:var(--gray-600);font-size:.9rem;">Browse volunteer opportunities posted by trusted community organizations.</p>
+    </div>
+    <div style="flex:1;min-width:180px;">
+      <div style="font-size:2.5rem;margin-bottom:.5rem;">3</div>
+      <h3>Serve &amp; Track</h3>
+      <p style="color:var(--gray-600);font-size:.9rem;">Attend the event, get your hours logged, and watch your total grow.</p>
+    </div>
+    <div style="flex:1;min-width:180px;">
+      <div style="font-size:2.5rem;margin-bottom:.5rem;">4</div>
+      <h3>School Verifies</h3>
+      <p style="color:var(--gray-600);font-size:.9rem;">Your school or JDC approves the hours — everything is documented and exportable.</p>
+    </div>
+  </div>
+</section>
+
+<!-- For Schools -->
+<section id="for-schools" style="background:var(--green-pale);padding:3rem 1.5rem;">
+  <div style="max-width:700px;margin:0 auto;">
+    <h2 style="color:var(--green);margin-bottom:1rem;">For Schools &amp; JDCs</h2>
+    <p style="margin-bottom:1rem;">Arkansas Serve gives administrators a real-time view of every student's service activity. Approve hours, flag issues, and pull compliance reports — all without spreadsheets or manual tracking.</p>
+    <ul style="color:var(--gray-800);padding-left:1.25rem;line-height:2;">
+      <li>Single sign-on with your existing Microsoft 365 or Google Workspace</li>
+      <li>Instant notification when hours are submitted for approval</li>
+      <li>Student roster with individual hour totals</li>
+      <li>Exportable reports for compliance and court documentation</li>
+    </ul>
+  </div>
+</section>
+
+<!-- For Orgs -->
+<section id="for-orgs" style="padding:3rem 1.5rem;">
+  <div style="max-width:700px;margin:0 auto;">
+    <h2 style="color:var(--green);margin-bottom:1rem;">For Community Organizations</h2>
+    <p style="margin-bottom:1rem;">Post volunteer events, manage student sign-ups, and submit hours on behalf of attendees — all through a simple portal designed to make coordination effortless.</p>
+    <ul style="color:var(--gray-800);padding-left:1.25rem;line-height:2;">
+      <li>Create and publish events in minutes</li>
+      <li>See who's registered and check students in on event day</li>
+      <li>Submit verified hours directly to the student's school</li>
+      <li>Upload photos and verification documents</li>
+    </ul>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer style="background:var(--gray-800);color:rgba(255,255,255,.6);text-align:center;padding:2rem;font-size:.85rem;">
+  <p>© 2025 Arkansas Serve · <a href="mailto:contact@arkansasserve.com" style="color:inherit;">contact@arkansasserve.com</a></p>
+</footer>
+
+<script src="/js/auth.js"></script>
+<script>
+  Auth.init();
+  document.getElementById('btn-hero-login').addEventListener('click', () => Auth.login());
+
+  // If already logged in, redirect to dashboard
+  if (Auth.isAuthenticated()) {
+    const profile = Auth.getProfile();
+    const destinations = {
+      Student:       '/dashboard.html',
+      OrgStaff:      '/org-portal.html',
+      SchoolAdmin:   '/admin-portal.html',
+      PlatformAdmin: '/platform-admin.html',
+    };
+    window.location.href = destinations[profile?.role] || '/dashboard.html';
+  }
+</script>
+</body>
+</html>
