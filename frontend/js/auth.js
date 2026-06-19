@@ -4,7 +4,7 @@
 const Auth = (() => {
   // ── Config ────────────────────────────────────────────────────────────────
   // Replace these with your real Entra External ID values after app registration
-  const TENANT_ID    = '434cf17d-6ab5-48c3-be4a-5541ed0e74d0';
+  const TENANT_ID    = '2d72a425-cd59-4b55-a8d6-a67c1ed565c6';
   const CLIENT_ID    = '16150d6e-7d28-4c6b-91b3-4ec839fff75f';
   const REDIRECT_URI = 'https://www.arkansasserve.com/auth-callback.html';
   const SCOPES       = 'openid profile email api://16150d6e-7d28-4c6b-91b3-4ec839fff75f/User_Impersonation';
