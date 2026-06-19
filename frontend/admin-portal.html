@@ -106,18 +106,46 @@
       }
 
       document.getElementById('approvals-table').style.display = 'table';
-      document.getElementById('approvals-tbody').innerHTML = approvals.map(a => `
-        <tr>
-          <td><strong>${a.studentName}</strong></td>
-          <td>${a.eventTitle}</td>
-          <td style="font-size:.85rem;color:var(--gray-600);">${a.organizationName}</td>
-          <td>${new Date(a.serviceDate).toLocaleDateString()}</td>
-          <td><strong>${a.hoursLogged}h</strong></td>
-          <td>
-            <button class="btn btn-primary btn-sm" onclick="openReview(${JSON.stringify(a).replace(/"/g, '&quot;')})">Review</button>
-          </td>
-        </tr>
-      `).join('');
+      const tbody = document.getElementById('approvals-tbody');
+      tbody.innerHTML = '';
+      approvals.forEach(a => {
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        const strong1 = document.createElement('strong');
+        strong1.textContent = a.studentName;
+        tdName.appendChild(strong1);
+        tr.appendChild(tdName);
+
+        const tdEvent = document.createElement('td');
+        tdEvent.textContent = a.eventTitle;
+        tr.appendChild(tdEvent);
+
+        const tdOrg = document.createElement('td');
+        tdOrg.style.cssText = 'font-size:.85rem;color:var(--gray-600);';
+        tdOrg.textContent = a.organizationName;
+        tr.appendChild(tdOrg);
+
+        const tdDate = document.createElement('td');
+        tdDate.textContent = new Date(a.serviceDate).toLocaleDateString();
+        tr.appendChild(tdDate);
+
+        const tdHours = document.createElement('td');
+        const strong2 = document.createElement('strong');
+        strong2.textContent = `${a.hoursLogged}h`;
+        tdHours.appendChild(strong2);
+        tr.appendChild(tdHours);
+
+        const tdBtn = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-primary btn-sm';
+        btn.textContent = 'Review';
+        btn.addEventListener('click', () => openReview(a));
+        tdBtn.appendChild(btn);
+        tr.appendChild(tdBtn);
+
+        tbody.appendChild(tr);
+      });
     } catch (err) {
       document.getElementById('approvals-loading').innerHTML =
         `<div class="alert alert-error">Could not load approvals. Please refresh.</div>`;
