@@ -296,14 +296,45 @@
       }
 
       document.getElementById('log-roster-table').style.display = 'table';
-      document.getElementById('log-roster-tbody').innerHTML = registrations.map(reg => `
-        <tr>
-          <td>${reg.studentName}</td>
-          <td style="font-size:.8rem;color:var(--gray-600);">${reg.schoolId}</td>
-          <td><input type="checkbox" class="attend-check" data-student="${reg.userId}" data-name="${reg.studentName}" data-school="${reg.schoolId}" checked></td>
-          <td><input type="number" class="hours-input" data-student="${reg.userId}" min="0.5" step="0.5" value="2" style="width:70px;padding:.3rem;border:1px solid var(--gray-400);border-radius:4px;"></td>
-        </tr>
-      `).join('');
+      const rosterTbody = document.getElementById('log-roster-tbody');
+      rosterTbody.innerHTML = '';
+      registrations.forEach(reg => {
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        tdName.textContent = reg.studentName;
+        tr.appendChild(tdName);
+
+        const tdSchool = document.createElement('td');
+        tdSchool.style.cssText = 'font-size:.8rem;color:var(--gray-600);';
+        tdSchool.textContent = reg.schoolId;
+        tr.appendChild(tdSchool);
+
+        const tdCheck = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'attend-check';
+        checkbox.dataset.student = reg.userId;
+        checkbox.dataset.name = reg.studentName;
+        checkbox.dataset.school = reg.schoolId;
+        checkbox.checked = true;
+        tdCheck.appendChild(checkbox);
+        tr.appendChild(tdCheck);
+
+        const tdHours = document.createElement('td');
+        const hoursInput = document.createElement('input');
+        hoursInput.type = 'number';
+        hoursInput.className = 'hours-input';
+        hoursInput.dataset.student = reg.userId;
+        hoursInput.min = '0.5';
+        hoursInput.step = '0.5';
+        hoursInput.value = '2';
+        hoursInput.style.cssText = 'width:70px;padding:.3rem;border:1px solid var(--gray-400);border-radius:4px;';
+        tdHours.appendChild(hoursInput);
+        tr.appendChild(tdHours);
+
+        rosterTbody.appendChild(tr);
+      });
     } catch (err) {
       document.getElementById('log-roster-loading').style.display = 'none';
       document.getElementById('log-error').textContent = 'Could not load roster.';

@@ -68,7 +68,13 @@ const Auth = (() => {
     const code     = params.get('code');
     const rawState = params.get('state') || '/dashboard.html';
     // Prevent open redirects: only allow same-origin relative paths
-    const state    = (rawState.startsWith('/') && !rawState.startsWith('//')) ? rawState : '/dashboard.html';
+    let validatedState = '/dashboard.html';
+    try {
+      const stateUrl = new URL(rawState, window.location.origin);
+      if (stateUrl.origin === window.location.origin) {
+        validatedState = stateUrl.pathname + stateUrl.search + stateUrl.hash;
+      }
+    } catch { /* fall through to default */ }
     const verifier = sessionStorage.getItem(KEYS.codeVerifier);
 
     if (!code || !verifier) {
@@ -116,7 +122,7 @@ const Auth = (() => {
         tenantId:    payload.tid,
       }));
 
-      window.location.href = state;
+      window.location.href = validatedState;
     } catch (err) {
       console.error('Auth callback error:', err);
       window.location.href = '/index.html?error=auth_failed';
