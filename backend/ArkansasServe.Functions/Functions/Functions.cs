@@ -284,10 +284,27 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 
         var created = await cosmos.CreateRegistrationAsync(reg);
 
-        // Increment slot count on event
-        evt.CurrentSlots++;
-        if (evt.MaxSlots > 0 && evt.CurrentSlots >= evt.MaxSlots) evt.Status = "Full";
-        await cosmos.UpdateEventAsync(evt);
+        // Increment slot count with optimistic concurrency (ETag If-Match + retry)
+        const int maxRetries = 5;
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(body.EventId, body.OrganizationId ?? string.Empty);
+            if (freshEvt == null) break;
+
+            freshEvt.CurrentSlots++;
+            if (freshEvt.MaxSlots > 0 && freshEvt.CurrentSlots >= freshEvt.MaxSlots) freshEvt.Status = "Full";
+
+            try
+            {
+                await cosmos.UpdateEventAsync(freshEvt, etag);
+                break;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+            {
+                if (attempt == maxRetries - 1)
+                    logger.LogWarning("Failed to update slot count for event {EventId} after {Retries} retries due to concurrent modifications", body.EventId, maxRetries);
+            }
+        }
 
         return await HttpHelper.CreatedJson(req, created);
     }

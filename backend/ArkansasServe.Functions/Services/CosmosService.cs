@@ -90,10 +90,31 @@ public class CosmosService
         }
     }
 
-    public async Task<Event> UpdateEventAsync(Event evt)
+    public async Task<(Event? Event, string? ETag)> GetEventWithETagAsync(string eventId, string organizationId)
+    {
+        try
+        {
+            var response = await Events.ReadItemAsync<Event>(eventId, new PartitionKey(organizationId));
+            return (response.Resource, response.ETag);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Replaces an event document. When <paramref name="etag"/> is supplied the request uses
+    /// an <c>If-Match</c> condition; if another writer has modified the document in the
+    /// meantime Cosmos DB throws <see cref="CosmosException"/> with
+    /// <see cref="System.Net.HttpStatusCode.PreconditionFailed"/> (412), which callers
+    /// should catch and retry.
+    /// </summary>
+    public async Task<Event> UpdateEventAsync(Event evt, string? etag = null)
     {
         evt.UpdatedAt = DateTime.UtcNow;
-        var response = await Events.ReplaceItemAsync(evt, evt.Id, new PartitionKey(evt.OrganizationId));
+        var options = etag != null ? new ItemRequestOptions { IfMatchEtag = etag } : null;
+        var response = await Events.ReplaceItemAsync(evt, evt.Id, new PartitionKey(evt.OrganizationId), options);
         return response.Resource;
     }
 
