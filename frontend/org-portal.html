@@ -216,8 +216,9 @@
     errEl.style.display = 'none';
     const title = document.getElementById('evt-title').value.trim();
     const start = document.getElementById('evt-start').value;
-    if (!title || !start) {
-      errEl.textContent = 'Title and start date are required.';
+    const end   = document.getElementById('evt-end').value;
+    if (!title || !start || !end) {
+      errEl.textContent = 'Title, start date, and end date are required.';
       errEl.style.display = 'block';
       return;
     }
