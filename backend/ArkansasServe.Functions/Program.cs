@@ -1,12 +1,13 @@
 using ArkansasServe.Functions.Services;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Azure.Storage.Blobs;
 
 var host = new HostBuilder()
-    .ConfigureFunctionsWebApplication()
+    .ConfigureFunctionsWorkerDefaults()
     .ConfigureServices((context, services) =>
     {
         var config = context.Configuration;
@@ -18,7 +19,8 @@ var host = new HostBuilder()
         // Cosmos DB — registered as singleton (connection pooling)
         services.AddSingleton(sp =>
         {
-            var connectionString = config["CosmosDb__ConnectionString"]
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var connectionString = cfg["CosmosDb__ConnectionString"]
                 ?? throw new InvalidOperationException("CosmosDb__ConnectionString is not set.");
             return new CosmosClient(connectionString, new CosmosClientOptions
             {
@@ -32,7 +34,8 @@ var host = new HostBuilder()
         // Blob Storage
         services.AddSingleton(sp =>
         {
-            var connectionString = config["BlobStorage__ConnectionString"]
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var connectionString = cfg["BlobStorage__ConnectionString"]
                 ?? throw new InvalidOperationException("BlobStorage__ConnectionString is not set.");
             return new BlobServiceClient(connectionString);
         });
@@ -41,12 +44,16 @@ var host = new HostBuilder()
         services.AddSingleton<CosmosService>();
         services.AddSingleton<BlobService>();
 
-        // Auth config passed through to middleware
-        services.AddSingleton(new AuthConfig
+        // Auth config — resolved lazily so startup does not fail if settings are absent
+        services.AddSingleton(sp =>
         {
-            TenantId = config["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
-            ClientId = config["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
-            Audience  = config["Entra__Audience"] ?? "api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            return new AuthConfig
+            {
+                TenantId = cfg["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
+                ClientId = cfg["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
+                Audience  = cfg["Entra__Audience"] ?? "api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
+            };
         });
 
         services.AddHttpClient();
