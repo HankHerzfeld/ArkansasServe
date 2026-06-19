@@ -1,12 +1,13 @@
 using ArkansasServe.Functions.Services;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Azure.Storage.Blobs;
 
 var host = new HostBuilder()
-    .ConfigureFunctionsWebApplication()
+    .ConfigureFunctionsWorkerDefaults()
     .ConfigureServices((context, services) =>
     {
         var config = context.Configuration;
@@ -16,7 +17,7 @@ var host = new HostBuilder()
         services.ConfigureFunctionsApplicationInsights();
 
         // Cosmos DB — registered as singleton (connection pooling)
-        services.AddSingleton(sp =>
+        services.AddSingleton(_ =>
         {
             var connectionString = config["CosmosDb__ConnectionString"]
                 ?? throw new InvalidOperationException("CosmosDb__ConnectionString is not set.");
@@ -30,7 +31,7 @@ var host = new HostBuilder()
         });
 
         // Blob Storage
-        services.AddSingleton(sp =>
+        services.AddSingleton(_ =>
         {
             var connectionString = config["BlobStorage__ConnectionString"]
                 ?? throw new InvalidOperationException("BlobStorage__ConnectionString is not set.");
@@ -41,8 +42,8 @@ var host = new HostBuilder()
         services.AddSingleton<CosmosService>();
         services.AddSingleton<BlobService>();
 
-        // Auth config passed through to middleware
-        services.AddSingleton(new AuthConfig
+        // Auth config — resolved lazily so startup does not fail if settings are absent
+        services.AddSingleton(_ => new AuthConfig
         {
             TenantId = config["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
             ClientId = config["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
