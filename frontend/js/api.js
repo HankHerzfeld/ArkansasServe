@@ -14,7 +14,7 @@ const Api = (() => {
 
     const res = await fetch(`${API_BASE}${path}`, options);
 
-    if (res.status === 401) { Auth.login(); return null; }
+    if (res.status === 401) { Auth.login(); throw new Error('Authentication required'); }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(err.error || `Request failed: ${res.status}`);
@@ -33,6 +33,7 @@ const Api = (() => {
   // ── Events ───────────────────────────────────────────────────────────────
   const Events = {
     list:          (schoolId)   => request('GET',  `/events${schoolId ? `?schoolId=${schoolId}` : ''}`),
+    listOrgEvents: ()           => request('GET',  '/org/events'),
     get:           (id, orgId)  => request('GET',  `/events/${id}?organizationId=${orgId}`),
     create:        (data)       => request('POST', '/events', data),
     update:        (id, data)   => request('PUT',  `/events/${id}`, data),

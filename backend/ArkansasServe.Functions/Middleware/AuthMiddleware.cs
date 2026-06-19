@@ -53,7 +53,7 @@ public static class AuthMiddleware
             var userContext = new UserContext
             {
                 UserId      = Claim("oid") ?? Claim("sub") ?? string.Empty,
-                TenantId    = Claim("tid") ?? Claim("tenantId") ?? string.Empty,
+                TenantId    = Claim("extension_OrganizationId") ?? Claim("extension_SchoolId") ?? Claim("extension_TenantId") ?? string.Empty,
                 Role        = Claim("extension_Role") ?? roleFromRolesClaim ?? "Student",
                 Email       = Claim("email") ?? Claim("preferred_username") ?? string.Empty,
                 DisplayName = Claim("name") ?? string.Empty

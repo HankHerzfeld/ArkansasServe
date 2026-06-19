@@ -95,24 +95,55 @@
     empty.style.display = 'none';
     grid.style.display  = 'grid';
 
-    grid.innerHTML = events.map(evt => `
-      <div class="card event-card">
-        ${evt.photoUrl ? `<img src="${evt.photoUrl}" alt="${evt.title}">` : ''}
-        <span class="event-badge">${evt.category || 'Volunteer'}</span>
-        <div class="card-title">${evt.title}</div>
-        <div class="card-meta">
-          📍 ${evt.location}<br>
-          📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })}<br>
-          ⏱ ${evt.hoursValue} hour${evt.hoursValue !== 1 ? 's' : ''} credit
-          ${evt.maxSlots > 0 ? ` · ${evt.maxSlots - evt.currentSlots} spots left` : ''}
-        </div>
-        <p style="font-size:.85rem;color:var(--gray-600);margin-bottom:.75rem;">${evt.organizationName}</p>
-        <span class="status status-${evt.status.toLowerCase()}" style="margin-bottom:.75rem;display:inline-block;">${evt.status}</span><br>
-        ${profile.role === 'Student' && evt.status === 'Open'
-          ? `<button class="btn btn-primary btn-sm" onclick="openSignup('${evt.id}','${evt.organizationId}','${evt.title}','${evt.location}')">Sign Up</button>`
-          : ''}
-      </div>
-    `).join('');
+    grid.innerHTML = '';
+    events.forEach(evt => {
+      const card = document.createElement('div');
+      card.className = 'card event-card';
+
+      if (evt.photoUrl) {
+        const img = document.createElement('img');
+        img.src = evt.photoUrl;
+        img.alt = evt.title;
+        card.appendChild(img);
+      }
+
+      const badge = document.createElement('span');
+      badge.className = 'event-badge';
+      badge.textContent = evt.category || 'Volunteer';
+      card.appendChild(badge);
+
+      const title = document.createElement('div');
+      title.className = 'card-title';
+      title.textContent = evt.title;
+      card.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'card-meta';
+      meta.textContent = `📍 ${evt.location} · 📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · ⏱ ${evt.hoursValue} hour${evt.hoursValue !== 1 ? 's' : ''} credit${evt.maxSlots > 0 ? ` · ${evt.maxSlots - evt.currentSlots} spots left` : ''}`;
+      card.appendChild(meta);
+
+      const orgName = document.createElement('p');
+      orgName.style.cssText = 'font-size:.85rem;color:var(--gray-600);margin-bottom:.75rem;';
+      orgName.textContent = evt.organizationName;
+      card.appendChild(orgName);
+
+      const status = document.createElement('span');
+      status.className = `status status-${evt.status.toLowerCase()}`;
+      status.style.cssText = 'margin-bottom:.75rem;display:inline-block;';
+      status.textContent = evt.status;
+      card.appendChild(status);
+      card.appendChild(document.createElement('br'));
+
+      if (profile.role === 'Student' && evt.status === 'Open') {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-primary btn-sm';
+        btn.textContent = 'Sign Up';
+        btn.addEventListener('click', () => openSignup(evt.id, evt.organizationId, evt.title, evt.location));
+        card.appendChild(btn);
+      }
+
+      grid.appendChild(card);
+    });
   }
 
   // Filter

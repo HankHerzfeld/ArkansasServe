@@ -4,6 +4,8 @@ using Microsoft.Azure.Cosmos.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
+using User = ArkansasServe.Functions.Models.User;
+
 namespace ArkansasServe.Functions.Services;
 
 /// <summary>
@@ -200,6 +202,19 @@ public class CosmosService
         return response.Resource;
     }
 
+    public async Task<EventRegistration?> GetRegistrationAsync(string id, string eventId)
+    {
+        try
+        {
+            var response = await Registrations.ReadItemAsync<EventRegistration>(id, new PartitionKey(eventId));
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
     // ── ServiceLogs ───────────────────────────────────────────────────────────
 
     public async Task<ServiceLog> CreateServiceLogAsync(ServiceLog log)
@@ -267,6 +282,17 @@ public class CosmosService
     {
         var query = PendingApprovals.GetItemLinqQueryable<PendingApproval>(requestOptions:
             new QueryRequestOptions { PartitionKey = new PartitionKey(schoolId) })
+            .ToFeedIterator();
+
+        var results = new List<PendingApproval>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync());
+        return results.OrderByDescending(p => p.ServiceDate).ToList();
+    }
+
+    public async Task<List<PendingApproval>> GetAllPendingApprovalsAsync()
+    {
+        var query = PendingApprovals.GetItemLinqQueryable<PendingApproval>()
             .ToFeedIterator();
 
         var results = new List<PendingApproval>();

@@ -95,16 +95,40 @@
 
         document.getElementById('log-table').style.display = 'table';
         const tbody = document.getElementById('log-tbody');
-        tbody.innerHTML = logs.map(log => `
-          <tr>
-            <td>${new Date(log.serviceDate).toLocaleDateString()}</td>
-            <td>${log.eventTitle}</td>
-            <td>${log.organizationName}</td>
-            <td>${log.hoursLogged}</td>
-            <td><span class="status status-${log.status.toLowerCase()}">${log.status}</span></td>
-            <td style="font-size:.8rem;color:var(--gray-600);">${log.reviewNote || ''}</td>
-          </tr>
-        `).join('');
+        tbody.innerHTML = '';
+        logs.forEach(log => {
+          const tr = document.createElement('tr');
+
+          const tdDate = document.createElement('td');
+          tdDate.textContent = new Date(log.serviceDate).toLocaleDateString();
+          tr.appendChild(tdDate);
+
+          const tdEvent = document.createElement('td');
+          tdEvent.textContent = log.eventTitle;
+          tr.appendChild(tdEvent);
+
+          const tdOrg = document.createElement('td');
+          tdOrg.textContent = log.organizationName;
+          tr.appendChild(tdOrg);
+
+          const tdHours = document.createElement('td');
+          tdHours.textContent = String(log.hoursLogged);
+          tr.appendChild(tdHours);
+
+          const tdStatus = document.createElement('td');
+          const statusSpan = document.createElement('span');
+          statusSpan.className = `status status-${log.status.toLowerCase()}`;
+          statusSpan.textContent = log.status;
+          tdStatus.appendChild(statusSpan);
+          tr.appendChild(tdStatus);
+
+          const tdNote = document.createElement('td');
+          tdNote.style.cssText = 'font-size:.8rem;color:var(--gray-600);';
+          tdNote.textContent = log.reviewNote || '';
+          tr.appendChild(tdNote);
+
+          tbody.appendChild(tr);
+        });
       } catch (err) {
         document.getElementById('log-loading').innerHTML =
           `<div class="alert alert-error">Failed to load your service history. Please refresh.</div>`;

@@ -30,8 +30,6 @@ public class BlobService
     /// </summary>
     public string GenerateUploadSasToken(string containerName, string blobName, int expiryMinutes = 15)
     {
-        var blobClient = _client.GetBlobContainerClient(containerName).GetBlobClient(blobName);
-
         var sasBuilder = new BlobSasBuilder
         {
             BlobContainerName = containerName,
@@ -42,8 +40,9 @@ public class BlobService
         sasBuilder.SetPermissions(BlobSasPermissions.Write | BlobSasPermissions.Create);
 
         var credential = new StorageSharedKeyCredential(_accountName, _accountKey);
-        var sasUri = blobClient.GenerateSasUri(sasBuilder);
-        return sasUri.ToString();
+        var sasQueryParams = sasBuilder.ToSasQueryParameters(credential);
+        var blobClient = _client.GetBlobContainerClient(containerName).GetBlobClient(blobName);
+        return $"{blobClient.Uri}?{sasQueryParams}";
     }
 
     /// <summary>
@@ -52,8 +51,6 @@ public class BlobService
     /// </summary>
     public string GenerateReadSasToken(string containerName, string blobName, int expiryMinutes = 60)
     {
-        var blobClient = _client.GetBlobContainerClient(containerName).GetBlobClient(blobName);
-
         var sasBuilder = new BlobSasBuilder
         {
             BlobContainerName = containerName,
@@ -63,8 +60,10 @@ public class BlobService
         };
         sasBuilder.SetPermissions(BlobSasPermissions.Read);
 
-        var sasUri = blobClient.GenerateSasUri(sasBuilder);
-        return sasUri.ToString();
+        var credential = new StorageSharedKeyCredential(_accountName, _accountKey);
+        var sasQueryParams = sasBuilder.ToSasQueryParameters(credential);
+        var blobClient = _client.GetBlobContainerClient(containerName).GetBlobClient(blobName);
+        return $"{blobClient.Uri}?{sasQueryParams}";
     }
 
     /// <summary>

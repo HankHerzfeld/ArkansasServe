@@ -3,9 +3,12 @@ using System.Text.Json;
 using ArkansasServe.Functions.Middleware;
 using ArkansasServe.Functions.Models;
 using ArkansasServe.Functions.Services;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+
+using User = ArkansasServe.Functions.Models.User;
 
 namespace ArkansasServe.Functions.Functions;
 
@@ -239,6 +242,17 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 
         return await HttpHelper.OkJson(req, new { sasUrl, finalUrl, blobName });
     }
+
+    [Function("GetOrgEvents")]
+    public async Task<HttpResponseData> GetOrgEvents(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "org/events")] HttpRequestData req)
+    {
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+        if (ctx == null) return authError!;
+
+        var events = await cosmos.GetEventsByOrgAsync(ctx.TenantId);
+        return await HttpHelper.OkJson(req, events);
+    }
 }
 
 file record UploadTokenRequest(string FileName);
@@ -286,10 +300,20 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 
         // Increment slot count with optimistic concurrency (ETag If-Match + retry)
         const int maxRetries = 5;
+        bool slotUpdateSucceeded = false;
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {
             var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(body.EventId, body.OrganizationId ?? string.Empty);
             if (freshEvt == null) break;
+
+            // Re-check capacity after re-read to prevent oversubscription
+            if (freshEvt.MaxSlots > 0 && freshEvt.CurrentSlots >= freshEvt.MaxSlots)
+            {
+                // Event became full — rollback the registration
+                reg.Status = "Cancelled";
+                await cosmos.UpdateRegistrationAsync(reg);
+                return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Event is full");
+            }
 
             freshEvt.CurrentSlots++;
             if (freshEvt.MaxSlots > 0 && freshEvt.CurrentSlots >= freshEvt.MaxSlots) freshEvt.Status = "Full";
@@ -297,6 +321,7 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
             try
             {
                 await cosmos.UpdateEventAsync(freshEvt, etag);
+                slotUpdateSucceeded = true;
                 break;
             }
             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
@@ -306,7 +331,64 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
             }
         }
 
+        if (!slotUpdateSucceeded)
+        {
+            // Rollback the registration if slot update failed
+            reg.Status = "Cancelled";
+            await cosmos.UpdateRegistrationAsync(reg);
+            return await HttpHelper.Error(req, HttpStatusCode.ServiceUnavailable, "Unable to complete registration due to concurrent modifications. Please try again.");
+        }
+
         return await HttpHelper.CreatedJson(req, created);
+    }
+
+    [Function("CancelRegistration")]
+    public async Task<HttpResponseData> CancelRegistration(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "registrations/{id}")] HttpRequestData req,
+        string id)
+    {
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "SchoolAdmin", "PlatformAdmin");
+        if (ctx == null) return authError!;
+
+        var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+        var eventId = query["eventId"] ?? string.Empty;
+
+        var reg = await cosmos.GetRegistrationAsync(id, eventId);
+        if (reg == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Registration not found");
+
+        // Students can only cancel their own registrations
+        if (ctx.IsStudent && reg.UserId != ctx.UserId)
+            return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot cancel another user's registration");
+
+        if (reg.Status == "Cancelled")
+            return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Registration is already cancelled");
+
+        reg.Status = "Cancelled";
+        await cosmos.UpdateRegistrationAsync(reg);
+
+        // Decrement slot count with optimistic concurrency
+        const int maxRetries = 5;
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(reg.EventId, reg.SchoolId);
+            if (freshEvt == null) break;
+
+            if (freshEvt.CurrentSlots > 0) freshEvt.CurrentSlots--;
+            if (freshEvt.Status == "Full" && freshEvt.CurrentSlots < freshEvt.MaxSlots) freshEvt.Status = "Open";
+
+            try
+            {
+                await cosmos.UpdateEventAsync(freshEvt, etag);
+                break;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+            {
+                if (attempt == maxRetries - 1)
+                    logger.LogWarning("Failed to decrement slot count for event {EventId} after {Retries} retries", reg.EventId, maxRetries);
+            }
+        }
+
+        return req.CreateResponse(HttpStatusCode.NoContent);
     }
 }
 
@@ -405,10 +487,18 @@ public class ApprovalFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
         if (ctx == null) return authError!;
 
         var query  = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-        var schoolId = ctx.IsPlatformAdmin ? (query["schoolId"] ?? ctx.TenantId) : ctx.TenantId;
+        var schoolId = query["schoolId"];
 
-        var approvals = await cosmos.GetPendingApprovalsBySchoolAsync(schoolId);
-        return await HttpHelper.OkJson(req, approvals);
+        if (ctx.IsPlatformAdmin && string.IsNullOrEmpty(schoolId))
+        {
+            // Platform admin without schoolId filter → return all pending approvals
+            var approvals = await cosmos.GetAllPendingApprovalsAsync();
+            return await HttpHelper.OkJson(req, approvals);
+        }
+
+        var effectiveSchoolId = ctx.IsPlatformAdmin ? schoolId! : ctx.TenantId;
+        var result = await cosmos.GetPendingApprovalsBySchoolAsync(effectiveSchoolId);
+        return await HttpHelper.OkJson(req, result);
     }
 }
 

@@ -135,7 +135,7 @@
 
   async function loadOrgEvents() {
     try {
-      orgEvents = await Api.Events.list();  // API filters to org's events server-side
+      orgEvents = await Api.Events.listOrgEvents();
       document.getElementById('events-loading').style.display = 'none';
       renderOrgEvents(orgEvents);
     } catch (err) {
@@ -149,23 +149,48 @@
     const empty = document.getElementById('events-empty');
     if (events.length === 0) { empty.style.display = 'block'; return; }
     empty.style.display = 'none';
-    list.innerHTML = events.map(evt => `
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
-        <div>
-          <div class="card-title">${evt.title}</div>
-          <div class="card-meta">
-            📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })}
-            · 📍 ${evt.location}
-            · ${evt.currentSlots} signed up
-          </div>
-          <span class="status status-${evt.status.toLowerCase()}">${evt.status}</span>
-        </div>
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
-          <button class="btn btn-secondary btn-sm" onclick="openEdit('${evt.id}')">Edit</button>
-          <button class="btn btn-primary btn-sm" onclick="openLogHours('${evt.id}','${evt.title}')">Log Hours</button>
-        </div>
-      </div>
-    `).join('');
+    list.innerHTML = '';
+    events.forEach(evt => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;';
+
+      const info = document.createElement('div');
+      const title = document.createElement('div');
+      title.className = 'card-title';
+      title.textContent = evt.title;
+      info.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'card-meta';
+      meta.textContent = `📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · 📍 ${evt.location} · ${evt.currentSlots} signed up`;
+      info.appendChild(meta);
+
+      const status = document.createElement('span');
+      status.className = `status status-${evt.status.toLowerCase()}`;
+      status.textContent = evt.status;
+      info.appendChild(status);
+
+      card.appendChild(info);
+
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-secondary btn-sm';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openEdit(evt.id));
+      actions.appendChild(editBtn);
+
+      const logBtn = document.createElement('button');
+      logBtn.className = 'btn btn-primary btn-sm';
+      logBtn.textContent = 'Log Hours';
+      logBtn.addEventListener('click', () => openLogHours(evt.id, evt.title));
+      actions.appendChild(logBtn);
+
+      card.appendChild(actions);
+      list.appendChild(card);
+    });
   }
 
   // ── New / Edit event ────────────────────────────────────────────────────

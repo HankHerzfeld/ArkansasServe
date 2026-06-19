@@ -170,15 +170,41 @@
         return;
       }
       document.getElementById('tenants-table').style.display = 'table';
-      document.getElementById('tenants-tbody').innerHTML = tenants.map(t => `
-        <tr>
-          <td><strong>${t.name}</strong></td>
-          <td style="text-transform:capitalize;">${t.type}</td>
-          <td style="font-size:.85rem;color:var(--gray-600);">${t.ssoDomain || t.googleWorkspaceDomain || '—'}</td>
-          <td><span class="status status-${t.status === 'active' ? 'approved' : 'rejected'}">${t.status}</span></td>
-          <td style="font-size:.85rem;">${t.contractStartDate ? new Date(t.contractStartDate).toLocaleDateString() : '—'}</td>
-        </tr>
-      `).join('');
+      const tbody = document.getElementById('tenants-tbody');
+      tbody.innerHTML = '';
+      tenants.forEach(t => {
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = t.name;
+        tdName.appendChild(strong);
+        tr.appendChild(tdName);
+
+        const tdType = document.createElement('td');
+        tdType.style.textTransform = 'capitalize';
+        tdType.textContent = t.type;
+        tr.appendChild(tdType);
+
+        const tdDomain = document.createElement('td');
+        tdDomain.style.cssText = 'font-size:.85rem;color:var(--gray-600);';
+        tdDomain.textContent = t.ssoDomain || t.googleWorkspaceDomain || '—';
+        tr.appendChild(tdDomain);
+
+        const tdStatus = document.createElement('td');
+        const statusSpan = document.createElement('span');
+        statusSpan.className = `status status-${t.status === 'active' ? 'approved' : 'rejected'}`;
+        statusSpan.textContent = t.status;
+        tdStatus.appendChild(statusSpan);
+        tr.appendChild(tdStatus);
+
+        const tdDate = document.createElement('td');
+        tdDate.style.fontSize = '.85rem';
+        tdDate.textContent = t.contractStartDate ? new Date(t.contractStartDate).toLocaleDateString() : '—';
+        tr.appendChild(tdDate);
+
+        tbody.appendChild(tr);
+      });
     } catch (err) {
       document.getElementById('tenants-loading').innerHTML =
         `<div class="alert alert-error">Could not load tenants.</div>`;
@@ -246,16 +272,41 @@
         return;
       }
       document.getElementById('all-approvals-table').style.display = 'table';
-      document.getElementById('all-approvals-tbody').innerHTML = approvals.map(a => `
-        <tr>
-          <td>${a.studentName}</td>
-          <td style="font-size:.8rem;color:var(--gray-600);">${a.schoolId}</td>
-          <td>${a.eventTitle}</td>
-          <td style="font-size:.85rem;">${a.organizationName}</td>
-          <td>${new Date(a.serviceDate).toLocaleDateString()}</td>
-          <td><strong>${a.hoursLogged}h</strong></td>
-        </tr>
-      `).join('');
+      const appTbody = document.getElementById('all-approvals-tbody');
+      appTbody.innerHTML = '';
+      approvals.forEach(a => {
+        const tr = document.createElement('tr');
+
+        const tdStudent = document.createElement('td');
+        tdStudent.textContent = a.studentName;
+        tr.appendChild(tdStudent);
+
+        const tdSchool = document.createElement('td');
+        tdSchool.style.cssText = 'font-size:.8rem;color:var(--gray-600);';
+        tdSchool.textContent = a.schoolId;
+        tr.appendChild(tdSchool);
+
+        const tdEvent = document.createElement('td');
+        tdEvent.textContent = a.eventTitle;
+        tr.appendChild(tdEvent);
+
+        const tdOrg = document.createElement('td');
+        tdOrg.style.fontSize = '.85rem';
+        tdOrg.textContent = a.organizationName;
+        tr.appendChild(tdOrg);
+
+        const tdDate = document.createElement('td');
+        tdDate.textContent = new Date(a.serviceDate).toLocaleDateString();
+        tr.appendChild(tdDate);
+
+        const tdHours = document.createElement('td');
+        const hoursStrong = document.createElement('strong');
+        hoursStrong.textContent = `${a.hoursLogged}h`;
+        tdHours.appendChild(hoursStrong);
+        tr.appendChild(tdHours);
+
+        appTbody.appendChild(tr);
+      });
     } catch (err) {
       document.getElementById('all-approvals-loading').innerHTML =
         `<div class="alert alert-error">Could not load approvals.</div>`;

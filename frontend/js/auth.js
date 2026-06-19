@@ -66,7 +66,9 @@ const Auth = (() => {
   async function handleCallback() {
     const params   = new URLSearchParams(window.location.search);
     const code     = params.get('code');
-    const state    = params.get('state') || '/dashboard.html';
+    const rawState = params.get('state') || '/dashboard.html';
+    // Prevent open redirects: only allow same-origin relative paths
+    const state    = (rawState.startsWith('/') && !rawState.startsWith('//')) ? rawState : '/dashboard.html';
     const verifier = sessionStorage.getItem(KEYS.codeVerifier);
 
     if (!code || !verifier) {
@@ -101,7 +103,11 @@ const Auth = (() => {
 
       // Decode id_token for profile (no signature check needed client-side;
       // server validates the access token on every API call)
-      const payload = JSON.parse(atob(tokens.id_token.split('.')[1]));
+      const base64Url = tokens.id_token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+      const payload = JSON.parse(decodeURIComponent(atob(padded).split('').map(c =>
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
       sessionStorage.setItem(KEYS.userProfile, JSON.stringify({
         userId:      payload.oid || payload.sub,
         name:        payload.name || payload.preferred_username,

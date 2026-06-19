@@ -155,13 +155,24 @@
   function openReview(approval) {
     activeApproval = approval;
     document.getElementById('review-modal-title').textContent = `Review: ${approval.eventTitle}`;
-    document.getElementById('review-details').innerHTML = `
-      <strong>Student:</strong> ${approval.studentName}<br>
-      <strong>Organization:</strong> ${approval.organizationName}<br>
-      <strong>Event:</strong> ${approval.eventTitle}<br>
-      <strong>Date:</strong> ${new Date(approval.serviceDate).toLocaleDateString()}<br>
-      <strong>Hours submitted:</strong> ${approval.hoursLogged}
-    `;
+    const details = document.getElementById('review-details');
+    details.innerHTML = '';
+
+    const fields = [
+      ['Student', approval.studentName],
+      ['Organization', approval.organizationName],
+      ['Event', approval.eventTitle],
+      ['Date', new Date(approval.serviceDate).toLocaleDateString()],
+      ['Hours submitted', String(approval.hoursLogged)]
+    ];
+    fields.forEach(([label, value]) => {
+      const strong = document.createElement('strong');
+      strong.textContent = `${label}: `;
+      details.appendChild(strong);
+      details.appendChild(document.createTextNode(value));
+      details.appendChild(document.createElement('br'));
+    });
+
     document.getElementById('review-note').value = '';
     document.getElementById('review-error').style.display = 'none';
     document.getElementById('review-modal').classList.add('open');
