@@ -17,10 +17,9 @@ var host = new HostBuilder()
         services.ConfigureFunctionsApplicationInsights();
 
         // Cosmos DB — registered as singleton (connection pooling)
-        services.AddSingleton(sp =>
+        services.AddSingleton(_ =>
         {
-            var cfg = sp.GetRequiredService<IConfiguration>();
-            var connectionString = cfg["CosmosDb__ConnectionString"]
+            var connectionString = config["CosmosDb__ConnectionString"]
                 ?? throw new InvalidOperationException("CosmosDb__ConnectionString is not set.");
             return new CosmosClient(connectionString, new CosmosClientOptions
             {
@@ -32,10 +31,9 @@ var host = new HostBuilder()
         });
 
         // Blob Storage
-        services.AddSingleton(sp =>
+        services.AddSingleton(_ =>
         {
-            var cfg = sp.GetRequiredService<IConfiguration>();
-            var connectionString = cfg["BlobStorage__ConnectionString"]
+            var connectionString = config["BlobStorage__ConnectionString"]
                 ?? throw new InvalidOperationException("BlobStorage__ConnectionString is not set.");
             return new BlobServiceClient(connectionString);
         });
@@ -45,15 +43,11 @@ var host = new HostBuilder()
         services.AddSingleton<BlobService>();
 
         // Auth config — resolved lazily so startup does not fail if settings are absent
-        services.AddSingleton(sp =>
+        services.AddSingleton(_ => new AuthConfig
         {
-            var cfg = sp.GetRequiredService<IConfiguration>();
-            return new AuthConfig
-            {
-                TenantId = cfg["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
-                ClientId = cfg["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
-                Audience  = cfg["Entra__Audience"] ?? "api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
-            };
+            TenantId = config["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
+            ClientId = config["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
+            Audience  = config["Entra__Audience"] ?? "api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
         });
 
         services.AddHttpClient();
