@@ -15,7 +15,7 @@ namespace ArkansasServe.Functions.Middleware;
 /// </summary>
 public static class AuthMiddleware
 {
-    public static async Task<UserContext?> ValidateRequest(
+    public static async Task<(UserContext? Context, HttpResponseData? ErrorResponse)> ValidateRequest(
         HttpRequestData req,
         AuthConfig config,
         ILogger logger,
@@ -23,17 +23,11 @@ public static class AuthMiddleware
     {
         // Extract Bearer token
         if (!req.Headers.TryGetValues("Authorization", out var authHeaders))
-        {
-            await WriteUnauthorized(req, "Missing Authorization header");
-            return null;
-        }
+            return (null, await WriteUnauthorized(req, "Missing Authorization header"));
 
         var token = authHeaders.FirstOrDefault()?.Replace("Bearer ", "").Trim();
         if (string.IsNullOrEmpty(token))
-        {
-            await WriteUnauthorized(req, "Empty token");
-            return null;
-        }
+            return (null, await WriteUnauthorized(req, "Empty token"));
 
         try
         {
@@ -64,44 +58,41 @@ public static class AuthMiddleware
                 DisplayName = Claim("name") ?? string.Empty
             };
 
-            // Role check
+            // Role check — return 403 Forbidden so callers can distinguish
+            // "not authenticated" (401) from "authenticated but wrong role" (403)
             if (requiredRoles.Length > 0 && !requiredRoles.Contains(userContext.Role))
-            {
-                await WriteForbidden(req, $"Role '{userContext.Role}' is not permitted for this action.");
-                return null;
-            }
+                return (null, await WriteForbidden(req, $"Role '{userContext.Role}' is not permitted for this action."));
 
-            return userContext;
+            return (userContext, null);
         }
         catch (SecurityTokenException ex)
         {
             logger.LogWarning("Token validation failed: {Message}", ex.Message);
-            await WriteUnauthorized(req, "Invalid or expired token");
-            return null;
+            return (null, await WriteUnauthorized(req, "Invalid or expired token"));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unexpected error during token validation");
-            await WriteUnauthorized(req, "Authentication error");
-            return null;
+            return (null, await WriteUnauthorized(req, "Authentication error"));
         }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private static async Task WriteUnauthorized(HttpRequestData req, string message)
+    private static async Task<HttpResponseData> WriteUnauthorized(HttpRequestData req, string message)
     {
-        // Note: in isolated worker model we write the response via the request object
-        // The calling function must return early after receiving null from ValidateRequest
-        // This logs the reason; callers should return a 401 HttpResponseData
-        await Task.CompletedTask; // placeholder — callers write the response
-        _ = message;              // callers use this for logging
+        var res = req.CreateResponse(HttpStatusCode.Unauthorized);
+        await res.WriteStringAsync(JsonSerializer.Serialize(new { error = message }));
+        res.Headers.Add("Content-Type", "application/json");
+        return res;
     }
 
-    private static async Task WriteForbidden(HttpRequestData req, string message)
+    private static async Task<HttpResponseData> WriteForbidden(HttpRequestData req, string message)
     {
-        await Task.CompletedTask;
-        _ = message;
+        var res = req.CreateResponse(HttpStatusCode.Forbidden);
+        await res.WriteStringAsync(JsonSerializer.Serialize(new { error = message }));
+        res.Headers.Add("Content-Type", "application/json");
+        return res;
     }
 
     private static readonly Dictionary<string, List<SecurityKey>> _keyCache = new();

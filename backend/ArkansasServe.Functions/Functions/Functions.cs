@@ -68,8 +68,8 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
     public async Task<HttpResponseData> GetMe(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "users/me")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+        if (ctx == null) return authError!;
 
         var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
         if (user == null)
@@ -93,8 +93,8 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
     public async Task<HttpResponseData> UpdateMe(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "users/me")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<User>(req);
         if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
@@ -128,8 +128,8 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
     public async Task<HttpResponseData> GetEvents(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "events")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+        if (ctx == null) return authError!;
 
         var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
         var schoolId = query["schoolId"];
@@ -145,8 +145,8 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "events/{id}")] HttpRequestData req,
         string id)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+        if (ctx == null) return authError!;
 
         var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
         var orgId  = query["organizationId"] ?? string.Empty;
@@ -159,8 +159,8 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
     public async Task<HttpResponseData> CreateEvent(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<Event>(req);
         if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
@@ -182,8 +182,8 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "events/{id}")] HttpRequestData req,
         string id)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<Event>(req);
         if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
@@ -216,8 +216,8 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "events/{id}/registrations")] HttpRequestData req,
         string id)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "SchoolAdmin", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "SchoolAdmin", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var registrations = await cosmos.GetRegistrationsByEventAsync(id);
         return await HttpHelper.OkJson(req, registrations);
@@ -227,8 +227,8 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
     public async Task<HttpResponseData> GetUploadToken(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events/upload-token")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<UploadTokenRequest>(req);
         if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "fileName is required");
@@ -255,8 +255,8 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
     public async Task<HttpResponseData> Register(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "registrations")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<RegistrationRequest>(req);
         if (body == null || string.IsNullOrEmpty(body.EventId))
@@ -308,8 +308,8 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
     public async Task<HttpResponseData> CreateLog(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "servicelogs")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<ServiceLog>(req);
         if (body == null || string.IsNullOrEmpty(body.StudentId) || body.HoursLogged <= 0)
@@ -332,8 +332,8 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "servicelogs/{id}")] HttpRequestData req,
         string id)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "SchoolAdmin", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "SchoolAdmin", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<ReviewRequest>(req);
         if (body == null || (body.Status != "Approved" && body.Status != "Rejected"))
@@ -362,8 +362,8 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
     public async Task<HttpResponseData> GetMyLogs(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "students/me/servicelogs")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var logs  = await cosmos.GetServiceLogsByStudentAsync(ctx.UserId);
         var total = logs.Where(l => l.Status == "Approved").Sum(l => l.HoursLogged);
@@ -384,8 +384,8 @@ public class ApprovalFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
     public async Task<HttpResponseData> GetApprovals(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "approvals")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "SchoolAdmin", "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "SchoolAdmin", "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var query  = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
         var schoolId = ctx.IsPlatformAdmin ? (query["schoolId"] ?? ctx.TenantId) : ctx.TenantId;
@@ -407,8 +407,8 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
     public async Task<HttpResponseData> GetTenants(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/tenants")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var tenants = await cosmos.GetAllTenantsAsync();
         return await HttpHelper.OkJson(req, tenants);
@@ -418,8 +418,8 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
     public async Task<HttpResponseData> CreateTenant(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/tenants")] HttpRequestData req)
     {
-        var ctx = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "PlatformAdmin");
-        if (ctx == null) return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Unauthorized");
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "PlatformAdmin");
+        if (ctx == null) return authError!;
 
         var body = await HttpHelper.ReadBody<Tenant>(req);
         if (body == null || string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Type))
