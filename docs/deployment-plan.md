@@ -258,7 +258,7 @@ az staticwebapp appsettings set \
 	 "BlobStorage__ConnectionString=$STORAGE_CONN" \
 	 "Entra__TenantId=<YOUR_TENANT_ID>" \
 	 "Entra__ClientId=<YOUR_CLIENT_ID>" \
-	 "Entra__Audience=api://arkansas-serve"
+	 "Entra__Audience=api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
 ```
 
 Important:

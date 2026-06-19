@@ -101,7 +101,7 @@ Get your Entra values (after completing Entra External ID setup):
     "BlobStorage__ConnectionString": "DefaultEndpointsProtocol=https;AccountName=...",
     "Entra__TenantId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     "Entra__ClientId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "Entra__Audience": "api://arkansas-serve"
+    "Entra__Audience": "api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
   }
 }
 ```
@@ -243,7 +243,7 @@ az functionapp config appsettings set \
     "BlobStorage__ConnectionString=YOUR_VALUE" \
     "Entra__TenantId=YOUR_VALUE" \
     "Entra__ClientId=YOUR_VALUE" \
-    "Entra__Audience=api://arkansas-serve"
+    "Entra__Audience=api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
 ```
 
 Replace each YOUR_VALUE with the real values from local.settings.json.

@@ -46,7 +46,7 @@ var host = new HostBuilder()
         {
             TenantId = config["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
             ClientId = config["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
-            Audience  = config["Entra__Audience"] ?? "api://arkansas-serve"
+            Audience  = config["Entra__Audience"] ?? "api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
         });
 
         services.AddHttpClient();
