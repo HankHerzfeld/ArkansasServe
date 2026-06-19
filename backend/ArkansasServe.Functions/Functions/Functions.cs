@@ -482,9 +482,13 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
                 ServiceDate      = log.ServiceDate
             });
         }
+        catch (CosmosException ex)
+        {
+            logger.LogError(ex, "Cosmos DB error while creating pending approval for service log {ServiceLogId}", log.Id);
+        }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to create pending approval for service log {ServiceLogId}", log.Id);
+            logger.LogError(ex, "Unexpected error while creating pending approval for service log {ServiceLogId}", log.Id);
         }
     }
 
@@ -506,9 +510,13 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
                 RelatedId = log.Id
             });
         }
+        catch (CosmosException ex)
+        {
+            logger.LogError(ex, "Cosmos DB error while finalizing reviewed service log {ServiceLogId}", log.Id);
+        }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to finalize reviewed service log {ServiceLogId}", log.Id);
+            logger.LogError(ex, "Unexpected error while finalizing reviewed service log {ServiceLogId}", log.Id);
         }
     }
 }
