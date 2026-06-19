@@ -51,15 +51,17 @@ public static class AuthMiddleware
             };
 
             var principal = handler.ValidateToken(token, validationParams, out _);
-            var claims = principal.Claims.ToDictionary(c => c.Type, c => c.Value);
+
+            string? Claim(string type) => principal.Claims.FirstOrDefault(c => c.Type == type)?.Value;
+            var roleFromRolesClaim = principal.Claims.Where(c => c.Type == "roles").Select(c => c.Value).FirstOrDefault();
 
             var userContext = new UserContext
             {
-                UserId     = claims.GetValueOrDefault("oid") ?? claims.GetValueOrDefault("sub") ?? string.Empty,
-                TenantId   = claims.GetValueOrDefault("tid") ?? claims.GetValueOrDefault("tenantId") ?? string.Empty,
-                Role       = claims.GetValueOrDefault("extension_Role") ?? claims.GetValueOrDefault("roles") ?? "Student",
-                Email      = claims.GetValueOrDefault("email") ?? claims.GetValueOrDefault("preferred_username") ?? string.Empty,
-                DisplayName = claims.GetValueOrDefault("name") ?? string.Empty
+                UserId      = Claim("oid") ?? Claim("sub") ?? string.Empty,
+                TenantId    = Claim("tid") ?? Claim("tenantId") ?? string.Empty,
+                Role        = Claim("extension_Role") ?? roleFromRolesClaim ?? "Student",
+                Email       = Claim("email") ?? Claim("preferred_username") ?? string.Empty,
+                DisplayName = Claim("name") ?? string.Empty
             };
 
             // Role check
