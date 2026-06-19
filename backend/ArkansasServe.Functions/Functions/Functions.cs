@@ -419,9 +419,7 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
         body.Status            = "Pending";
 
         var created = await cosmos.CreateServiceLogAsync(body);
-
-        // The Change Feed will automatically create the PendingApproval record —
-        // no manual step needed here.
+        await TryCreatePendingApprovalAsync(created);
 
         return await HttpHelper.CreatedJson(req, created);
     }
@@ -451,8 +449,7 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
         log.ReviewedAt       = DateTime.UtcNow;
 
         var updated = await cosmos.UpdateServiceLogAsync(log);
-
-        // Change Feed will handle deleting PendingApproval and creating Notification
+        await TryFinalizeReviewedLogAsync(updated);
 
         return await HttpHelper.OkJson(req, updated);
     }
@@ -467,6 +464,52 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
         var logs  = await cosmos.GetServiceLogsByStudentAsync(ctx.UserId);
         var total = logs.Where(l => l.Status == "Approved").Sum(l => l.HoursLogged);
         return await HttpHelper.OkJson(req, new { logs, totalApprovedHours = total });
+    }
+
+    private async Task TryCreatePendingApprovalAsync(ServiceLog log)
+    {
+        try
+        {
+            await cosmos.CreatePendingApprovalAsync(new PendingApproval
+            {
+                SchoolId         = log.SchoolId,
+                ServiceLogId     = log.Id,
+                StudentId        = log.StudentId,
+                StudentName      = log.StudentName,
+                OrganizationName = log.OrganizationName,
+                EventTitle       = log.EventTitle,
+                HoursLogged      = log.HoursLogged,
+                ServiceDate      = log.ServiceDate
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to create pending approval for service log {ServiceLogId}", log.Id);
+        }
+    }
+
+    private async Task TryFinalizeReviewedLogAsync(ServiceLog log)
+    {
+        try
+        {
+            await cosmos.DeletePendingApprovalByLogIdAsync(log.Id, log.SchoolId);
+
+            var message = log.Status == "Approved"
+                ? $"Your {log.HoursLogged}h of service at {log.OrganizationName} ({log.EventTitle}) have been approved."
+                : $"Your service log for {log.EventTitle} was not approved. Note: {log.ReviewNote ?? "No note provided."}";
+
+            await cosmos.CreateNotificationAsync(new Notification
+            {
+                UserId    = log.StudentId,
+                Type      = log.Status == "Approved" ? "HoursApproved" : "HoursRejected",
+                Message   = message,
+                RelatedId = log.Id
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to finalize reviewed service log {ServiceLogId}", log.Id);
+        }
     }
 }
 
@@ -534,69 +577,5 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
         var created = await cosmos.CreateTenantAsync(body);
         return await HttpHelper.CreatedJson(req, created);
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CHANGE FEED FUNCTION
-// Triggered automatically by Cosmos DB when ServiceLogs change.
-// Maintains PendingApprovals index and creates Notifications.
-// ═══════════════════════════════════════════════════════════════════════════════
-
-public class ChangeFeedFunction(CosmosService cosmos, ILogger<ChangeFeedFunction> logger)
-{
-    [Function("ServiceLogChangeFeed")]
-    public async Task Run(
-        [CosmosDBTrigger(
-            databaseName: "arkansas-serve-db",
-            containerName: "ServiceLogs",
-            Connection = "CosmosDb__ConnectionString",
-            LeaseContainerName = "leases",
-            CreateLeaseContainerIfNotExists = true)] IReadOnlyList<ServiceLog> logs)
-    {
-        if (logs == null || logs.Count == 0) return;
-
-        foreach (var log in logs)
-        {
-            logger.LogInformation("Change feed: ServiceLog {Id} status={Status}", log.Id, log.Status);
-
-            if (log.Status == "Pending")
-            {
-                // New pending log — create the school admin's approval queue entry
-                var approval = new PendingApproval
-                {
-                    SchoolId         = log.SchoolId,
-                    ServiceLogId     = log.Id,
-                    StudentId        = log.StudentId,
-                    StudentName      = log.StudentName,
-                    OrganizationName = log.OrganizationName,
-                    EventTitle       = log.EventTitle,
-                    HoursLogged      = log.HoursLogged,
-                    ServiceDate      = log.ServiceDate
-                };
-                await cosmos.CreatePendingApprovalAsync(approval);
-                logger.LogInformation("Created PendingApproval for school {SchoolId}", log.SchoolId);
-            }
-            else if (log.Status is "Approved" or "Rejected")
-            {
-                // Decision made — clean up the approval queue entry
-                await cosmos.DeletePendingApprovalByLogIdAsync(log.Id, log.SchoolId);
-
-                // Notify the student
-                var message = log.Status == "Approved"
-                    ? $"Your {log.HoursLogged}h of service at {log.OrganizationName} ({log.EventTitle}) have been approved."
-                    : $"Your service log for {log.EventTitle} was not approved. Note: {log.ReviewNote ?? "No note provided."}";
-
-                await cosmos.CreateNotificationAsync(new Notification
-                {
-                    UserId    = log.StudentId,
-                    Type      = log.Status == "Approved" ? "HoursApproved" : "HoursRejected",
-                    Message   = message,
-                    RelatedId = log.Id
-                });
-
-                logger.LogInformation("Notification sent to student {StudentId}", log.StudentId);
-            }
-        }
     }
 }
