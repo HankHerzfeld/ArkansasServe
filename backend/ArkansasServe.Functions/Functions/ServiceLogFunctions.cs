@@ -56,6 +56,7 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		log.ReviewedAt = DateTime.UtcNow;
 
 		var updated = await cosmos.UpdateServiceLogAsync(log);
+		await TryReviewSideEffectsAsync(updated);
 
 		return await HttpHelper.OkJson(req, updated);
 	}
@@ -95,6 +96,34 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		catch (Exception ex)
 		{
 			logger.LogError(ex, "Unexpected error while creating pending approval for service log {ServiceLogId}", log.Id);
+		}
+	}
+
+	private async Task TryReviewSideEffectsAsync(ServiceLog log)
+	{
+		try
+		{
+			await cosmos.DeletePendingApprovalByLogIdAsync(log.Id, log.SchoolId);
+
+			var message = log.Status == "Approved"
+				? $"Your {log.HoursLogged}h of service at {log.OrganizationName} ({log.EventTitle}) have been approved."
+				: $"Your service log for {log.EventTitle} was not approved. Note: {log.ReviewNote ?? "No note provided."}";
+
+			await cosmos.CreateNotificationAsync(new Notification
+			{
+				UserId = log.StudentId,
+				Type = log.Status == "Approved" ? "HoursApproved" : "HoursRejected",
+				Message = message,
+				RelatedId = log.Id
+			});
+		}
+		catch (CosmosException ex)
+		{
+			logger.LogError(ex, "Cosmos DB error while processing review side effects for service log {ServiceLogId}", log.Id);
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Unexpected error while processing review side effects for service log {ServiceLogId}", log.Id);
 		}
 	}
 
