@@ -12,11 +12,10 @@ var host = new HostBuilder()
     {
         var config = context.Configuration;
 
-        // Application Insights
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
 
-        // Cosmos DB — registered as singleton (connection pooling)
+        // Cosmos DB - singleton client for connection reuse.
         services.AddSingleton(_ =>
         {
             var connectionString = config["CosmosDb__ConnectionString"]
@@ -30,7 +29,6 @@ var host = new HostBuilder()
             });
         });
 
-        // Blob Storage
         services.AddSingleton(_ =>
         {
             var connectionString = config["BlobStorage__ConnectionString"]
@@ -38,21 +36,20 @@ var host = new HostBuilder()
             return new BlobServiceClient(connectionString);
         });
 
-        // Application services
         services.AddSingleton<CosmosService>();
         services.AddSingleton<BlobService>();
 
-        // Auth config — resolved lazily so startup does not fail if settings are absent
         services.AddSingleton(_ => new AuthConfig
         {
             TenantId = config["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
             ClientId = config["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
-            Audience  = config["Entra__Audience"] ?? "api://16150d6e-7d28-4c6b-91b3-4ec839fff75f"
+            Audience = config["Entra__Audience"] ?? throw new InvalidOperationException("Entra__Audience is not set.")
         });
 
         services.AddHttpClient();
     })
     .Build();
+
 
 host.Run();
 

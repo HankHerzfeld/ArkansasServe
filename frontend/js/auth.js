@@ -1,12 +1,14 @@
 // auth.js — Entra External ID authentication
 // All pages import this. Call Auth.init() on page load.
 
+'use strict';
+
 const Auth = (() => {
   // ── Config ────────────────────────────────────────────────────────────────
   // Replace these with your real Entra External ID values after app registration
   const TENANT_ID    = '2d72a425-cd59-4b55-a8d6-a67c1ed565c6';
   const CLIENT_ID    = '16150d6e-7d28-4c6b-91b3-4ec839fff75f';
-  const REDIRECT_URI = 'https://www.arkansasserve.com/auth-callback.html';
+  const REDIRECT_URI = `${window.location.origin}/auth-callback.html`;
   const SCOPES       = 'openid profile email api://16150d6e-7d28-4c6b-91b3-4ec839fff75f/User_Impersonation';
 
   const AUTH_ENDPOINT =
@@ -17,11 +19,25 @@ const Auth = (() => {
   // ── Storage keys ──────────────────────────────────────────────────────────
   const KEYS = {
     accessToken:  'as_access_token',
-    idToken:      'as_id_token',
     expiresAt:    'as_expires_at',
-    userProfile:  'as_user_profile',
     codeVerifier: 'as_code_verifier',
   };
+
+  function decodeJwtPayload(token) {
+    if (!token) return null;
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+
+    try {
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+      const json = decodeURIComponent(atob(padded).split('').map(c =>
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
 
   // ── PKCE helpers ─────────────────────────────────────────────────────────
   function generateRandomString(length = 64) {
@@ -103,24 +119,8 @@ const Auth = (() => {
 
       // Store tokens
       sessionStorage.setItem(KEYS.accessToken, tokens.access_token);
-      sessionStorage.setItem(KEYS.idToken,     tokens.id_token ?? '');
       sessionStorage.setItem(KEYS.expiresAt,   String(Date.now() + tokens.expires_in * 1000));
       sessionStorage.removeItem(KEYS.codeVerifier);
-
-      // Decode id_token for profile (no signature check needed client-side;
-      // server validates the access token on every API call)
-      const base64Url = tokens.id_token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
-      const payload = JSON.parse(decodeURIComponent(atob(padded).split('').map(c =>
-        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
-      sessionStorage.setItem(KEYS.userProfile, JSON.stringify({
-        userId:      payload.oid || payload.sub,
-        name:        payload.name || payload.preferred_username,
-        email:       payload.email || payload.preferred_username,
-        role:        payload.extension_Role || payload.roles?.[0] || 'Student',
-        tenantId:    payload.tid,
-      }));
 
       window.location.href = validatedState;
     } catch (err) {
@@ -134,7 +134,7 @@ const Auth = (() => {
     Object.values(KEYS).forEach(k => sessionStorage.removeItem(k));
     const params = new URLSearchParams({
       client_id:              CLIENT_ID,
-      post_logout_redirect_uri: 'https://www.arkansasserve.com/index.html',
+      post_logout_redirect_uri: `${window.location.origin}/index.html`,
     });
     window.location.href =
       `https://${TENANT_ID}.ciamlogin.com/${TENANT_ID}/oauth2/v2.0/logout?${params}`;
@@ -149,8 +149,15 @@ const Auth = (() => {
   }
 
   function getProfile() {
-    const raw = sessionStorage.getItem(KEYS.userProfile);
-    return raw ? JSON.parse(raw) : null;
+    const token = getAccessToken();
+    const payload = decodeJwtPayload(token);
+    if (!payload) return null;
+
+    return {
+      name: payload.name || payload.preferred_username || 'User',
+      role: payload.extension_Role || payload.roles?.[0] || 'Student',
+      email: payload.email || payload.preferred_username || '',
+    };
   }
 
   function isAuthenticated() {

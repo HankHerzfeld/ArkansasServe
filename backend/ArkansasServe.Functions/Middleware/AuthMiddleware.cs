@@ -32,6 +32,10 @@ public static class AuthMiddleware
 
         try
         {
+            var signingKeys = await GetSigningKeys(config.TenantId, logger);
+            if (signingKeys.Count == 0)
+                return (null, await WriteUnauthorized(req, "Invalid token"));
+
             // Fetch OIDC signing keys from Entra External ID tenant
             var handler = new JwtSecurityTokenHandler();
             var validationParams = new TokenValidationParameters
@@ -41,8 +45,9 @@ public static class AuthMiddleware
                 ValidateAudience = true,
                 ValidAudience = config.Audience,
                 ValidateLifetime = true,
-                IssuerSigningKeyResolver = (token, secToken, kid, validParams) =>
-                    GetSigningKeys(config.TenantId, logger).GetAwaiter().GetResult()
+                ValidateIssuerSigningKey = true,
+                ClockSkew = TimeSpan.FromMinutes(2),
+                IssuerSigningKeyResolver = (_, _, _, _) => signingKeys
             };
 
             var principal = handler.ValidateToken(token, validationParams, out _);
@@ -59,10 +64,18 @@ public static class AuthMiddleware
                 DisplayName = Claim("name") ?? string.Empty
             };
 
+            var callingClientId = Claim("azp") ?? Claim("appid") ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(config.ClientId) && !string.Equals(callingClientId, config.ClientId, StringComparison.OrdinalIgnoreCase))
+                return (null, await WriteUnauthorized(req, "Invalid token"));
+
+            if (string.IsNullOrWhiteSpace(userContext.UserId))
+                return (null, await WriteUnauthorized(req, "Invalid token"));
+
             // Role check — return 403 Forbidden so callers can distinguish
             // "not authenticated" (401) from "authenticated but wrong role" (403)
-            if (requiredRoles.Length > 0 && !requiredRoles.Contains(userContext.Role))
-                return (null, await WriteForbidden(req, $"Role '{userContext.Role}' is not permitted for this action."));
+            if (requiredRoles.Length > 0 &&
+                !requiredRoles.Contains(userContext.Role, StringComparer.OrdinalIgnoreCase))
+                return (null, await WriteForbidden(req, "Forbidden"));
 
             return (userContext, null);
         }

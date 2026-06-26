@@ -1,23 +1,40 @@
 // api.js — all calls to the /api/* backend
 // Automatically attaches the auth token to every request.
 
+'use strict';
+
 const API_BASE = '/api';
 
 const Api = (() => {
   async function request(method, path, body = null) {
     const token = Auth.getAccessToken();
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (body !== null) headers['Content-Type'] = 'application/json';
 
-    const options = { method, headers };
-    if (body) options.body = JSON.stringify(body);
+    const options = { method, headers, cache: 'no-store' };
+    if (body !== null) options.body = JSON.stringify(body);
 
-    const res = await fetch(`${API_BASE}${path}`, options);
+    let res;
+    try {
+      res = await fetch(`${API_BASE}${path}`, options);
+    } catch {
+      throw new Error('Network error. Please check your connection and try again.');
+    }
 
     if (res.status === 401) { Auth.login(); throw new Error('Authentication required'); }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      throw new Error(err.error || `Request failed: ${res.status}`);
+      const text = await res.text();
+      let errorMessage = `Request failed: ${res.status}`;
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          errorMessage = parsed.error || parsed.message || errorMessage;
+        } catch {
+          errorMessage = text;
+        }
+      }
+      throw new Error(errorMessage);
     }
 
     const text = await res.text();
@@ -32,32 +49,35 @@ const Api = (() => {
 
   // ── Events ───────────────────────────────────────────────────────────────
   const Events = {
-    list:          (schoolId)   => request('GET',  `/events${schoolId ? `?schoolId=${schoolId}` : ''}`),
+    list:          ()           => request('GET',  '/events'),
     listOrgEvents: ()           => request('GET',  '/org/events'),
-    get:           (id, orgId)  => request('GET',  `/events/${id}?organizationId=${orgId}`),
+    get:           (id, orgId)  => request('GET',  `/events/${encodeURIComponent(id)}${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
     create:        (data)       => request('POST', '/events', data),
-    update:        (id, data)   => request('PUT',  `/events/${id}`, data),
-    registrations: (id)         => request('GET',  `/events/${id}/registrations`),
+    update:        (id, data)   => request('PUT',  `/events/${encodeURIComponent(id)}`, data),
+    registrations: (id)         => request('GET',  `/events/${encodeURIComponent(id)}/registrations`),
     uploadToken:   (fileName)   => request('POST', '/events/upload-token', { fileName }),
   };
 
   // ── Registrations ─────────────────────────────────────────────────────────
   const Registrations = {
     create: (eventId, organizationId) => request('POST', '/registrations', { eventId, organizationId }),
-    cancel: (id)                      => request('DELETE', `/registrations/${id}`),
+    cancel: (id, eventId)             => {
+      if (!eventId) throw new Error('eventId is required to cancel registration');
+      return request('DELETE', `/registrations/${encodeURIComponent(id)}?eventId=${encodeURIComponent(eventId)}`);
+    },
   };
 
   // ── Service Logs ──────────────────────────────────────────────────────────
   const ServiceLogs = {
     create:   (data)           => request('POST',  '/servicelogs', data),
     review:   (id, studentId, status, note) =>
-                                  request('PATCH', `/servicelogs/${id}`, { studentId, status, reviewNote: note }),
+                                  request('PATCH', `/servicelogs/${encodeURIComponent(id)}`, { studentId, status, reviewNote: note }),
     myLogs:   ()               => request('GET',   '/students/me/servicelogs'),
   };
 
   // ── Approvals ─────────────────────────────────────────────────────────────
   const Approvals = {
-    list: (schoolId) => request('GET', `/approvals${schoolId ? `?schoolId=${schoolId}` : ''}`),
+    list: () => request('GET', '/approvals'),
   };
 
   // ── Admin ─────────────────────────────────────────────────────────────────

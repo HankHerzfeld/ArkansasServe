@@ -22,6 +22,9 @@ public class BlobService
         var connStr = config["BlobStorage__ConnectionString"] ?? string.Empty;
         _accountName = ParseConnectionStringPart(connStr, "AccountName");
         _accountKey  = ParseConnectionStringPart(connStr, "AccountKey");
+
+        if (string.IsNullOrWhiteSpace(_accountName) || string.IsNullOrWhiteSpace(_accountKey))
+            throw new InvalidOperationException("BlobStorage__ConnectionString must include AccountName and AccountKey for SAS generation.");
     }
 
     /// <summary>
@@ -30,12 +33,19 @@ public class BlobService
     /// </summary>
     public string GenerateUploadSasToken(string containerName, string blobName, int expiryMinutes = 15)
     {
+        if (string.IsNullOrWhiteSpace(containerName))
+            throw new ArgumentException("Container name is required.", nameof(containerName));
+        if (string.IsNullOrWhiteSpace(blobName))
+            throw new ArgumentException("Blob name is required.", nameof(blobName));
+
+        var boundedExpiry = Math.Clamp(expiryMinutes, 1, 60);
         var sasBuilder = new BlobSasBuilder
         {
             BlobContainerName = containerName,
             BlobName          = blobName,
             Resource          = "b",
-            ExpiresOn         = DateTimeOffset.UtcNow.AddMinutes(expiryMinutes)
+            StartsOn          = DateTimeOffset.UtcNow.AddMinutes(-2),
+            ExpiresOn         = DateTimeOffset.UtcNow.AddMinutes(boundedExpiry)
         };
         sasBuilder.SetPermissions(BlobSasPermissions.Write | BlobSasPermissions.Create);
 
@@ -51,12 +61,19 @@ public class BlobService
     /// </summary>
     public string GenerateReadSasToken(string containerName, string blobName, int expiryMinutes = 60)
     {
+        if (string.IsNullOrWhiteSpace(containerName))
+            throw new ArgumentException("Container name is required.", nameof(containerName));
+        if (string.IsNullOrWhiteSpace(blobName))
+            throw new ArgumentException("Blob name is required.", nameof(blobName));
+
+        var boundedExpiry = Math.Clamp(expiryMinutes, 1, 240);
         var sasBuilder = new BlobSasBuilder
         {
             BlobContainerName = containerName,
             BlobName          = blobName,
             Resource          = "b",
-            ExpiresOn         = DateTimeOffset.UtcNow.AddMinutes(expiryMinutes)
+            StartsOn          = DateTimeOffset.UtcNow.AddMinutes(-2),
+            ExpiresOn         = DateTimeOffset.UtcNow.AddMinutes(boundedExpiry)
         };
         sasBuilder.SetPermissions(BlobSasPermissions.Read);
 
