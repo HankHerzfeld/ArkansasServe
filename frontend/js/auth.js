@@ -8,7 +8,7 @@ const Auth = (() => {
   // Replace these with your real Entra External ID values after app registration
   const TENANT_ID    = '2d72a425-cd59-4b55-a8d6-a67c1ed565c6';
   const CLIENT_ID    = '16150d6e-7d28-4c6b-91b3-4ec839fff75f';
-  const REDIRECT_URI = `${window.location.origin}/auth-callback.html`;
+  const REDIRECT_URI = `${window.location.origin}/auth-callback`;
   const SCOPES       = 'openid profile email api://16150d6e-7d28-4c6b-91b3-4ec839fff75f/User_Impersonation';
 
   const AUTH_ENDPOINT =

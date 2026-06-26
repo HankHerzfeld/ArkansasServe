@@ -12,6 +12,11 @@
       "allowedRoles": ["anonymous"]
     },
     {
+      "route": "/auth-callback",
+      "rewrite": "/auth-callback.html",
+      "allowedRoles": ["anonymous"]
+    },
+    {
       "route": "/index.html",
       "allowedRoles": ["anonymous"]
     },
