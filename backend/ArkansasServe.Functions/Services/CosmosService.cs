@@ -19,13 +19,13 @@ public partial class CosmosService
     private readonly ILogger<CosmosService> _logger;
 
     // Container references
-    private Container Tenants           => _client.GetContainer(_databaseName, "tenants");
-    private Container Users             => _client.GetContainer(_databaseName, "users");
-    private Container Events            => _client.GetContainer(_databaseName, "events");
-    private Container Registrations     => _client.GetContainer(_databaseName, "registrations");
-    private Container ServiceLogs       => _client.GetContainer(_databaseName, "serviceLogs");
-    private Container PendingApprovals  => _client.GetContainer(_databaseName, "pendingApprovals");
-    private Container Notifications     => _client.GetContainer(_databaseName, "notifications");
+    private Container Tenants           => _client.GetContainer(_databaseName, "Tenants");
+    private Container Users             => _client.GetContainer(_databaseName, "Users");
+    private Container Events            => _client.GetContainer(_databaseName, "Events");
+    private Container Registrations     => _client.GetContainer(_databaseName, "EventRegistrations");
+    private Container ServiceLogs       => _client.GetContainer(_databaseName, "ServiceLogs");
+    private Container PendingApprovals  => _client.GetContainer(_databaseName, "PendingApprovals");
+    private Container Notifications     => _client.GetContainer(_databaseName, "Notifications");
 
     public CosmosService(CosmosClient client, IConfiguration config, ILogger<CosmosService> logger)
     {
