@@ -2,6 +2,7 @@ using System.Net;
 using ArkansasServe.Functions.Middleware;
 using ArkansasServe.Functions.Models;
 using ArkansasServe.Functions.Services;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -21,8 +22,22 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var schoolId = query["schoolId"];
 
 		var effectiveSchoolId = ctx.IsStudent ? ctx.TenantId : schoolId;
-		var events = await cosmos.GetUpcomingEventsAsync(effectiveSchoolId);
-		return await HttpHelper.OkJson(req, events);
+
+		try
+		{
+			var events = await cosmos.GetUpcomingEventsCompatAsync(effectiveSchoolId);
+			return await HttpHelper.OkJson(req, events);
+		}
+		catch (CosmosException ex)
+		{
+			logger.LogError(ex, "Cosmos error while loading events for user {UserId}", ctx.UserId);
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to load events");
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Unexpected error while loading events for user {UserId}", ctx.UserId);
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to load events");
+		}
 	}
 
 	[Function("GetEventById")]
