@@ -42,7 +42,7 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 					DisplayName = ctx.DisplayName,
 					Email = ctx.Email
 				};
-				user = await cosmos.UpsertUserAsync(user);
+				user = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
 			}
 			else if (ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
 				&& (!string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)
@@ -51,7 +51,7 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 				user.AdminLevel = "SuperAdmin";
 				user.Role = "PlatformAdmin";
 				user.OrganizationId ??= user.TenantId;
-				user = await cosmos.UpsertUserAsync(user);
+				user = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
 			}
 
 			return await HttpHelper.OkJson(req, user);
@@ -88,7 +88,7 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 			user.Phone = body.Phone;
 			user.Grade = body.Grade;
 
-			var updated = await cosmos.UpsertUserAsync(user);
+			var updated = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
 			return await HttpHelper.OkJson(req, updated);
 		}
 		catch (CosmosException ex)
