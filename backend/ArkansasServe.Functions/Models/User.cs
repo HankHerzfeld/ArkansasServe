@@ -13,6 +13,21 @@ public class User : CosmosDocument
     [JsonPropertyName("role")]
     public string Role { get; set; } = string.Empty;
 
+    [JsonPropertyName("adminLevel")]
+    public string AdminLevel { get; set; } = "Student";
+
+    [JsonPropertyName("organizationId")]
+    public string? OrganizationId { get; set; }
+
+    [JsonPropertyName("groupIds")]
+    public List<string> GroupIds { get; set; } = [];
+
+    [JsonPropertyName("eventAdminEventIds")]
+    public List<string> EventAdminEventIds { get; set; } = [];
+
+    [JsonPropertyName("permissions")]
+    public Dictionary<string, bool> Permissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     [JsonPropertyName("displayName")]
     public string DisplayName { get; set; } = string.Empty;
 
@@ -30,6 +45,12 @@ public class User : CosmosDocument
 
     [JsonPropertyName("status")]
     public string Status { get; set; } = "active";
+
+    [JsonPropertyName("isDemoUser")]
+    public bool IsDemoUser { get; set; }
+
+    [JsonPropertyName("demoUserType")]
+    public string? DemoUserType { get; set; }
 
     [JsonPropertyName("totalApprovedHours")]
     public double TotalApprovedHours { get; set; } = 0;

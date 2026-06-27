@@ -86,5 +86,17 @@ const Api = (() => {
     createTenant:  (data) => request('POST', '/admin/tenants', data),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Admin };
+  // ── Admin Backend ─────────────────────────────────────────────────────────
+  const AdminBackend = {
+    context:          ()                        => request('GET',  '/admin/backend/context'),
+    users:            ()                        => request('GET',  '/admin/backend/users'),
+    updateUserAccess: (id, data)                => request('PATCH', `/admin/backend/users/${encodeURIComponent(id)}/access`, data),
+    tenantGroups:     (tenantId)                => request('GET',  `/admin/backend/tenants/${encodeURIComponent(tenantId)}/groups`),
+    createTenantGroup:(tenantId, data)          => request('POST', `/admin/backend/tenants/${encodeURIComponent(tenantId)}/groups`, data),
+    updateTenant:     (tenantId, data)          => request('PATCH', `/admin/backend/tenants/${encodeURIComponent(tenantId)}`, data),
+    demoUsers:        ()                        => request('GET',  '/admin/backend/demo-users'),
+    resetDemoUsers:   ()                        => request('POST', '/admin/backend/demo-users/reset'),
+  };
+
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Admin, AdminBackend };
 })();

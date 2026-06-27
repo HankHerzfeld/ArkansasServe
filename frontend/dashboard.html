@@ -22,6 +22,9 @@
   <div class="page-header">
     <h1 id="greeting">My Dashboard</h1>
     <p>Track your community service hours and upcoming events.</p>
+    <div id="admin-backend-action" style="display:none;margin-top:.75rem;">
+      <a class="btn btn-primary btn-sm" href="/admin-backend.html">Open Admin Backend</a>
+    </div>
   </div>
 
   <!-- Stats -->
@@ -73,12 +76,45 @@
 <script src="/js/api.js"></script>
 <script>
   Auth.init();
-  const profile = Auth.requireAuth('Student');
+  const profile = Auth.requireAuth();
   if (profile) {
     document.getElementById('greeting').textContent = `Welcome, ${profile.name.split(' ')[0]}`;
 
+    const rank = {
+      Student: 0,
+      EventAdmin: 1,
+      GroupAdmin: 2,
+      OrganizationAdmin: 3,
+      SuperAdmin: 4,
+    };
+
+    function toAdminLevel(user) {
+      if (user?.adminLevel) return user.adminLevel;
+      if (profile.role === 'PlatformAdmin') return 'SuperAdmin';
+      if (profile.role === 'SchoolAdmin') return 'OrganizationAdmin';
+      if (profile.role === 'OrgStaff') return 'EventAdmin';
+      return 'Student';
+    }
+
     async function loadDashboard() {
       try {
+        const currentUser = await Api.Users.getMe();
+        const adminLevel = toAdminLevel(currentUser);
+
+        if ((rank[adminLevel] || 0) > 0) {
+          document.getElementById('admin-backend-action').style.display = 'block';
+        }
+
+        if (adminLevel !== 'Student') {
+          document.getElementById('stat-total').textContent = '—';
+          document.getElementById('stat-pending').textContent = '—';
+          document.getElementById('stat-events').textContent = '—';
+          document.getElementById('log-loading').style.display = 'none';
+          document.getElementById('log-empty').style.display = 'block';
+          document.getElementById('log-empty').textContent = 'Admin users can use the Admin Backend for scoped management tasks.';
+          return;
+        }
+
         const { logs, totalApprovedHours } = await Api.ServiceLogs.myLogs();
 
         // Stats

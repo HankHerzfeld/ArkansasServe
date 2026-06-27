@@ -12,7 +12,7 @@ namespace ArkansasServe.Functions.Services;
 /// Single service that owns all Cosmos DB reads and writes.
 /// Functions never touch CosmosClient directly — they call this service.
 /// </summary>
-public class CosmosService
+public partial class CosmosService
 {
     private readonly CosmosClient _client;
     private readonly string _databaseName;
@@ -52,6 +52,19 @@ public class CosmosService
         return null;
     }
 
+    public async Task<User?> GetUserByIdAsync(string userId, string tenantId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await Users.ReadItemAsync<User>(userId, new PartitionKey(tenantId), cancellationToken: cancellationToken);
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
     public async Task<User> UpsertUserAsync(User user, CancellationToken cancellationToken = default)
     {
         user.UpdatedAt = DateTime.UtcNow;
@@ -70,6 +83,60 @@ public class CosmosService
         while (query.HasMoreResults)
             results.AddRange(await query.ReadNextAsync(cancellationToken));
         return results;
+    }
+
+    public async Task<List<User>> GetUsersForAdminScopeAsync(string tenantId, CancellationToken cancellationToken = default)
+    {
+        var query = Users.GetItemLinqQueryable<User>(requestOptions: new QueryRequestOptions
+            { PartitionKey = new PartitionKey(tenantId) })
+            .Where(u => u.Status == "active")
+            .ToFeedIterator();
+
+        var results = new List<User>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+
+        return results
+            .OrderBy(u => u.DisplayName)
+            .ToList();
+    }
+
+    public async Task<List<User>> GetDemoUsersByTenantAsync(string tenantId, CancellationToken cancellationToken = default)
+    {
+        var query = Users.GetItemLinqQueryable<User>(requestOptions: new QueryRequestOptions
+            { PartitionKey = new PartitionKey(tenantId) })
+            .Where(u => u.IsDemoUser)
+            .ToFeedIterator();
+
+        var results = new List<User>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+
+        return results
+            .OrderBy(u => u.AdminLevel)
+            .ThenBy(u => u.DisplayName)
+            .ToList();
+    }
+
+    public async Task DeleteDemoUsersByTenantAsync(string tenantId, CancellationToken cancellationToken = default)
+    {
+        var demoUsers = await GetDemoUsersByTenantAsync(tenantId, cancellationToken);
+        foreach (var demoUser in demoUsers)
+            await Users.DeleteItemAsync<User>(demoUser.Id, new PartitionKey(tenantId), cancellationToken: cancellationToken);
+    }
+
+    public async Task<List<User>> UpsertDemoUsersAsync(string tenantId, IEnumerable<User> demoUsers, CancellationToken cancellationToken = default)
+    {
+        var created = new List<User>();
+        foreach (var demoUser in demoUsers)
+        {
+            demoUser.TenantId = tenantId;
+            demoUser.IsDemoUser = true;
+            demoUser.Status = "active";
+            created.Add(await UpsertUserAsync(demoUser, cancellationToken));
+        }
+
+        return created;
     }
 
     // ── Events ─────────────────────────────────────────────────────────────────
@@ -398,5 +465,12 @@ public class CosmosService
         {
             return null;
         }
+    }
+
+    public async Task<Tenant> UpdateTenantAsync(Tenant tenant, CancellationToken cancellationToken = default)
+    {
+        tenant.UpdatedAt = DateTime.UtcNow;
+        var response = await Tenants.ReplaceItemAsync(tenant, tenant.Id, new PartitionKey(tenant.Id), cancellationToken: cancellationToken);
+        return response.Resource;
     }
 }

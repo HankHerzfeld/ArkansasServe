@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Backend — Arkansas Serve</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="/dashboard.html">Dashboard</a></li>
+    <li><span class="navbar-user" id="nav-user-name"></span></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1>Admin Backend</h1>
+    <p id="scope-summary">Loading admin scope...</p>
+  </div>
+
+  <div class="card" id="tenant-settings-card" style="display:none;">
+    <div class="card-title">Organization Settings</div>
+    <div class="form-group">
+      <label for="tenant-name">Organization Name</label>
+      <input id="tenant-name" type="text" />
+    </div>
+    <div class="form-group">
+      <label for="tenant-status">Status</label>
+      <select id="tenant-status">
+        <option value="active">active</option>
+        <option value="inactive">inactive</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>
+        <input id="tenant-rbac" type="checkbox" /> Enable RBAC
+      </label>
+    </div>
+    <div style="display:flex;gap:.5rem;">
+      <button class="btn btn-primary" id="btn-save-tenant">Save Tenant Settings</button>
+      <span id="tenant-save-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+    </div>
+  </div>
+
+  <div class="card" id="groups-card" style="display:none;">
+    <div class="card-title">Nested Groups</div>
+    <div style="display:flex;gap:.5rem;align-items:end;flex-wrap:wrap;">
+      <div class="form-group" style="margin:0;min-width:16rem;">
+        <label for="new-group-name">Group Name</label>
+        <input id="new-group-name" type="text" placeholder="Example: North Region Team" />
+      </div>
+      <button class="btn btn-primary" id="btn-add-group">Add Group</button>
+    </div>
+    <table class="table" id="groups-table" style="margin-top:1rem;display:none;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Id</th>
+        </tr>
+      </thead>
+      <tbody id="groups-tbody"></tbody>
+    </table>
+    <div id="groups-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No groups yet.</div>
+  </div>
+
+  <div class="card" id="users-card" style="display:none;">
+    <div class="card-title">User Access Management</div>
+    <table class="table" id="users-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Email</th>
+          <th>Admin Level</th>
+          <th>Group IDs (CSV)</th>
+          <th>Event IDs (CSV)</th>
+          <th>Save</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody"></tbody>
+    </table>
+    <div id="users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No users in scope.</div>
+  </div>
+
+  <div class="card" id="demo-users-card" style="display:none;">
+    <div class="card-title">Demo Users (SuperAdmin Only)</div>
+    <p style="color:var(--gray-600);font-size:.9rem;">Two demo users per user type are available. Reset recreates all demo users in a clean state.</p>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <button class="btn btn-danger" id="btn-reset-demo-users">Reset Demo Users</button>
+      <span id="demo-reset-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+    </div>
+    <table class="table" id="demo-users-table" style="margin-top:1rem;display:none;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Email</th>
+        </tr>
+      </thead>
+      <tbody id="demo-users-tbody"></tbody>
+    </table>
+    <div id="demo-users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No demo users found.</div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  'use strict';
+
+  Auth.init();
+
+  const state = {
+    tenantId: '',
+    currentUser: null,
+    users: [],
+    groups: [],
+  };
+
+  const adminLevels = ['Student', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
+
+  function splitCsv(text) {
+    return text
+      .split(',')
+      .map(x => x.trim())
+      .filter(Boolean);
+  }
+
+  function userRank(level) {
+    const rank = {
+      Student: 0,
+      EventAdmin: 1,
+      GroupAdmin: 2,
+      OrganizationAdmin: 3,
+      SuperAdmin: 4,
+    };
+    return rank[level] || 0;
+  }
+
+  function clearChildren(element) {
+    while (element.firstChild) element.removeChild(element.firstChild);
+  }
+
+  function createTextCell(text) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    return td;
+  }
+
+  function showAdminSections() {
+    document.getElementById('tenant-settings-card').style.display = 'block';
+    document.getElementById('groups-card').style.display = 'block';
+    document.getElementById('users-card').style.display = 'block';
+  }
+
+  async function loadContext() {
+    const profile = Auth.requireAuth();
+    if (!profile) return;
+
+    try {
+      const context = await Api.AdminBackend.context();
+      state.currentUser = context.user;
+      state.tenantId = context.user.organizationId || context.user.tenantId;
+
+      const level = context.user.adminLevel || 'Student';
+      if (userRank(level) === 0) {
+        window.location.href = '/dashboard.html';
+        return;
+      }
+
+      document.getElementById('scope-summary').textContent = `Signed in as ${level} for organization ${state.tenantId}.`;
+      showAdminSections();
+
+      if (context.tenant) {
+        document.getElementById('tenant-name').value = context.tenant.name || '';
+        document.getElementById('tenant-status').value = context.tenant.status || 'active';
+        document.getElementById('tenant-rbac').checked = !!context.tenant.rbacEnabled;
+      }
+
+      if (context.canManageDemoUsers) {
+        document.getElementById('demo-users-card').style.display = 'block';
+        await loadDemoUsers();
+      }
+
+      await loadGroups();
+      await loadUsers();
+    } catch (err) {
+      window.location.href = '/dashboard.html';
+    }
+  }
+
+  async function loadGroups() {
+    const groups = await Api.AdminBackend.tenantGroups(state.tenantId);
+    state.groups = groups;
+
+    const table = document.getElementById('groups-table');
+    const empty = document.getElementById('groups-empty');
+    const tbody = document.getElementById('groups-tbody');
+    clearChildren(tbody);
+
+    if (!groups.length) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    table.style.display = 'table';
+    empty.style.display = 'none';
+
+    groups.forEach(group => {
+      const tr = document.createElement('tr');
+      tr.appendChild(createTextCell(group.name || ''));
+      tr.appendChild(createTextCell(group.status || 'active'));
+      tr.appendChild(createTextCell(group.id || ''));
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadUsers() {
+    const users = await Api.AdminBackend.users();
+    state.users = users;
+
+    const table = document.getElementById('users-table');
+    const empty = document.getElementById('users-empty');
+    const tbody = document.getElementById('users-tbody');
+    clearChildren(tbody);
+
+    if (!users.length) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    table.style.display = 'table';
+    empty.style.display = 'none';
+
+    users.forEach(user => {
+      const tr = document.createElement('tr');
+      tr.appendChild(createTextCell(user.displayName || ''));
+      tr.appendChild(createTextCell(user.email || ''));
+
+      const levelTd = document.createElement('td');
+      const levelSelect = document.createElement('select');
+      adminLevels.forEach(level => {
+        const option = document.createElement('option');
+        option.value = level;
+        option.textContent = level;
+        levelSelect.appendChild(option);
+      });
+      levelSelect.value = user.adminLevel || 'Student';
+      levelTd.appendChild(levelSelect);
+      tr.appendChild(levelTd);
+
+      const groupTd = document.createElement('td');
+      const groupInput = document.createElement('input');
+      groupInput.type = 'text';
+      groupInput.value = (user.groupIds || []).join(', ');
+      groupTd.appendChild(groupInput);
+      tr.appendChild(groupTd);
+
+      const eventTd = document.createElement('td');
+      const eventInput = document.createElement('input');
+      eventInput.type = 'text';
+      eventInput.value = (user.eventAdminEventIds || []).join(', ');
+      eventTd.appendChild(eventInput);
+      tr.appendChild(eventTd);
+
+      const saveTd = document.createElement('td');
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'btn btn-primary btn-sm';
+      saveBtn.textContent = 'Save';
+      saveBtn.addEventListener('click', async () => {
+        saveBtn.disabled = true;
+        try {
+          await Api.AdminBackend.updateUserAccess(user.id, {
+            tenantId: state.tenantId,
+            adminLevel: levelSelect.value,
+            organizationId: state.tenantId,
+            groupIds: splitCsv(groupInput.value),
+            eventAdminEventIds: splitCsv(eventInput.value),
+          });
+          saveBtn.textContent = 'Saved';
+          setTimeout(() => { saveBtn.textContent = 'Save'; }, 800);
+        } catch {
+          saveBtn.textContent = 'Error';
+          setTimeout(() => { saveBtn.textContent = 'Save'; }, 1200);
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+      saveTd.appendChild(saveBtn);
+      tr.appendChild(saveTd);
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadDemoUsers() {
+    const users = await Api.AdminBackend.demoUsers();
+    const table = document.getElementById('demo-users-table');
+    const empty = document.getElementById('demo-users-empty');
+    const tbody = document.getElementById('demo-users-tbody');
+    clearChildren(tbody);
+
+    if (!users.length) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    table.style.display = 'table';
+    empty.style.display = 'none';
+
+    users.forEach(user => {
+      const tr = document.createElement('tr');
+      tr.appendChild(createTextCell(user.displayName || ''));
+      tr.appendChild(createTextCell(user.demoUserType || user.adminLevel || ''));
+      tr.appendChild(createTextCell(user.email || ''));
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('btn-save-tenant').addEventListener('click', async () => {
+    const status = document.getElementById('tenant-save-status');
+    status.textContent = 'Saving...';
+    try {
+      await Api.AdminBackend.updateTenant(state.tenantId, {
+        name: document.getElementById('tenant-name').value.trim(),
+        status: document.getElementById('tenant-status').value,
+        rbacEnabled: document.getElementById('tenant-rbac').checked,
+      });
+      status.textContent = 'Saved';
+    } catch {
+      status.textContent = 'Failed';
+    }
+  });
+
+  document.getElementById('btn-add-group').addEventListener('click', async () => {
+    const name = document.getElementById('new-group-name').value.trim();
+    if (!name) return;
+    await Api.AdminBackend.createTenantGroup(state.tenantId, { name, status: 'active' });
+    document.getElementById('new-group-name').value = '';
+    await loadGroups();
+  });
+
+  document.getElementById('btn-reset-demo-users').addEventListener('click', async () => {
+    const status = document.getElementById('demo-reset-status');
+    status.textContent = 'Resetting...';
+    try {
+      await Api.AdminBackend.resetDemoUsers();
+      await loadDemoUsers();
+      status.textContent = 'Reset complete';
+    } catch {
+      status.textContent = 'Reset failed';
+    }
+  });
+
+  loadContext();
+</script>
+</body>
+</html>

@@ -31,6 +31,42 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "active";
 
+	[JsonPropertyName("rbacEnabled")]
+	public bool RbacEnabled { get; set; } = true;
+
+	[JsonPropertyName("groups")]
+	public List<TenantGroup> Groups { get; set; } = [];
+
+	[JsonPropertyName("eventScopeRules")]
+	public List<EventScopeRule> EventScopeRules { get; set; } = [];
+
 	[JsonPropertyName("contractStartDate")]
 	public DateTime? ContractStartDate { get; set; }
+}
+
+public class TenantGroup
+{
+	[JsonPropertyName("id")]
+	public string Id { get; set; } = Guid.NewGuid().ToString();
+
+	[JsonPropertyName("name")]
+	public string Name { get; set; } = string.Empty;
+
+	[JsonPropertyName("status")]
+	public string Status { get; set; } = "active";
+
+	[JsonPropertyName("organizationId")]
+	public string OrganizationId { get; set; } = string.Empty;
+}
+
+public class EventScopeRule
+{
+	[JsonPropertyName("eventId")]
+	public string EventId { get; set; } = string.Empty;
+
+	[JsonPropertyName("groupId")]
+	public string? GroupId { get; set; }
+
+	[JsonPropertyName("organizationId")]
+	public string OrganizationId { get; set; } = string.Empty;
 }
