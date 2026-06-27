@@ -4,7 +4,6 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Azure.Storage.Blobs;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -27,13 +26,6 @@ var host = new HostBuilder()
                     PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
                 }
             });
-        });
-
-        services.AddSingleton(_ =>
-        {
-            var connectionString = config["BlobStorage__ConnectionString"]
-                ?? throw new InvalidOperationException("BlobStorage__ConnectionString is not set.");
-            return new BlobServiceClient(connectionString);
         });
 
         services.AddSingleton<CosmosService>();

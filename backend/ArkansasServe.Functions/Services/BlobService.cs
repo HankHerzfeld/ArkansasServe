@@ -8,23 +8,25 @@ namespace ArkansasServe.Functions.Services;
 
 public class BlobService
 {
-    private readonly BlobServiceClient _client;
+    private readonly BlobServiceClient? _client;
     private readonly string _accountName;
     private readonly string _accountKey;
     private readonly ILogger<BlobService> _logger;
 
-    public BlobService(BlobServiceClient client, IConfiguration config, ILogger<BlobService> logger)
+    public BlobService(IConfiguration config, ILogger<BlobService> logger)
     {
-        _client = client;
         _logger = logger;
 
         // Parse account name and key from connection string for SAS generation
         var connStr = config["BlobStorage__ConnectionString"] ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(connStr))
+            _client = new BlobServiceClient(connStr);
+
         _accountName = ParseConnectionStringPart(connStr, "AccountName");
         _accountKey  = ParseConnectionStringPart(connStr, "AccountKey");
 
-        if (string.IsNullOrWhiteSpace(_accountName) || string.IsNullOrWhiteSpace(_accountKey))
-            throw new InvalidOperationException("BlobStorage__ConnectionString must include AccountName and AccountKey for SAS generation.");
+        if (_client is null)
+            _logger.LogWarning("BlobStorage__ConnectionString is not configured. Blob upload/read endpoints will be unavailable.");
     }
 
     /// <summary>
@@ -33,6 +35,7 @@ public class BlobService
     /// </summary>
     public string GenerateUploadSasToken(string containerName, string blobName, int expiryMinutes = 15)
     {
+        EnsureConfigured();
         if (string.IsNullOrWhiteSpace(containerName))
             throw new ArgumentException("Container name is required.", nameof(containerName));
         if (string.IsNullOrWhiteSpace(blobName))
@@ -51,7 +54,7 @@ public class BlobService
 
         var credential = new StorageSharedKeyCredential(_accountName, _accountKey);
         var sasQueryParams = sasBuilder.ToSasQueryParameters(credential);
-        var blobClient = _client.GetBlobContainerClient(containerName).GetBlobClient(blobName);
+        var blobClient = _client!.GetBlobContainerClient(containerName).GetBlobClient(blobName);
         return $"{blobClient.Uri}?{sasQueryParams}";
     }
 
@@ -61,6 +64,7 @@ public class BlobService
     /// </summary>
     public string GenerateReadSasToken(string containerName, string blobName, int expiryMinutes = 60)
     {
+        EnsureConfigured();
         if (string.IsNullOrWhiteSpace(containerName))
             throw new ArgumentException("Container name is required.", nameof(containerName));
         if (string.IsNullOrWhiteSpace(blobName))
@@ -79,7 +83,7 @@ public class BlobService
 
         var credential = new StorageSharedKeyCredential(_accountName, _accountKey);
         var sasQueryParams = sasBuilder.ToSasQueryParameters(credential);
-        var blobClient = _client.GetBlobContainerClient(containerName).GetBlobClient(blobName);
+        var blobClient = _client!.GetBlobContainerClient(containerName).GetBlobClient(blobName);
         return $"{blobClient.Uri}?{sasQueryParams}";
     }
 
@@ -89,7 +93,8 @@ public class BlobService
     /// </summary>
     public string GetPublicBlobUrl(string containerName, string blobName)
     {
-        return _client.GetBlobContainerClient(containerName)
+        EnsureConfigured();
+        return _client!.GetBlobContainerClient(containerName)
                       .GetBlobClient(blobName).Uri.ToString();
     }
 
@@ -113,5 +118,11 @@ public class BlobService
                 return part[(idx + 1)..].Trim();
         }
         return string.Empty;
+    }
+
+    private void EnsureConfigured()
+    {
+        if (_client is null || string.IsNullOrWhiteSpace(_accountName) || string.IsNullOrWhiteSpace(_accountKey))
+            throw new InvalidOperationException("Blob storage is not configured. Set BlobStorage__ConnectionString in app settings.");
     }
 }
