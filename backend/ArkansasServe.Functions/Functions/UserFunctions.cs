@@ -27,12 +27,15 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 			var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
 			var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;
 			var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : MapLegacyRoleToAdminLevel(role);
+			var tenantId = string.IsNullOrWhiteSpace(ctx.TenantId)
+				? (isArkansasServeAdmin ? "arkansas-serve-root" : "unknown-tenant")
+				: ctx.TenantId;
 
 			user = new User
 			{
 				ExternalId = ctx.UserId,
-				TenantId = ctx.TenantId,
-				OrganizationId = ctx.TenantId,
+				TenantId = tenantId,
+				OrganizationId = tenantId,
 				Role = role,
 				AdminLevel = adminLevel,
 				DisplayName = ctx.DisplayName,

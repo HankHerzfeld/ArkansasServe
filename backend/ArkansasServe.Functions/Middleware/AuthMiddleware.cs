@@ -58,14 +58,18 @@ public static class AuthMiddleware
             var userContext = new UserContext
             {
                 UserId      = Claim("oid") ?? Claim("sub") ?? string.Empty,
-                TenantId    = Claim("extension_OrganizationId") ?? Claim("extension_SchoolId") ?? Claim("extension_TenantId") ?? string.Empty,
+                TenantId    = Claim("extension_OrganizationId") ?? Claim("extension_SchoolId") ?? Claim("extension_TenantId") ?? Claim("tid") ?? string.Empty,
                 Role        = Claim("extension_Role") ?? roleFromRolesClaim ?? "Student",
                 Email       = Claim("email") ?? Claim("preferred_username") ?? string.Empty,
                 DisplayName = Claim("name") ?? string.Empty
             };
 
             if (userContext.Email.EndsWith("@arkansasserve.com", StringComparison.OrdinalIgnoreCase))
+            {
                 userContext.Role = "PlatformAdmin";
+                if (string.IsNullOrWhiteSpace(userContext.TenantId))
+                    userContext.TenantId = "arkansas-serve-root";
+            }
 
             var callingClientId = Claim("azp") ?? Claim("appid") ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(config.ClientId) && !string.Equals(callingClientId, config.ClientId, StringComparison.OrdinalIgnoreCase))
