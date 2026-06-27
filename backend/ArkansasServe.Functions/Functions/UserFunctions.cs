@@ -2,6 +2,7 @@ using System.Net;
 using ArkansasServe.Functions.Middleware;
 using ArkansasServe.Functions.Models;
 using ArkansasServe.Functions.Services;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -20,40 +21,51 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
+		var tenantId = ResolveTenantId(ctx);
 
-		var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
-		if (user == null)
+		try
 		{
-			var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
-			var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;
-			var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : MapLegacyRoleToAdminLevel(role);
-			var tenantId = string.IsNullOrWhiteSpace(ctx.TenantId)
-				? (isArkansasServeAdmin ? "arkansas-serve-root" : "unknown-tenant")
-				: ctx.TenantId;
-
-			user = new User
+			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
+			if (user == null)
 			{
-				ExternalId = ctx.UserId,
-				TenantId = tenantId,
-				OrganizationId = tenantId,
-				Role = role,
-				AdminLevel = adminLevel,
-				DisplayName = ctx.DisplayName,
-				Email = ctx.Email
-			};
-			user = await cosmos.UpsertUserAsync(user);
-		}
-		else if (ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
-			&& (!string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)
-				|| !string.Equals(user.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)))
-		{
-			user.AdminLevel = "SuperAdmin";
-			user.Role = "PlatformAdmin";
-			user.OrganizationId ??= user.TenantId;
-			user = await cosmos.UpsertUserAsync(user);
-		}
+				var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
+				var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;
+				var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : MapLegacyRoleToAdminLevel(role);
 
-		return await HttpHelper.OkJson(req, user);
+				user = new User
+				{
+					ExternalId = ctx.UserId,
+					TenantId = tenantId,
+					OrganizationId = tenantId,
+					Role = role,
+					AdminLevel = adminLevel,
+					DisplayName = ctx.DisplayName,
+					Email = ctx.Email
+				};
+				user = await cosmos.UpsertUserAsync(user);
+			}
+			else if (ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
+				&& (!string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)
+					|| !string.Equals(user.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)))
+			{
+				user.AdminLevel = "SuperAdmin";
+				user.Role = "PlatformAdmin";
+				user.OrganizationId ??= user.TenantId;
+				user = await cosmos.UpsertUserAsync(user);
+			}
+
+			return await HttpHelper.OkJson(req, user);
+		}
+		catch (CosmosException ex)
+		{
+			logger.LogError(ex, "Cosmos error while loading current user {UserId} in tenant {TenantId}", ctx.UserId, tenantId);
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to load user profile");
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Unexpected error while loading current user {UserId}", ctx.UserId);
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to load user profile");
+		}
 	}
 
 	[Function("UpdateCurrentUser")]
@@ -62,19 +74,41 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
+		var tenantId = ResolveTenantId(ctx);
 
 		var body = await HttpHelper.ReadBody<User>(req);
 		if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
 
-		var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
-		if (user == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
+		try
+		{
+			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
+			if (user == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
 
-		user.DisplayName = body.DisplayName;
-		user.Phone = body.Phone;
-		user.Grade = body.Grade;
+			user.DisplayName = body.DisplayName;
+			user.Phone = body.Phone;
+			user.Grade = body.Grade;
 
-		var updated = await cosmos.UpsertUserAsync(user);
-		return await HttpHelper.OkJson(req, updated);
+			var updated = await cosmos.UpsertUserAsync(user);
+			return await HttpHelper.OkJson(req, updated);
+		}
+		catch (CosmosException ex)
+		{
+			logger.LogError(ex, "Cosmos error while updating current user {UserId} in tenant {TenantId}", ctx.UserId, tenantId);
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to update user profile");
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Unexpected error while updating current user {UserId}", ctx.UserId);
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to update user profile");
+		}
+	}
+
+	private static string ResolveTenantId(UserContext ctx)
+	{
+		if (!string.IsNullOrWhiteSpace(ctx.TenantId)) return ctx.TenantId;
+		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
+			? "arkansas-serve-root"
+			: "unknown-tenant";
 	}
 
 	private static string MapLegacyRoleToAdminLevel(string role)
