@@ -12,6 +12,8 @@ namespace ArkansasServe.Functions.Functions;
 
 public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<UserFunctions> logger)
 {
+	private const string ArkansasServeEmailDomain = "@arkansasserve.com";
+
 	[Function("GetOrCreateCurrentUser")]
 	public async Task<HttpResponseData> GetMe(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "users/me")] HttpRequestData req)
@@ -22,14 +24,29 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
 		if (user == null)
 		{
+			var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
+			var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;
+			var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : MapLegacyRoleToAdminLevel(role);
+
 			user = new User
 			{
 				ExternalId = ctx.UserId,
 				TenantId = ctx.TenantId,
-				Role = ctx.Role,
+				OrganizationId = ctx.TenantId,
+				Role = role,
+				AdminLevel = adminLevel,
 				DisplayName = ctx.DisplayName,
 				Email = ctx.Email
 			};
+			user = await cosmos.UpsertUserAsync(user);
+		}
+		else if (ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
+			&& (!string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)
+				|| !string.Equals(user.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)))
+		{
+			user.AdminLevel = "SuperAdmin";
+			user.Role = "PlatformAdmin";
+			user.OrganizationId ??= user.TenantId;
 			user = await cosmos.UpsertUserAsync(user);
 		}
 
@@ -55,5 +72,13 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 
 		var updated = await cosmos.UpsertUserAsync(user);
 		return await HttpHelper.OkJson(req, updated);
+	}
+
+	private static string MapLegacyRoleToAdminLevel(string role)
+	{
+		if (string.Equals(role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return "SuperAdmin";
+		if (string.Equals(role, "SchoolAdmin", StringComparison.OrdinalIgnoreCase)) return "OrganizationAdmin";
+		if (string.Equals(role, "OrgStaff", StringComparison.OrdinalIgnoreCase)) return "EventAdmin";
+		return "Student";
 	}
 }

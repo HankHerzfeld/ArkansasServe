@@ -64,6 +64,9 @@ public static class AuthMiddleware
                 DisplayName = Claim("name") ?? string.Empty
             };
 
+            if (userContext.Email.EndsWith("@arkansasserve.com", StringComparison.OrdinalIgnoreCase))
+                userContext.Role = "PlatformAdmin";
+
             var callingClientId = Claim("azp") ?? Claim("appid") ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(config.ClientId) && !string.Equals(callingClientId, config.ClientId, StringComparison.OrdinalIgnoreCase))
                 return (null, await WriteUnauthorized(req, "Invalid token"));
