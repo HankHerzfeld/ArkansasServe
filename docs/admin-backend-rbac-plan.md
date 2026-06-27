@@ -113,3 +113,87 @@ After implementation, provide:
 - summary of all changed files
 - setup steps for claims + organization bootstrap
 - push-ready/deployment-ready status
+
+## Implemented Change Log
+
+### 1) Backend model/schema updates
+1. `backend/ArkansasServe.Functions/Models/User.cs`
+- Added `adminLevel`, `organizationId`, `groupIds`, `eventAdminEventIds`.
+- Added `permissions` map for fine-grained controls.
+- Added demo-user metadata fields: `isDemoUser`, `demoUserType`.
+
+2. `backend/ArkansasServe.Functions/Models/Tenant.cs`
+- Added tenant-level RBAC toggle: `rbacEnabled`.
+- Added nested `groups` collection (`TenantGroup`).
+- Added optional `eventScopeRules` (`EventScopeRule`).
+
+### 2) Cosmos service/data layer updates
+1. `backend/ArkansasServe.Functions/Services/CosmosService.cs`
+- Converted service class to `partial` for extension-safe growth.
+- Added admin-scope user retrieval helpers.
+- Added demo-user list/delete/upsert helpers.
+- Added tenant update helper (`UpdateTenantAsync`).
+
+### 3) Admin backend API surface
+1. `backend/ArkansasServe.Functions/Functions/AdminFunctions.cs`
+- Kept existing tenant endpoints and added scoped checks.
+- Added new admin backend endpoints:
+  - `GET /api/admin/backend/context`
+  - `GET /api/admin/backend/users`
+  - `PATCH /api/admin/backend/users/{id}/access`
+  - `GET /api/admin/backend/tenants/{tenantId}/groups`
+  - `POST /api/admin/backend/tenants/{tenantId}/groups`
+  - `PATCH /api/admin/backend/tenants/{tenantId}`
+  - `GET /api/admin/backend/demo-users`
+  - `POST /api/admin/backend/demo-users/reset`
+- Added hierarchical authorization logic for:
+  - `SuperAdmin`
+  - `OrganizationAdmin`
+  - `GroupAdmin`
+  - `EventAdmin`
+  - `Student`
+- Added deterministic demo-user generation (2 users per level).
+- Preserved legacy role compatibility while using new `adminLevel` for backend scope logic.
+
+### 4) Authentication + bootstrap super-admin default
+1. `backend/ArkansasServe.Functions/Middleware/AuthMiddleware.cs`
+- Added hardcoded role override: users with `@arkansasserve.com` are treated as `PlatformAdmin` in request context.
+
+2. `backend/ArkansasServe.Functions/Functions/UserFunctions.cs`
+- On user bootstrap/read, users with `@arkansasserve.com` are persisted/promoted to:
+  - `Role = PlatformAdmin`
+  - `AdminLevel = SuperAdmin`
+
+### 5) Frontend admin experience
+1. `frontend/admin-backend.html` (new)
+- Added admin backend page with:
+  - tenant settings editor
+  - nested group management
+  - scoped user access management
+  - super-admin-only demo-user section and reset action
+
+2. `frontend/dashboard.html`
+- Added admin backend button and visibility gating.
+- Students do not see the admin backend button.
+- Non-student admin levels get direct access button.
+
+3. `frontend/js/api.js`
+- Added `AdminBackend` API client namespace/methods for all new backend routes.
+
+### 6) Documentation
+1. `docs/admin-backend-rbac-plan.md`
+- Created initial plan and now updated with full implementation log.
+
+### 7) Build and diagnostics validation
+1. Backend build status
+- `dotnet build` succeeded after RBAC/admin backend and auth-domain updates.
+
+2. Diagnostics
+- No file diagnostics errors in edited backend/frontend/docs files at validation time.
+
+### 8) Commit trail for this feature set
+1. `c6874a1`
+- `feat(admin): add scoped admin backend, RBAC schema, and demo-user controls`
+
+2. `04be70d`
+- `feat(auth): default @arkansasserve.com users to super admin`
