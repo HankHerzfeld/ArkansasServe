@@ -22,7 +22,18 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v5
 
+      - name: Setup .NET
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate Function app build
+        if: github.event_name == 'pull_request'
+        run: dotnet publish backend/ArkansasServe.Functions -c Release
+
       - name: Build and Deploy Static Web App
+        if: github.event_name == 'push'
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
         with:
