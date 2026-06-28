@@ -12,6 +12,7 @@ namespace ArkansasServe.Functions.Functions;
 public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<AdminFunctions> logger)
 {
 	private const string ArkansasServeEmailDomain = "@arkansasserve.com";
+	private const string UnknownTenantId = "unknown-tenant";
 
 	private static readonly IReadOnlyDictionary<string, int> AdminRank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
 	{
@@ -292,7 +293,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (!string.IsNullOrWhiteSpace(ctx.TenantId)) return ctx.TenantId;
 		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
 			? "arkansas-serve-root"
-			: "unknown-tenant";
+			: UnknownTenantId;
 	}
 
 	private static bool HasAdminAccess(User user) => GetRank(user.AdminLevel) > 0;
