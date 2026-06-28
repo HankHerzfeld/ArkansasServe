@@ -21,7 +21,33 @@ const Auth = (() => {
     accessToken:  'as_access_token',
     expiresAt:    'as_expires_at',
     codeVerifier: 'as_code_verifier',
+    appRole:      'as_app_role',
   };
+
+  const ROLE_RANK = Object.freeze({
+    Student: 0,
+    OrgStaff: 1,
+    SchoolAdmin: 2,
+    PlatformAdmin: 3,
+  });
+
+  function mapAdminLevelToRole(adminLevel) {
+    if (adminLevel === 'SuperAdmin') return 'PlatformAdmin';
+    if (adminLevel === 'OrganizationAdmin') return 'SchoolAdmin';
+    if (adminLevel === 'GroupAdmin' || adminLevel === 'EventAdmin') return 'OrgStaff';
+    return 'Student';
+  }
+
+  function normalizeRole(role) {
+    if (!role) return 'Student';
+    return Object.prototype.hasOwnProperty.call(ROLE_RANK, role) ? role : 'Student';
+  }
+
+  function strongestRole(a, b) {
+    const roleA = normalizeRole(a);
+    const roleB = normalizeRole(b);
+    return ROLE_RANK[roleA] >= ROLE_RANK[roleB] ? roleA : roleB;
+  }
 
   function decodeJwtPayload(token) {
     if (!token) return null;
@@ -153,11 +179,22 @@ const Auth = (() => {
     const payload = decodeJwtPayload(token);
     if (!payload) return null;
 
+    const tokenRole = payload.extension_Role || payload.roles?.[0] || 'Student';
+    const cachedRole = sessionStorage.getItem(KEYS.appRole);
+    const role = strongestRole(tokenRole, cachedRole);
+
     return {
       name: payload.name || payload.preferred_username || 'User',
-      role: payload.extension_Role || payload.roles?.[0] || 'Student',
+      role,
       email: payload.email || payload.preferred_username || '',
     };
+  }
+
+  function setResolvedRoleFromUser(user) {
+    if (!user) return;
+    const roleFromUser = user.role || mapAdminLevelToRole(user.adminLevel);
+    const role = normalizeRole(roleFromUser);
+    sessionStorage.setItem(KEYS.appRole, role);
   }
 
   function isAuthenticated() {
@@ -192,5 +229,5 @@ const Auth = (() => {
     document.getElementById('btn-login')?.addEventListener('click', login);
   }
 
-  return { login, logout, handleCallback, requireAuth, isAuthenticated, getProfile, getAccessToken, init };
+  return { login, logout, handleCallback, requireAuth, isAuthenticated, getProfile, getAccessToken, setResolvedRoleFromUser, init };
 })();
