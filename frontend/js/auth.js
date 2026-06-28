@@ -40,7 +40,7 @@ const Auth = (() => {
 
   function normalizeRole(role) {
     if (!role) return 'Student';
-    return Object.prototype.hasOwnProperty.call(ROLE_RANK, role) ? role : 'Student';
+    return Object.hasOwn(ROLE_RANK, role) ? role : 'Student';
   }
 
   function strongestRole(a, b) {
