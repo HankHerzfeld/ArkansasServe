@@ -21,6 +21,7 @@ const Auth = (() => {
     accessToken:  'as_access_token',
     expiresAt:    'as_expires_at',
     codeVerifier: 'as_code_verifier',
+    lastLoginAt:  'as_last_login_at',
   };
 
   function decodeJwtPayload(token) {
@@ -60,6 +61,8 @@ const Auth = (() => {
 
   // ── Login ─────────────────────────────────────────────────────────────────
   async function login() {
+    sessionStorage.setItem(KEYS.lastLoginAt, String(Date.now()));
+
     const verifier  = generateRandomString(64);
     const challenge = base64UrlEncode(await sha256(verifier));
     sessionStorage.setItem(KEYS.codeVerifier, verifier);
@@ -131,7 +134,7 @@ const Auth = (() => {
 
   // ── Logout ────────────────────────────────────────────────────────────────
   function logout() {
-    Object.values(KEYS).forEach(k => sessionStorage.removeItem(k));
+    clearSession();
     const params = new URLSearchParams({
       client_id:              CLIENT_ID,
       post_logout_redirect_uri: `${window.location.origin}/index.html`,
@@ -146,6 +149,14 @@ const Auth = (() => {
     const expiresAt = Number(sessionStorage.getItem(KEYS.expiresAt) || 0);
     if (!token || Date.now() >= expiresAt) return null;
     return token;
+  }
+
+  function clearSession() {
+    Object.values(KEYS).forEach(k => sessionStorage.removeItem(k));
+  }
+
+  function getLastLoginAttemptAt() {
+    return Number(sessionStorage.getItem(KEYS.lastLoginAt) || 0);
   }
 
   function getProfile() {
@@ -192,5 +203,16 @@ const Auth = (() => {
     document.getElementById('btn-login')?.addEventListener('click', login);
   }
 
-  return { login, logout, handleCallback, requireAuth, isAuthenticated, getProfile, getAccessToken, init };
+  return {
+    login,
+    logout,
+    handleCallback,
+    requireAuth,
+    isAuthenticated,
+    getProfile,
+    getAccessToken,
+    getLastLoginAttemptAt,
+    clearSession,
+    init,
+  };
 })();
