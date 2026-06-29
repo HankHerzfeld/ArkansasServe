@@ -31,6 +31,7 @@ public partial class CosmosService
     {
         _client = client;
         _databaseName = config["CosmosDb__DatabaseName"]
+            ?? config["CosmosDb:DatabaseName"]
             ?? throw new InvalidOperationException("CosmosDb__DatabaseName is not set.");
         _logger = logger;
     }
