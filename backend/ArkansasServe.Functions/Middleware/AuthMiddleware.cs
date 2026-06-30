@@ -41,7 +41,11 @@ public static class AuthMiddleware
             var validationParams = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0",
+                ValidIssuers =
+                [
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/",
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0"
+                ],
                 ValidateAudience = true,
                 ValidAudience = config.Audience,
                 ValidateLifetime = true,
