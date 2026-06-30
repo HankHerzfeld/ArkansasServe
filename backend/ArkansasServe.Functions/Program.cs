@@ -17,7 +17,9 @@ var host = new HostBuilder()
         // Cosmos DB - singleton client for connection reuse.
         services.AddSingleton(_ =>
         {
-            var connectionString = config["CosmosDb__ConnectionString"]
+            var connectionString =
+                config["CosmosDb__ConnectionString"]
+                ?? config["CosmosDb:ConnectionString"]
                 ?? throw new InvalidOperationException("CosmosDb__ConnectionString is not set.");
             return new CosmosClient(connectionString, new CosmosClientOptions
             {
@@ -33,9 +35,9 @@ var host = new HostBuilder()
 
         services.AddSingleton(_ => new AuthConfig
         {
-            TenantId = config["Entra__TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
-            ClientId = config["Entra__ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
-            Audience = config["Entra__Audience"] ?? throw new InvalidOperationException("Entra__Audience is not set.")
+            TenantId = config["Entra__TenantId"] ?? config["Entra:TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
+            ClientId = config["Entra__ClientId"] ?? config["Entra:ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
+            Audience = config["Entra__Audience"] ?? config["Entra:Audience"] ?? throw new InvalidOperationException("Entra__Audience is not set.")
         });
 
         services.AddHttpClient();

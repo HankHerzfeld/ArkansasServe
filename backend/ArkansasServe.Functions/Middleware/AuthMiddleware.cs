@@ -41,7 +41,11 @@ public static class AuthMiddleware
             var validationParams = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0",
+                ValidIssuers =
+                [
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/",
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0"
+                ],
                 ValidateAudience = true,
                 ValidAudience = config.Audience,
                 ValidateLifetime = true,
@@ -71,8 +75,13 @@ public static class AuthMiddleware
                     userContext.TenantId = "arkansas-serve-root";
             }
 
-            var callingClientId = Claim("azp") ?? Claim("appid") ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(config.ClientId) && !string.Equals(callingClientId, config.ClientId, StringComparison.OrdinalIgnoreCase))
+            // Some Entra-issued access tokens in this SWA + external Function App
+            // topology do not include azp/appid consistently. Only reject when the
+            // client claim is present and clearly mismatched.
+            var callingClientId = Claim("azp") ?? Claim("appid");
+            if (!string.IsNullOrWhiteSpace(config.ClientId)
+                && !string.IsNullOrWhiteSpace(callingClientId)
+                && !string.Equals(callingClientId, config.ClientId, StringComparison.OrdinalIgnoreCase))
                 return (null, await WriteUnauthorized(req, "Invalid token"));
 
             if (string.IsNullOrWhiteSpace(userContext.UserId))

@@ -90,6 +90,15 @@ Get your Entra values (after completing Entra External ID setup):
   portal.azure.com → Microsoft Entra External ID → App registrations
   → your app → Overview → copy Application (client) ID and Directory (tenant) ID
 
+Make sure your Cosmos DB database contains these containers with these partition keys:
+- `tenants` → `/id`
+- `users` → `/tenantId`
+- `events` → `/organizationId`
+- `registrations` → `/eventId`
+- `serviceLogs` → `/studentId`
+- `pendingApprovals` → `/schoolId`
+- `notifications` → `/userId`
+
 ```json
 {
   "IsEncrypted": false,
@@ -230,13 +239,17 @@ the Static Web App linked to this GitHub repo. Azure will automatically:
 
 ## Step 10 — Configure the backend Functions in Azure
 
-Your local.settings.json values need to be added as Azure app settings
-so the deployed Functions can use them. Run these CLI commands:
+If you are deploying this repo through Azure Static Web Apps, add the values from
+`local.settings.json` to the Static Web App Application Settings so the managed API
+can read them at runtime. Do not rely on a separate Function App unless you have
+explicitly linked SWA to that external backend.
+
+For the SWA-managed API, use:
 
 ```bash
-az functionapp config appsettings set \
+az staticwebapp appsettings set \
   --resource-group rg-arkansas-serve \
-  --name func-arkansas-serve-arksrv \
+  --name swa-arkansas-serve-arksrv \
   --settings \
     "CosmosDb__ConnectionString=YOUR_VALUE" \
     "CosmosDb__DatabaseName=arkansas-serve-db" \
@@ -247,6 +260,9 @@ az functionapp config appsettings set \
 ```
 
 Replace each YOUR_VALUE with the real values from local.settings.json.
+
+If you intentionally use `func-arkansas-serve-arksrv` as a separate linked backend,
+mirror the same settings there as well.
 
 ---
 

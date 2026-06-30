@@ -22,7 +22,17 @@ const Api = (() => {
       throw new Error('Network error. Please check your connection and try again.');
     }
 
-    if (res.status === 401) { Auth.login(); throw new Error('Authentication required'); }
+    if (res.status === 401) {
+      const lastLoginAt = Auth.getLastLoginAttemptAt();
+      const recentlyRetried = (Date.now() - lastLoginAt) < 45_000;
+
+      Auth.clearSession();
+      if (!recentlyRetried) {
+        window.location.href = '/index.html?error=session_expired';
+      }
+
+      throw new Error('Authentication required');
+    }
     if (!res.ok) {
       const text = await res.text();
       let errorMessage = `Request failed: ${res.status}`;

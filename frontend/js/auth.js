@@ -8,7 +8,7 @@ const Auth = (() => {
   // Replace these with your real Entra External ID values after app registration
   const TENANT_ID    = '2d72a425-cd59-4b55-a8d6-a67c1ed565c6';
   const CLIENT_ID    = '16150d6e-7d28-4c6b-91b3-4ec839fff75f';
-  const REDIRECT_URI = `${window.location.origin}/auth-callback`;
+  const REDIRECT_URI = `${window.location.origin}/auth-callback.html`;
   const SCOPES       = 'openid profile email api://16150d6e-7d28-4c6b-91b3-4ec839fff75f/User_Impersonation';
 
   const AUTH_ENDPOINT =
@@ -86,6 +86,8 @@ const Auth = (() => {
 
   // ── Login ─────────────────────────────────────────────────────────────────
   async function login() {
+    sessionStorage.setItem(KEYS.lastLoginAt, String(Date.now()));
+
     const verifier  = generateRandomString(64);
     const challenge = base64UrlEncode(await sha256(verifier));
     sessionStorage.setItem(KEYS.codeVerifier, verifier);
@@ -157,7 +159,7 @@ const Auth = (() => {
 
   // ── Logout ────────────────────────────────────────────────────────────────
   function logout() {
-    Object.values(KEYS).forEach(k => sessionStorage.removeItem(k));
+    clearSession();
     const params = new URLSearchParams({
       client_id:              CLIENT_ID,
       post_logout_redirect_uri: `${window.location.origin}/index.html`,
@@ -172,6 +174,14 @@ const Auth = (() => {
     const expiresAt = Number(sessionStorage.getItem(KEYS.expiresAt) || 0);
     if (!token || Date.now() >= expiresAt) return null;
     return token;
+  }
+
+  function clearSession() {
+    Object.values(KEYS).forEach(k => sessionStorage.removeItem(k));
+  }
+
+  function getLastLoginAttemptAt() {
+    return Number(sessionStorage.getItem(KEYS.lastLoginAt) || 0);
   }
 
   function getProfile() {

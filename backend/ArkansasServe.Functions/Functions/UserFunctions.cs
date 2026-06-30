@@ -23,11 +23,18 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		if (ctx == null) return authError!;
 		var tenantId = ResolveTenantId(ctx);
 
+		logger.LogInformation(
+			"GetOrCreateCurrentUser invoked. Role={Role}; HasTenant={HasTenant}",
+			ctx.Role,
+			!string.IsNullOrWhiteSpace(ctx.TenantId));
+
 		try
 		{
 			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
 			if (user == null)
 			{
+				logger.LogInformation("No user profile found for current principal; starting bootstrap create.");
+
 				var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
 				var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;
 				var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : MapLegacyRoleToAdminLevel(role);
@@ -43,6 +50,11 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 					Email = ctx.Email
 				};
 				user = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
+
+				logger.LogInformation(
+					"Bootstrap user profile created. UserDocumentId={UserDocumentId}; Tenant={TenantId}",
+					user.Id,
+					user.TenantId);
 			}
 			else if (ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
 				&& (!string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)
@@ -52,8 +64,11 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 				user.Role = "PlatformAdmin";
 				user.OrganizationId ??= user.TenantId;
 				user = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
+
+				logger.LogInformation("Applied ArkansasServe domain admin elevation for existing profile.");
 			}
 
+			logger.LogInformation("Returning current user profile payload.");
 			return await HttpHelper.OkJson(req, user);
 		}
 		catch (CosmosException ex)

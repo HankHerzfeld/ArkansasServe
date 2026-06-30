@@ -17,22 +17,44 @@ public partial class CosmosService
     private readonly CosmosClient _client;
     private readonly string _databaseName;
     private readonly ILogger<CosmosService> _logger;
+    private readonly string _tenantsContainerName;
+    private readonly string _usersContainerName;
+    private readonly string _eventsContainerName;
+    private readonly string _registrationsContainerName;
+    private readonly string _serviceLogsContainerName;
+    private readonly string _pendingApprovalsContainerName;
+    private readonly string _notificationsContainerName;
 
     // Container references
-    private Container Tenants           => _client.GetContainer(_databaseName, "Tenants");
-    private Container Users             => _client.GetContainer(_databaseName, "Users");
-    private Container Events            => _client.GetContainer(_databaseName, "Events");
-    private Container Registrations     => _client.GetContainer(_databaseName, "EventRegistrations");
-    private Container ServiceLogs       => _client.GetContainer(_databaseName, "ServiceLogs");
-    private Container PendingApprovals  => _client.GetContainer(_databaseName, "PendingApprovals");
-    private Container Notifications     => _client.GetContainer(_databaseName, "Notifications");
+    private Container Tenants           => _client.GetContainer(_databaseName, _tenantsContainerName);
+    private Container Users             => _client.GetContainer(_databaseName, _usersContainerName);
+    private Container Events            => _client.GetContainer(_databaseName, _eventsContainerName);
+    private Container Registrations     => _client.GetContainer(_databaseName, _registrationsContainerName);
+    private Container ServiceLogs       => _client.GetContainer(_databaseName, _serviceLogsContainerName);
+    private Container PendingApprovals  => _client.GetContainer(_databaseName, _pendingApprovalsContainerName);
+    private Container Notifications     => _client.GetContainer(_databaseName, _notificationsContainerName);
 
     public CosmosService(CosmosClient client, IConfiguration config, ILogger<CosmosService> logger)
     {
         _client = client;
         _databaseName = config["CosmosDb__DatabaseName"]
+            ?? config["CosmosDb:DatabaseName"]
             ?? throw new InvalidOperationException("CosmosDb__DatabaseName is not set.");
+        _tenantsContainerName = GetContainerName(config, "Tenants", "tenants");
+        _usersContainerName = GetContainerName(config, "Users", "users");
+        _eventsContainerName = GetContainerName(config, "Events", "events");
+        _registrationsContainerName = GetContainerName(config, "Registrations", "registrations");
+        _serviceLogsContainerName = GetContainerName(config, "ServiceLogs", "serviceLogs");
+        _pendingApprovalsContainerName = GetContainerName(config, "PendingApprovals", "pendingApprovals");
+        _notificationsContainerName = GetContainerName(config, "Notifications", "notifications");
         _logger = logger;
+    }
+
+    private static string GetContainerName(IConfiguration config, string logicalName, string defaultName)
+    {
+        return config[$"CosmosDb__Containers__{logicalName}"]
+            ?? config[$"CosmosDb:Containers:{logicalName}"]
+            ?? defaultName;
     }
 
     // ── Users ──────────────────────────────────────────────────────────────────
