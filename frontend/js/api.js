@@ -26,10 +26,9 @@ const Api = (() => {
       const lastLoginAt = Auth.getLastLoginAttemptAt();
       const recentlyRetried = (Date.now() - lastLoginAt) < 45_000;
 
+      Auth.clearSession();
       if (!recentlyRetried) {
-        Auth.login();
-      } else {
-        Auth.clearSession();
+        window.location.href = '/index.html?error=session_expired';
       }
 
       throw new Error('Authentication required');

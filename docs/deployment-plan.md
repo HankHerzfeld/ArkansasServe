@@ -124,10 +124,25 @@ az storage container list \
 	--output table
 ```
 
+Required Cosmos container names for the current runtime:
+- `tenants` partition key `/id`
+- `users` partition key `/tenantId`
+- `events` partition key `/organizationId`
+- `registrations` partition key `/eventId`
+- `serviceLogs` partition key `/studentId`
+- `pendingApprovals` partition key `/schoolId`
+- `notifications` partition key `/userId`
+
 6. If a required container is missing, create only the missing one(s):
 
 ```bash
-az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name <MISSING_CONTAINER_NAME> --partition-key-path "/id"
+az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name users --partition-key-path "/tenantId"
+az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name events --partition-key-path "/organizationId"
+az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name registrations --partition-key-path "/eventId"
+az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name serviceLogs --partition-key-path "/studentId"
+az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name pendingApprovals --partition-key-path "/schoolId"
+az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name notifications --partition-key-path "/userId"
+az cosmosdb sql container create --account-name <COSMOS_ACCOUNT_NAME> --resource-group rg-arkansas-serve --database-name <COSMOS_DATABASE_NAME> --name tenants --partition-key-path "/id"
 
 az storage container create --name uploads --account-name <STORAGE_ACCOUNT_NAME> --account-key "$ACCOUNT_KEY" --public-access off
 ```
@@ -156,15 +171,16 @@ az cosmosdb sql database create \
   --name arkansas-serve-db
 ```
 
-Create the containers your backend expects (partition key paths may be adjusted to match your data model):
+Create the containers your backend expects:
 
 ```bash
-az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name users --partition-key-path "/id"
-az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name events --partition-key-path "/id"
-az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name registrations --partition-key-path "/id"
-az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name serviceLogs --partition-key-path "/id"
-az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name pendingApprovals --partition-key-path "/id"
 az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name tenants --partition-key-path "/id"
+az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name users --partition-key-path "/tenantId"
+az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name events --partition-key-path "/organizationId"
+az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name registrations --partition-key-path "/eventId"
+az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name serviceLogs --partition-key-path "/studentId"
+az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name pendingApprovals --partition-key-path "/schoolId"
+az cosmosdb sql container create --account-name cosmos-arkserve-prod --resource-group rg-arkansas-serve --database-name arkansas-serve-db --name notifications --partition-key-path "/userId"
 ```
 
 ### 4.3 Create Blob Storage
