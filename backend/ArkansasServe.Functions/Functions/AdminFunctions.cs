@@ -11,6 +11,9 @@ namespace ArkansasServe.Functions.Functions;
 
 public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<AdminFunctions> logger)
 {
+	private const string ArkansasServeEmailDomain = "@arkansasserve.com";
+	private const string UnknownTenantId = "unknown-tenant";
+
 	private static readonly IReadOnlyDictionary<string, int> AdminRank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
 	{
 		["Student"] = 0,
@@ -253,15 +256,17 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	private async Task<User> GetOrCreateActorAsync(UserContext ctx)
 	{
-		var actor = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
+		var tenantId = ResolveActorTenantId(ctx);
+		var actor = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
 		if (actor != null)
 		{
 			if (string.IsNullOrWhiteSpace(actor.AdminLevel))
 			{
 				actor.AdminLevel = MapLegacyRoleToAdminLevel(ctx.Role);
 				actor.Role = string.IsNullOrWhiteSpace(actor.Role) ? ctx.Role : actor.Role;
+				actor.TenantId = string.IsNullOrWhiteSpace(actor.TenantId) ? tenantId : actor.TenantId;
 				actor.OrganizationId ??= actor.TenantId;
-				actor = await cosmos.UpsertUserAsync(actor);
+				actor = await cosmos.UpsertUserWithPartitionFallbackAsync(actor);
 			}
 
 			return actor;
@@ -271,8 +276,8 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		var created = new User
 		{
 			ExternalId = ctx.UserId,
-			TenantId = ctx.TenantId,
-			OrganizationId = ctx.TenantId,
+			TenantId = tenantId,
+			OrganizationId = tenantId,
 			Role = string.IsNullOrWhiteSpace(ctx.Role) ? MapAdminLevelToLegacyRole(adminLevel) : ctx.Role,
 			AdminLevel = adminLevel,
 			DisplayName = string.IsNullOrWhiteSpace(ctx.DisplayName) ? "User" : ctx.DisplayName,
@@ -280,7 +285,15 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 			Status = "active",
 		};
 
-		return await cosmos.UpsertUserAsync(created);
+		return await cosmos.UpsertUserWithPartitionFallbackAsync(created);
+	}
+
+	private static string ResolveActorTenantId(UserContext ctx)
+	{
+		if (!string.IsNullOrWhiteSpace(ctx.TenantId)) return ctx.TenantId;
+		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
+			? "arkansas-serve-root"
+			: UnknownTenantId;
 	}
 
 	private static bool HasAdminAccess(User user) => GetRank(user.AdminLevel) > 0;

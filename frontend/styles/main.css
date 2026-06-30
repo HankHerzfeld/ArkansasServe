@@ -92,6 +92,12 @@ body {
 }
 .stat-card .stat-number { font-size: 2rem; font-weight: 700; color: var(--green); }
 .stat-card .stat-label  { font-size: .85rem; color: var(--gray-600); margin-top: .25rem; }
+.superadmin-actions {
+  display: none;
+  margin-top: .75rem;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 .btn {

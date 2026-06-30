@@ -25,6 +25,10 @@
     <div id="admin-backend-action" style="display:none;margin-top:.75rem;">
       <a class="btn btn-primary btn-sm" href="/admin-backend.html">Open Admin Backend</a>
     </div>
+    <div class="superadmin-actions" id="superadmin-actions">
+      <a class="btn btn-primary btn-sm" href="/platform-admin.html">Open Platform Admin</a>
+      <a class="btn btn-secondary btn-sm" href="/events.html">Manage Events</a>
+    </div>
   </div>
 
   <!-- Stats -->
@@ -99,10 +103,14 @@
     async function loadDashboard() {
       try {
         const currentUser = await Api.Users.getMe();
+        Auth.setResolvedRoleFromUser(currentUser);
         const adminLevel = toAdminLevel(currentUser);
 
         if ((rank[adminLevel] || 0) > 0) {
           document.getElementById('admin-backend-action').style.display = 'block';
+        }
+        if (adminLevel === 'SuperAdmin') {
+          document.getElementById('superadmin-actions').style.display = 'flex';
         }
 
         if (adminLevel !== 'Student') {
@@ -111,7 +119,10 @@
           document.getElementById('stat-events').textContent = '—';
           document.getElementById('log-loading').style.display = 'none';
           document.getElementById('log-empty').style.display = 'block';
-          document.getElementById('log-empty').textContent = 'Admin users can use the Admin Backend for scoped management tasks.';
+          document.getElementById('log-empty').textContent =
+            adminLevel === 'SuperAdmin'
+              ? 'SuperAdmin tools are available above. Use Platform Admin and Admin Backend to manage executive features.'
+              : 'Admin users can use the Admin Backend for scoped management tasks.';
           return;
         }
 
