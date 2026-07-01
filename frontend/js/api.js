@@ -8,8 +8,13 @@ const API_BASE = '/api';
 const Api = (() => {
   async function request(method, path, body = null) {
     const token = Auth.getAccessToken();
+    if (!token) {
+      Auth.login();
+      throw new Error('Authentication required');
+    }
+
     const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    headers['Authorization'] = `Bearer ${token}`;
     if (body !== null) headers['Content-Type'] = 'application/json';
 
     const options = { method, headers, cache: 'no-store' };

@@ -22,6 +22,7 @@ const Auth = (() => {
     expiresAt:    'as_expires_at',
     codeVerifier: 'as_code_verifier',
     appRole:      'as_app_role',
+    lastLoginAt:  'as_last_login_at',
   };
 
   const ROLE_RANK = Object.freeze({
@@ -239,5 +240,17 @@ const Auth = (() => {
     document.getElementById('btn-login')?.addEventListener('click', login);
   }
 
-  return { login, logout, handleCallback, requireAuth, isAuthenticated, getProfile, getAccessToken, setResolvedRoleFromUser, init };
+  return {
+    login,
+    logout,
+    handleCallback,
+    requireAuth,
+    isAuthenticated,
+    getProfile,
+    getAccessToken,
+    setResolvedRoleFromUser,
+    clearSession,
+    getLastLoginAttemptAt,
+    init,
+  };
 })();
