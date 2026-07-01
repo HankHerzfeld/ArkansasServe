@@ -44,10 +44,11 @@ public static class AuthMiddleware
                 ValidIssuers =
                 [
                     $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/",
-                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0"
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0",
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0/"
                 ],
                 ValidateAudience = true,
-                ValidAudience = config.Audience,
+                ValidAudiences = BuildValidAudiences(config),
                 ValidateLifetime = true,
                 ValidateIssuerSigningKey = true,
                 ClockSkew = TimeSpan.FromMinutes(2),
@@ -176,6 +177,35 @@ public static class AuthMiddleware
             case 3: s += "=";  break;
         }
         return Convert.FromBase64String(s);
+    }
+
+    private static IEnumerable<string> BuildValidAudiences(AuthConfig config)
+    {
+        // Entra access tokens may emit aud as either api://<clientId> or <clientId>.
+        var audiences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddAudience(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            var trimmed = value.Trim();
+            audiences.Add(trimmed);
+
+            const string apiPrefix = "api://";
+            if (trimmed.StartsWith(apiPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                audiences.Add(trimmed[apiPrefix.Length..]);
+            }
+            else
+            {
+                audiences.Add($"{apiPrefix}{trimmed}");
+            }
+        }
+
+        AddAudience(config.Audience);
+        AddAudience(config.ClientId);
+
+        return audiences;
     }
 }
 
