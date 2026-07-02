@@ -1,0 +1,56 @@
+name: Deploy Infrastructure
+
+# Required repository variables (Settings > Secrets and variables > Actions > Variables):
+#   AZURE_RESOURCE_GROUP       — name of the Azure resource group to deploy into
+#   AZURE_STATIC_WEB_APP_NAME  — globally unique name for the Static Web App resource
+#   AZURE_COSMOS_ACCOUNT_NAME  — globally unique Cosmos DB account name
+#   AZURE_STORAGE_ACCOUNT_NAME — globally unique Storage account name
+#
+# Required repository secrets (Settings > Secrets and variables > Actions > Secrets):
+#   AZUREAPPSERVICE_CLIENTID_72ACD1D6DC1C4BAC905DA26F9E7FDBDA  — Azure service principal client ID
+#   AZUREAPPSERVICE_TENANTID_8F94139D8B024EC2A2B5F38E65B5ADB5   — Azure tenant ID
+#   AZUREAPPSERVICE_SUBSCRIPTIONID_6DB21F4C49624AF780AF7A5E6F6E1586 — Azure subscription ID
+#   ENTRA_TENANT_ID  — Microsoft Entra External ID tenant ID for token validation
+#   ENTRA_CLIENT_ID  — Entra app registration client ID
+#   ENTRA_AUDIENCE   — Expected audience claim for access tokens
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_72ACD1D6DC1C4BAC905DA26F9E7FDBDA }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_8F94139D8B024EC2A2B5F38E65B5ADB5 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6DB21F4C49624AF780AF7A5E6F6E1586 }}
+
+      - name: 'Deploy Bicep Template'
+        uses: azure/arm-deploy@v2
+        with:
+          scope: resourcegroup
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
+          template: infra/main.bicep
+          parameters: >
+            staticWebAppName=${{ vars.AZURE_STATIC_WEB_APP_NAME }}
+            cosmosAccountName=${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}
+            storageAccountName=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}
+            entraTenantId=${{ secrets.ENTRA_TENANT_ID }}
+            entraClientId=${{ secrets.ENTRA_CLIENT_ID }}
+            entraAudience=${{ secrets.ENTRA_AUDIENCE }}
+          failOnStdErr: false
