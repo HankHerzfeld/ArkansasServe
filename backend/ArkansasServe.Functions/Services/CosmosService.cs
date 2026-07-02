@@ -40,13 +40,16 @@ public partial class CosmosService
         _databaseName = config["CosmosDb__DatabaseName"]
             ?? config["CosmosDb:DatabaseName"]
             ?? throw new InvalidOperationException("CosmosDb__DatabaseName is not set.");
-        _tenantsContainerName = GetContainerName(config, "Tenants", "tenants");
-        _usersContainerName = GetContainerName(config, "Users", "users");
-        _eventsContainerName = GetContainerName(config, "Events", "events");
-        _registrationsContainerName = GetContainerName(config, "Registrations", "registrations");
-        _serviceLogsContainerName = GetContainerName(config, "ServiceLogs", "serviceLogs");
-        _pendingApprovalsContainerName = GetContainerName(config, "PendingApprovals", "pendingApprovals");
-        _notificationsContainerName = GetContainerName(config, "Notifications", "notifications");
+        // Defaults MUST match the real (case-sensitive) Cosmos container names, or every
+        // data operation targets a non-existent container (404s surfacing as 500s). The
+        // CosmosDb__Containers__* app settings remain available as per-environment overrides.
+        _tenantsContainerName = GetContainerName(config, "Tenants", "Tenants");
+        _usersContainerName = GetContainerName(config, "Users", "Users");
+        _eventsContainerName = GetContainerName(config, "Events", "Events");
+        _registrationsContainerName = GetContainerName(config, "Registrations", "EventRegistrations");
+        _serviceLogsContainerName = GetContainerName(config, "ServiceLogs", "ServiceLogs");
+        _pendingApprovalsContainerName = GetContainerName(config, "PendingApprovals", "PendingApprovals");
+        _notificationsContainerName = GetContainerName(config, "Notifications", "Notifications");
         _logger = logger;
     }
 

@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
+  AZURE_FUNCTIONAPP_PROJECT_PATH: 'backend/ArkansasServe.Functions' # the Functions project to build
   DOTNET_VERSION: '8.0.x' # set this to the dotnet version to use
 
 jobs:
@@ -29,12 +29,9 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: 'Resolve Project Dependencies Using Dotnet'
+      - name: 'Build and publish the Functions project'
         shell: pwsh
-        run: |
-          pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build --configuration Release --output ./output
-          popd
+        run: dotnet publish '${{ env.AZURE_FUNCTIONAPP_PROJECT_PATH }}' --configuration Release --output ./output
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -49,5 +46,5 @@ jobs:
         with:
           app-name: 'func-arkansas-serve-arksrv'
           slot-name: 'Production'
-          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+          package: './output'
           
