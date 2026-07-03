@@ -7,7 +7,9 @@ const API_BASE = '/api';
 
 const Api = (() => {
   async function request(method, path, body = null) {
-    const token = Auth.getAccessToken();
+    // MSAL token acquisition is async (silent renew under the hood).
+    // Null means no session or interaction required — send the user to login.
+    const token = await Auth.getAccessToken();
     if (!token) {
       Auth.login();
       throw new Error('Authentication required');

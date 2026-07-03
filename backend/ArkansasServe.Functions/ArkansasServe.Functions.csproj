@@ -17,6 +17,8 @@
     <PackageReference Include="Azure.Storage.Blobs" Version="12.21.2" />
     <PackageReference Include="Microsoft.Identity.Web" Version="2.19.1" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.6.0" />
+    <!-- OpenID Connect metadata retrieval (ConfigurationManager) used by AuthMiddleware -->
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="7.6.0" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">

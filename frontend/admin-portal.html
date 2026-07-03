@@ -79,15 +79,19 @@
   </div>
 </div>
 
+<script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
 <script>
   Auth.init();
-  const profile = Auth.requireAuth('SchoolAdmin');
+  let profile = null;
   let activeApproval = null;
   let approvedTodayCount = 0;
 
-  if (profile) loadApprovals();
+  Auth.requireAuth('SchoolAdmin').then((p) => {
+    profile = p;
+    if (profile) loadApprovals();
+  });
 
   async function loadApprovals() {
     document.getElementById('approvals-loading').style.display = 'block';

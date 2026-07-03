@@ -37,7 +37,10 @@ var host = new HostBuilder()
         {
             TenantId = config["Entra__TenantId"] ?? config["Entra:TenantId"] ?? throw new InvalidOperationException("Entra__TenantId is not set."),
             ClientId = config["Entra__ClientId"] ?? config["Entra:ClientId"] ?? throw new InvalidOperationException("Entra__ClientId is not set."),
-            Audience = config["Entra__Audience"] ?? config["Entra:Audience"] ?? throw new InvalidOperationException("Entra__Audience is not set.")
+            Audience = config["Entra__Audience"] ?? config["Entra:Audience"] ?? throw new InvalidOperationException("Entra__Audience is not set."),
+            // Optional bootstrap: emails on this domain are elevated to PlatformAdmin.
+            // Set it only while seeding the first admin, then clear it (see AuthMiddleware).
+            PlatformAdminEmailDomain = config["Entra__PlatformAdminEmailDomain"] ?? config["Entra:PlatformAdminEmailDomain"]
         });
 
         services.AddHttpClient();
@@ -53,4 +56,11 @@ public record AuthConfig
     public required string TenantId { get; init; }
     public required string ClientId { get; init; }
     public required string Audience  { get; init; }
+
+    /// <summary>
+    /// Optional. When set (e.g. "arkansasserve.com"), signed-in users whose email
+    /// ends with @thisdomain are elevated to PlatformAdmin. Leave unset/empty in
+    /// normal operation — use only to seed the first admin account.
+    /// </summary>
+    public string? PlatformAdminEmailDomain { get; init; }
 }

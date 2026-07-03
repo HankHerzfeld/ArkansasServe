@@ -108,6 +108,7 @@
   </div>
 </div>
 
+<script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
 <script>
@@ -159,7 +160,7 @@
   }
 
   async function loadContext() {
-    const profile = Auth.requireAuth();
+    const profile = await Auth.requireAuth();
     if (!profile) return;
 
     try {

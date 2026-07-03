@@ -1,64 +1,92 @@
 using System.Collections.Concurrent;
-using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Text.Json;
-using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 
 namespace ArkansasServe.Functions.Middleware;
 
 /// <summary>
-/// Validates the Bearer token on every HTTP request.
-/// Attaches a ClaimsIdentity to the request context so functions can
-/// call req.GetUserContext() to get userId, tenantId, and role.
+/// Validates the Bearer token on every HTTP request against the Entra External ID
+/// (CIAM) tenant's OpenID Connect metadata.
+///
+/// Built on ConfigurationManager&lt;OpenIdConnectConfiguration&gt; +
+/// JsonWebTokenHandler: signing keys and the issuer come from the tenant's
+/// discovery document and refresh automatically (including key rollover);
+/// nothing is hand-rolled.
+///
+/// Public contract is unchanged from the previous implementation — all
+/// functions keep calling:
+///   var (ctx, err) = await AuthMiddleware.ValidateRequest(req, config, logger, roles);
 /// </summary>
 public static class AuthMiddleware
 {
+    // One metadata manager per tenant; it caches the discovery document and
+    // signing keys, refreshing on a schedule and on key-not-found.
+    private static readonly ConcurrentDictionary<string, ConfigurationManager<OpenIdConnectConfiguration>> _configManagers = new();
+
+    private static ConfigurationManager<OpenIdConnectConfiguration> GetConfigurationManager(string tenantId)
+        => _configManagers.GetOrAdd(tenantId, tid => new ConfigurationManager<OpenIdConnectConfiguration>(
+            $"https://{tid}.ciamlogin.com/{tid}/v2.0/.well-known/openid-configuration",
+            new OpenIdConnectConfigurationRetriever(),
+            new HttpDocumentRetriever { RequireHttps = true }));
+
     public static async Task<(UserContext? Context, HttpResponseData? ErrorResponse)> ValidateRequest(
         HttpRequestData req,
         AuthConfig config,
         ILogger logger,
         params string[] requiredRoles)
     {
-        // Extract Bearer token
+        // ── Extract Bearer token ────────────────────────────────────────────
         if (!req.Headers.TryGetValues("Authorization", out var authHeaders))
             return (null, await WriteUnauthorized(req, "Missing Authorization header"));
 
-        var token = authHeaders.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+        var header = authHeaders.FirstOrDefault() ?? string.Empty;
+        var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? header["Bearer ".Length..].Trim()
+            : string.Empty;
         if (string.IsNullOrEmpty(token))
             return (null, await WriteUnauthorized(req, "Empty token"));
 
         try
         {
-            var signingKeys = await GetSigningKeys(config.TenantId, logger);
-            if (signingKeys.Count == 0)
-                return (null, await WriteUnauthorized(req, "Invalid token"));
-
-            // Fetch OIDC signing keys from Entra External ID tenant
-            var handler = new JwtSecurityTokenHandler();
+            // ── Validate ────────────────────────────────────────────────────
+            // ConfigurationManager supplies the issuer and signing keys from
+            // the tenant's metadata; explicit ValidIssuers are kept as a
+            // defense-in-depth allowlist of the known-good issuer formats.
             var validationParams = new TokenValidationParameters
             {
+                ConfigurationManager = GetConfigurationManager(config.TenantId),
                 ValidateIssuer = true,
                 ValidIssuers =
                 [
-                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/",
                     $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0",
-                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0/"
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/v2.0/",
+                    $"https://{config.TenantId}.ciamlogin.com/{config.TenantId}/"
                 ],
                 ValidateAudience = true,
                 ValidAudiences = BuildValidAudiences(config),
                 ValidateLifetime = true,
                 ValidateIssuerSigningKey = true,
-                ClockSkew = TimeSpan.FromMinutes(2),
-                IssuerSigningKeyResolver = (_, _, _, _) => signingKeys
+                ClockSkew = TimeSpan.FromMinutes(2)
             };
 
-            var principal = handler.ValidateToken(token, validationParams, out _);
+            var handler = new JsonWebTokenHandler();
+            var result = await handler.ValidateTokenAsync(token, validationParams);
 
-            string? Claim(string type) => principal.Claims.FirstOrDefault(c => c.Type == type)?.Value;
-            var roleFromRolesClaim = principal.Claims.Where(c => c.Type == "roles").Select(c => c.Value).FirstOrDefault();
+            if (!result.IsValid)
+            {
+                logger.LogWarning(result.Exception, "Token validation failed: {Message}", result.Exception?.Message);
+                return (null, await WriteUnauthorized(req, "Invalid or expired token"));
+            }
+
+            var identity = result.ClaimsIdentity;
+            string? Claim(string type) => identity.Claims.FirstOrDefault(c => c.Type == type)?.Value;
+            var roleFromRolesClaim = identity.Claims.Where(c => c.Type == "roles").Select(c => c.Value).FirstOrDefault();
 
             var userContext = new UserContext
             {
@@ -69,16 +97,21 @@ public static class AuthMiddleware
                 DisplayName = Claim("name") ?? string.Empty
             };
 
-            if (userContext.Email.EndsWith("@arkansasserve.com", StringComparison.OrdinalIgnoreCase))
+            // ── Bootstrap elevation (config-gated; empty setting = disabled) ─
+            // Replaces the previous hardcoded "@arkansasserve.com" backdoor.
+            // Set Entra__PlatformAdminEmailDomain only while seeding the first
+            // PlatformAdmin, then clear it; day-to-day roles come from the
+            // users container (adminLevel) and token role claims.
+            if (!string.IsNullOrWhiteSpace(config.PlatformAdminEmailDomain)
+                && userContext.Email.EndsWith($"@{config.PlatformAdminEmailDomain.TrimStart('@')}", StringComparison.OrdinalIgnoreCase))
             {
                 userContext.Role = "PlatformAdmin";
                 if (string.IsNullOrWhiteSpace(userContext.TenantId))
                     userContext.TenantId = "arkansas-serve-root";
             }
 
-            // Some Entra-issued access tokens in this SWA + external Function App
-            // topology do not include azp/appid consistently. Only reject when the
-            // client claim is present and clearly mismatched.
+            // Reject only when the calling-client claim is present and clearly
+            // mismatched (some CIAM access tokens omit azp/appid).
             var callingClientId = Claim("azp") ?? Claim("appid");
             if (!string.IsNullOrWhiteSpace(config.ClientId)
                 && !string.IsNullOrWhiteSpace(callingClientId)
@@ -88,18 +121,13 @@ public static class AuthMiddleware
             if (string.IsNullOrWhiteSpace(userContext.UserId))
                 return (null, await WriteUnauthorized(req, "Invalid token"));
 
-            // Role check — return 403 Forbidden so callers can distinguish
-            // "not authenticated" (401) from "authenticated but wrong role" (403)
+            // Role check — 403 so callers can distinguish "not authenticated"
+            // (401) from "authenticated but wrong role" (403).
             if (requiredRoles.Length > 0 &&
                 !requiredRoles.Contains(userContext.Role, StringComparer.OrdinalIgnoreCase))
                 return (null, await WriteForbidden(req, "Forbidden"));
 
             return (userContext, null);
-        }
-        catch (SecurityTokenException ex)
-        {
-            logger.LogWarning("Token validation failed: {Message}", ex.Message);
-            return (null, await WriteUnauthorized(req, "Invalid or expired token"));
         }
         catch (Exception ex)
         {
@@ -124,59 +152,6 @@ public static class AuthMiddleware
         await res.WriteStringAsync(JsonSerializer.Serialize(new { error = message }));
         res.Headers.Add("Content-Type", "application/json");
         return res;
-    }
-
-    private static readonly HttpClient _httpClient = new();
-    private static readonly ConcurrentDictionary<string, (List<SecurityKey> Keys, DateTime Expiry)> _keyCache = new();
-
-    private static async Task<List<SecurityKey>> GetSigningKeys(string tenantId, ILogger logger)
-    {
-        // Cache keys for 1 hour (they rarely change)
-        if (_keyCache.TryGetValue(tenantId, out var cached) && DateTime.UtcNow < cached.Expiry)
-            return cached.Keys;
-
-        try
-        {
-            var url = $"https://{tenantId}.ciamlogin.com/{tenantId}/discovery/v2.0/keys";
-            var json = await _httpClient.GetStringAsync(url);
-            var doc = JsonDocument.Parse(json);
-            var keys = new List<SecurityKey>();
-
-            foreach (var key in doc.RootElement.GetProperty("keys").EnumerateArray())
-            {
-                var n = key.GetProperty("n").GetString();
-                var e = key.GetProperty("e").GetString();
-                if (n != null && e != null)
-                {
-                    var rsa = new System.Security.Cryptography.RSACryptoServiceProvider();
-                    rsa.ImportParameters(new System.Security.Cryptography.RSAParameters
-                    {
-                        Modulus = Base64UrlDecode(n),
-                        Exponent = Base64UrlDecode(e)
-                    });
-                    keys.Add(new RsaSecurityKey(rsa));
-                }
-            }
-
-            _keyCache[tenantId] = (keys, DateTime.UtcNow.AddHours(1));
-            return keys;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to fetch Entra signing keys");
-            return [];
-        }
-    }
-
-    private static byte[] Base64UrlDecode(string input)
-    {
-        var s = input.Replace('-', '+').Replace('_', '/');
-        switch (s.Length % 4)
-        {
-            case 2: s += "=="; break;
-            case 3: s += "=";  break;
-        }
-        return Convert.FromBase64String(s);
     }
 
     private static IEnumerable<string> BuildValidAudiences(AuthConfig config)

@@ -56,6 +56,6 @@
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.blob.core.windows.net data:; connect-src 'self' https://*.ciamlogin.com https://*.blob.core.windows.net; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; upgrade-insecure-requests"
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.blob.core.windows.net data:; connect-src 'self' https://*.ciamlogin.com https://*.blob.core.windows.net; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src https://*.ciamlogin.com; form-action 'self'; upgrade-insecure-requests"
   }
 }

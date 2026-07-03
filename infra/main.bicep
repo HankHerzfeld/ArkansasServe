@@ -67,6 +67,9 @@ param entraClientId string
 @description('Expected audience claim for access tokens.')
 param entraAudience string
 
+@description('Optional bootstrap: emails on this domain are elevated to PlatformAdmin. Leave empty to disable (recommended after seeding the first admin).')
+param platformAdminEmailDomain string = ''
+
 // Tags present on the originally Bicep-deployed resources; preserved to avoid stripping them.
 var commonTags = {
   environment: 'prod'
@@ -328,6 +331,7 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Entra__TenantId: entraTenantId
     Entra__ClientId: entraClientId
     Entra__Audience: entraAudience
+    Entra__PlatformAdminEmailDomain: platformAdminEmailDomain
     // --- NEW: map code logical names -> real container names (fixes 404/500s) ---
     CosmosDb__Containers__Tenants: 'Tenants'
     CosmosDb__Containers__Users: 'Users'

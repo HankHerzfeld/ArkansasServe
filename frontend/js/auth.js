@@ -1,30 +1,50 @@
-// auth.js — Entra External ID authentication
-// All pages import this. Call Auth.init() on page load.
+// auth.js — Entra External ID authentication (MSAL.js redirect flow)
+//
+// REQUIRES /js/vendor/msal-browser.min.js to be loaded BEFORE this file
+// (exposes the global `msal` namespace).
+//
+// Tenant: arkansasserve.onmicrosoft.com — Entra External ID (CIAM) directory.
+// Sign-IN and sign-UP both go through the tenant's sign-up/sign-in user flow;
+// signUp() deep-links straight into account creation with prompt=create.
+//
+// Page contract (all async where marked):
+//   Auth.init()                    async — wire nav/buttons; call on every page
+//   Auth.ready()                   async — resolves when MSAL is initialized
+//   Auth.login(returnTo?)          async — redirect to sign-in
+//   Auth.signUp(returnTo?)         async — redirect straight to account creation
+//   Auth.logout()                  async — redirect logout
+//   Auth.handleCallback()          async — ONLY on /auth-callback.html
+//   Auth.requireAuth(role?)        async — resolves profile or null (redirects)
+//   Auth.getAccessToken()          async — resolves token string or null
+//   Auth.isAuthenticated()         sync (valid after ready)
+//   Auth.getProfile()              sync (valid after ready)
+//   Auth.setResolvedRoleFromUser() sync
+//   Auth.clearSession()            sync
+//   Auth.getLastLoginAttemptAt()   sync
 
 'use strict';
 
 const Auth = (() => {
   // ── Config ────────────────────────────────────────────────────────────────
-  // Replace these with your real Entra External ID values after app registration
-  const TENANT_ID    = '2d72a425-cd59-4b55-a8d6-a67c1ed565c6';
-  const CLIENT_ID    = '16150d6e-7d28-4c6b-91b3-4ec839fff75f';
+  // Entra External ID tenant: arkansasserve.onmicrosoft.com
+  const TENANT_ID        = '434cf17d-6ab5-48c3-be4a-5541ed0e74d0';
+  const TENANT_SUBDOMAIN = 'arkansasserve';
+  // "Arkansas Serve Web" SPA registration in arkansasserve.onmicrosoft.com.
+  // Must match Entra__ClientId on the Function App.
+  const CLIENT_ID        = '21ceb138-99f1-40b6-a73d-01965a1b6f06';
+
+  const AUTHORITY    = `https://${TENANT_SUBDOMAIN}.ciamlogin.com/${TENANT_ID}/`;
+  const API_SCOPES   = [`api://${CLIENT_ID}/User_Impersonation`];
+  const LOGIN_SCOPES = ['openid', 'profile', 'email', ...API_SCOPES];
   const REDIRECT_URI = `${window.location.origin}/auth-callback.html`;
-  const SCOPES       = 'openid profile email api://16150d6e-7d28-4c6b-91b3-4ec839fff75f/User_Impersonation';
 
-  const AUTH_ENDPOINT =
-    `https://${TENANT_ID}.ciamlogin.com/${TENANT_ID}/oauth2/v2.0/authorize`;
-  const TOKEN_ENDPOINT =
-    `https://${TENANT_ID}.ciamlogin.com/${TENANT_ID}/oauth2/v2.0/token`;
-
-  // ── Storage keys ──────────────────────────────────────────────────────────
+  // ── Storage keys (ours; MSAL manages its own msal.* keys) ─────────────────
   const KEYS = {
-    accessToken:  'as_access_token',
-    expiresAt:    'as_expires_at',
-    codeVerifier: 'as_code_verifier',
-    appRole:      'as_app_role',
-    lastLoginAt:  'as_last_login_at',
+    appRole:     'as_app_role',
+    lastLoginAt: 'as_last_login_at',
   };
 
+  // ── Role model (unchanged from previous implementation) ───────────────────
   const ROLE_RANK = Object.freeze({
     Student: 0,
     OrgStaff: 1,
@@ -50,174 +70,175 @@ const Auth = (() => {
     return ROLE_RANK[roleA] >= ROLE_RANK[roleB] ? roleA : roleB;
   }
 
-  function decodeJwtPayload(token) {
-    if (!token) return null;
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
+  // ── MSAL instance ─────────────────────────────────────────────────────────
+  if (CLIENT_ID === 'ENTER-NEW-CLIENT-ID') {
+    console.error('[Arkansas Serve] auth.js: CLIENT_ID has not been configured.');
+  }
 
-    try {
-      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
-      const json = decodeURIComponent(atob(padded).split('').map(c =>
-        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-      return JSON.parse(json);
-    } catch {
-      return null;
+  const msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId: CLIENT_ID,
+      authority: AUTHORITY,
+      knownAuthorities: [`${TENANT_SUBDOMAIN}.ciamlogin.com`],
+      redirectUri: REDIRECT_URI,
+      postLogoutRedirectUri: '/index.html',
+      // We always land on the dedicated callback page and navigate from state.
+      navigateToLoginRequestUrl: false,
+    },
+    cache: {
+      // sessionStorage only — repo privacy rule: no tokens in localStorage.
+      cacheLocation: 'sessionStorage',
+      storeAuthStateInCookie: false,
+    },
+    system: {
+      loggerOptions: {
+        logLevel: msal.LogLevel.Warning,
+        loggerCallback: (_level, message, containsPii) => {
+          if (!containsPii) console.warn('[Arkansas Serve auth]', message);
+        },
+      },
+    },
+  });
+
+  // Kick off initialization once at script load; everything awaits this.
+  const _ready = msalInstance.initialize();
+
+  function ready() {
+    return _ready;
+  }
+
+  function getAccount() {
+    const active = msalInstance.getActiveAccount();
+    if (active) return active;
+    const all = msalInstance.getAllAccounts();
+    if (all.length > 0) {
+      msalInstance.setActiveAccount(all[0]);
+      return all[0];
     }
+    return null;
   }
 
-  // ── PKCE helpers ─────────────────────────────────────────────────────────
-  function generateRandomString(length = 64) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    const arr   = new Uint8Array(length);
-    crypto.getRandomValues(arr);
-    return Array.from(arr, b => chars[b % chars.length]).join('');
-  }
-
-  async function sha256(plain) {
-    const encoder = new TextEncoder();
-    const data    = encoder.encode(plain);
-    return crypto.subtle.digest('SHA-256', data);
-  }
-
-  function base64UrlEncode(buffer) {
-    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  }
-
-  // ── Login ─────────────────────────────────────────────────────────────────
-  async function login() {
-    sessionStorage.setItem(KEYS.lastLoginAt, String(Date.now()));
-
-    const verifier  = generateRandomString(64);
-    const challenge = base64UrlEncode(await sha256(verifier));
-    sessionStorage.setItem(KEYS.codeVerifier, verifier);
-
-    const params = new URLSearchParams({
-      client_id:             CLIENT_ID,
-      response_type:         'code',
-      redirect_uri:          REDIRECT_URI,
-      scope:                 SCOPES,
-      code_challenge:        challenge,
-      code_challenge_method: 'S256',
-      response_mode:         'query',
-      state:                 window.location.pathname, // return to current page after login
-    });
-
-    window.location.href = `${AUTH_ENDPOINT}?${params}`;
-  }
-
-  // ── Handle auth callback (call from auth-callback.html) ──────────────────
-  async function handleCallback() {
-    const params   = new URLSearchParams(window.location.search);
-    const code     = params.get('code');
-    const rawState = params.get('state') || '/dashboard.html';
-    // Prevent open redirects: only allow same-origin relative paths
-    let validatedState = '/dashboard.html';
+  // Prevent open redirects: only same-origin relative paths are honored.
+  function validateReturnPath(raw, fallback = '/dashboard.html') {
     try {
-      const stateUrl = new URL(rawState, window.location.origin);
-      if (stateUrl.origin === window.location.origin) {
-        validatedState = stateUrl.pathname + stateUrl.search + stateUrl.hash;
+      const url = new URL(raw, window.location.origin);
+      if (url.origin === window.location.origin) {
+        return url.pathname + url.search + url.hash;
       }
-    } catch { /* fall through to default */ }
-    const verifier = sessionStorage.getItem(KEYS.codeVerifier);
+    } catch { /* fall through */ }
+    return fallback;
+  }
 
-    if (!code || !verifier) {
-      console.error('Auth callback missing code or verifier');
-      window.location.href = '/index.html';
-      return;
-    }
+  // ── Sign-in / Sign-up / Logout ────────────────────────────────────────────
+  async function login(returnTo) {
+    sessionStorage.setItem(KEYS.lastLoginAt, String(Date.now()));
+    await _ready;
+    await msalInstance.loginRedirect({
+      scopes: LOGIN_SCOPES,
+      state: returnTo || window.location.pathname,
+    });
+  }
 
+  // Deep-links directly into the user flow's account-creation experience.
+  async function signUp(returnTo) {
+    sessionStorage.setItem(KEYS.lastLoginAt, String(Date.now()));
+    await _ready;
+    await msalInstance.loginRedirect({
+      scopes: LOGIN_SCOPES,
+      prompt: 'create',
+      state: returnTo || '/dashboard.html',
+    });
+  }
+
+  async function logout() {
+    clearSession();
+    await _ready;
+    await msalInstance.logoutRedirect({
+      account: getAccount(),
+      postLogoutRedirectUri: '/index.html',
+    });
+  }
+
+  // ── Callback (ONLY on /auth-callback.html) ────────────────────────────────
+  async function handleCallback() {
     try {
-      const body = new URLSearchParams({
-        client_id:     CLIENT_ID,
-        grant_type:    'authorization_code',
-        code,
-        redirect_uri:  REDIRECT_URI,
-        code_verifier: verifier,
-      });
-
-      const res  = await fetch(TOKEN_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-      });
-
-      if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`);
-      const tokens = await res.json();
-
-      // Store tokens
-      sessionStorage.setItem(KEYS.accessToken, tokens.access_token);
-      sessionStorage.setItem(KEYS.expiresAt,   String(Date.now() + tokens.expires_in * 1000));
-      sessionStorage.removeItem(KEYS.codeVerifier);
-
-      window.location.href = validatedState;
+      await _ready;
+      const response = await msalInstance.handleRedirectPromise();
+      if (response?.account) {
+        msalInstance.setActiveAccount(response.account);
+        window.location.href = validateReturnPath(response.state || '/dashboard.html');
+        return;
+      }
+      // No auth response (page visited directly, or state already consumed).
+      window.location.href = getAccount() ? '/dashboard.html' : '/index.html';
     } catch (err) {
-      console.error('Auth callback error:', err);
+      console.error('[Arkansas Serve] Auth callback error:', err);
       window.location.href = '/index.html?error=auth_failed';
     }
   }
 
-  // ── Logout ────────────────────────────────────────────────────────────────
-  function logout() {
-    clearSession();
-    const params = new URLSearchParams({
-      client_id:              CLIENT_ID,
-      post_logout_redirect_uri: `${window.location.origin}/index.html`,
-    });
-    window.location.href =
-      `https://${TENANT_ID}.ciamlogin.com/${TENANT_ID}/oauth2/v2.0/logout?${params}`;
-  }
-
-  // ── Token access ──────────────────────────────────────────────────────────
-  function getAccessToken() {
-    const token     = sessionStorage.getItem(KEYS.accessToken);
-    const expiresAt = Number(sessionStorage.getItem(KEYS.expiresAt) || 0);
-    if (!token || Date.now() >= expiresAt) return null;
-    return token;
+  // ── Tokens ────────────────────────────────────────────────────────────────
+  // Resolves the access token for the API, renewing silently when possible.
+  // Returns null when interaction is required (caller decides whether to login()).
+  async function getAccessToken() {
+    await _ready;
+    const account = getAccount();
+    if (!account) return null;
+    try {
+      const result = await msalInstance.acquireTokenSilent({
+        scopes: API_SCOPES,
+        account,
+      });
+      return result.accessToken;
+    } catch (err) {
+      if (err instanceof msal.InteractionRequiredAuthError) return null;
+      console.error('[Arkansas Serve] Token acquisition failed:', err);
+      return null;
+    }
   }
 
   function clearSession() {
-    Object.values(KEYS).forEach(k => sessionStorage.removeItem(k));
+    // sessionStorage holds only our as_* keys and MSAL's msal.* cache.
+    sessionStorage.clear();
   }
 
   function getLastLoginAttemptAt() {
     return Number(sessionStorage.getItem(KEYS.lastLoginAt) || 0);
   }
 
+  // ── Profile ───────────────────────────────────────────────────────────────
   function getProfile() {
-    const token = getAccessToken();
-    const payload = decodeJwtPayload(token);
-    if (!payload) return null;
+    const account = getAccount();
+    if (!account) return null;
+    const claims = account.idTokenClaims || {};
 
-    const tokenRole = payload.extension_Role || payload.roles?.[0] || 'Student';
+    const tokenRole  = claims.extension_Role || claims.roles?.[0] || 'Student';
     const cachedRole = sessionStorage.getItem(KEYS.appRole);
     const role = strongestRole(tokenRole, cachedRole);
 
     return {
-      name: payload.name || payload.preferred_username || 'User',
+      name:  claims.name || account.name || claims.preferred_username || 'User',
       role,
-      email: payload.email || payload.preferred_username || '',
+      email: claims.email || claims.preferred_username || account.username || '',
     };
   }
 
   function setResolvedRoleFromUser(user) {
     if (!user) return;
     const roleFromUser = user.role || mapAdminLevelToRole(user.adminLevel);
-    const role = normalizeRole(roleFromUser);
-    sessionStorage.setItem(KEYS.appRole, role);
+    sessionStorage.setItem(KEYS.appRole, normalizeRole(roleFromUser));
   }
 
   function isAuthenticated() {
-    return !!getAccessToken();
+    return !!getAccount();
   }
 
   // ── Route guard ───────────────────────────────────────────────────────────
-  // Call on every protected page. Redirects to login if not authenticated.
-  // Optionally checks for a required role.
-  function requireAuth(requiredRole = null) {
-    if (!isAuthenticated()) {
-      login();
+  // Resolves the profile, or null after starting a login redirect / role bounce.
+  async function requireAuth(requiredRole = null) {
+    await _ready;
+    if (!getAccount()) {
+      await login(window.location.pathname);
       return null;
     }
     const profile = getProfile();
@@ -228,20 +249,25 @@ const Auth = (() => {
     return profile;
   }
 
-  // ── Init (call on every page load) ───────────────────────────────────────
-  function init() {
+  // ── Init (call on every page load) ────────────────────────────────────────
+  async function init() {
+    document.getElementById('btn-logout')?.addEventListener('click', () => logout());
+    document.getElementById('btn-login')?.addEventListener('click', () => login());
+    document.getElementById('btn-signup')?.addEventListener('click', () => signUp());
+
+    await _ready;
     const profile = getProfile();
     const navName = document.getElementById('nav-user-name');
     const navRole = document.getElementById('nav-user-role');
     if (navName && profile) navName.textContent = profile.name;
     if (navRole && profile) navRole.textContent = profile.role;
-
-    document.getElementById('btn-logout')?.addEventListener('click', logout);
-    document.getElementById('btn-login')?.addEventListener('click', login);
+    return profile;
   }
 
   return {
+    ready,
     login,
+    signUp,
     logout,
     handleCallback,
     requireAuth,
