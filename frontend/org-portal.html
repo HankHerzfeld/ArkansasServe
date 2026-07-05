@@ -123,15 +123,19 @@
   </div>
 </div>
 
+<script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
 <script>
   Auth.init();
-  const profile = Auth.requireAuth('OrgStaff');
+  let profile = null;
   let orgEvents = [];
   let activeLogEventId = null;
 
-  if (profile) loadOrgEvents();
+  Auth.requireAuth('OrgStaff').then((p) => {
+    profile = p;
+    if (profile) loadOrgEvents();
+  });
 
   async function loadOrgEvents() {
     try {

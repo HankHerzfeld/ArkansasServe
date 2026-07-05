@@ -105,22 +105,27 @@
   <p>© 2025 Arkansas Serve · <a href="mailto:contact@arkansasserve.com" style="color:inherit;">contact@arkansasserve.com</a></p>
 </footer>
 
+<script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script>
   Auth.init();
   document.getElementById('btn-hero-login').addEventListener('click', () => Auth.login());
+  document.getElementById('btn-hero-signup')?.addEventListener('click', () => Auth.signUp());
 
-  // If already logged in, redirect to dashboard
-  if (Auth.isAuthenticated()) {
-    const profile = Auth.getProfile();
-    const destinations = {
-      Student:       '/dashboard.html',
-      OrgStaff:      '/org-portal.html',
-      SchoolAdmin:   '/admin-portal.html',
-      PlatformAdmin: '/platform-admin.html',
-    };
-    window.location.href = destinations[profile?.role] || '/dashboard.html';
-  }
+  // If already logged in, redirect to the role-appropriate portal.
+  // (MSAL initializes asynchronously — wait for it before reading session state.)
+  Auth.ready().then(() => {
+    if (Auth.isAuthenticated()) {
+      const profile = Auth.getProfile();
+      const destinations = {
+        Student:       '/dashboard.html',
+        OrgStaff:      '/org-portal.html',
+        SchoolAdmin:   '/admin-portal.html',
+        PlatformAdmin: '/platform-admin.html',
+      };
+      window.location.href = destinations[profile?.role] || '/dashboard.html';
+    }
+  });
 </script>
 </body>
 </html>
