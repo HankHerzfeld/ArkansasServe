@@ -8,6 +8,10 @@ using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 
+// Microsoft.IdentityModel.Protocols also defines an HttpRequestData type; pin the
+// name to the Azure Functions worker type so it stays consistent with the callers.
+using HttpRequestData = Microsoft.Azure.Functions.Worker.Http.HttpRequestData;
+
 namespace ArkansasServe.Functions.Middleware;
 
 /// <summary>
