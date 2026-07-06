@@ -22,10 +22,12 @@
     },
     {
       "route": "/styles/*",
+      "headers": { "cache-control": "no-cache" },
       "allowedRoles": ["anonymous"]
     },
     {
       "route": "/js/*",
+      "headers": { "cache-control": "no-cache" },
       "allowedRoles": ["anonymous"]
     },
     {
