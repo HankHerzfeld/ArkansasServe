@@ -2,6 +2,7 @@ using System.Net;
 using ArkansasServe.Functions.Middleware;
 using ArkansasServe.Functions.Models;
 using ArkansasServe.Functions.Services;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -25,7 +26,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("GetTenants")]
 	public async Task<HttpResponseData> GetTenants(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/tenants")] HttpRequestData req)
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/tenants")] HttpRequestData req)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
@@ -42,7 +43,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("CreateTenant")]
 	public async Task<HttpResponseData> CreateTenant(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/tenants")] HttpRequestData req)
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/tenants")] HttpRequestData req)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
@@ -61,7 +62,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("GetAdminBackendContext")]
 	public async Task<HttpResponseData> GetAdminBackendContext(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/backend/context")] HttpRequestData req)
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/backend/context")] HttpRequestData req)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
@@ -82,7 +83,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("GetAdminScopedUsers")]
 	public async Task<HttpResponseData> GetAdminScopedUsers(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/backend/users")] HttpRequestData req)
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/backend/users")] HttpRequestData req)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
@@ -101,7 +102,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("UpdateUserAccess")]
 	public async Task<HttpResponseData> UpdateUserAccess(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "admin/backend/users/{id}/access")] HttpRequestData req,
+		[HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "manage/backend/users/{id}/access")] HttpRequestData req,
 		string id)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
@@ -137,7 +138,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("GetTenantGroups")]
 	public async Task<HttpResponseData> GetTenantGroups(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/backend/tenants/{tenantId}/groups")] HttpRequestData req,
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/backend/tenants/{tenantId}/groups")] HttpRequestData req,
 		string tenantId)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
@@ -156,7 +157,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("CreateTenantGroup")]
 	public async Task<HttpResponseData> CreateTenantGroup(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/backend/tenants/{tenantId}/groups")] HttpRequestData req,
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/tenants/{tenantId}/groups")] HttpRequestData req,
 		string tenantId)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
@@ -187,7 +188,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("UpdateTenantSettings")]
 	public async Task<HttpResponseData> UpdateTenantSettings(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "admin/backend/tenants/{tenantId}")] HttpRequestData req,
+		[HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "manage/backend/tenants/{tenantId}")] HttpRequestData req,
 		string tenantId)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
@@ -215,7 +216,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("GetDemoUsers")]
 	public async Task<HttpResponseData> GetDemoUsers(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/backend/demo-users")] HttpRequestData req)
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/backend/demo-users")] HttpRequestData req)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
@@ -234,7 +235,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	[Function("ResetDemoUsers")]
 	public async Task<HttpResponseData> ResetDemoUsers(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/backend/demo-users/reset")] HttpRequestData req)
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/demo-users/reset")] HttpRequestData req)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
@@ -252,6 +253,59 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		var demoUsers = BuildDefaultDemoUsers(tenantId);
 		var created = await cosmos.UpsertDemoUsersAsync(tenantId, demoUsers);
 		return await HttpHelper.OkJson(req, created);
+	}
+
+	[Function("GetDbContainers")]
+	public async Task<HttpResponseData> GetDbContainers(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/db/containers")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var actor = await GetOrCreateActorAsync(ctx);
+		if (!IsSuperAdmin(actor))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+
+		return await HttpHelper.OkJson(req, cosmos.QueryableContainers);
+	}
+
+	// Manual, read-only database query for SuperAdmins. Cosmos' SQL API cannot
+	// mutate data, and the container is allow-listed server-side, so this is a
+	// read-only inspection tool by construction.
+	[Function("RunDbQuery")]
+	public async Task<HttpResponseData> RunDbQuery(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/db/query")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var actor = await GetOrCreateActorAsync(ctx);
+		if (!IsSuperAdmin(actor))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+
+		var body = await HttpHelper.ReadBody<DbQueryRequest>(req);
+		if (body == null || string.IsNullOrWhiteSpace(body.Container) || string.IsNullOrWhiteSpace(body.Query))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "container and query are required");
+
+		// Cosmos SQL is already read-only; requiring an explicit SELECT keeps the
+		// console unambiguously an inspection tool and rejects obvious mistakes.
+		if (!body.Query.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Only SELECT queries are allowed");
+
+		try
+		{
+			var rows = await cosmos.RunReadQueryAsync(body.Container, body.Query, body.MaxItems ?? 50);
+			return await HttpHelper.OkJson(req, new { container = body.Container, count = rows.Count, rows });
+		}
+		catch (ArgumentException ex)
+		{
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, ex.Message);
+		}
+		catch (CosmosException ex)
+		{
+			logger.LogWarning(ex, "DB console query failed for container {Container}", body.Container);
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"Query error: {ex.ResponseBody ?? ex.Message}");
+		}
 	}
 
 	private async Task<User> GetOrCreateActorAsync(UserContext ctx)
@@ -371,6 +425,8 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		List<string>? EventAdminEventIds);
 
 	private sealed record CreateGroupRequest(string Name, string? Status);
+
+	private sealed record DbQueryRequest(string Container, string Query, int? MaxItems);
 
 	private sealed record UpdateTenantRequest(string? Name, string? Status, bool? RbacEnabled);
 }

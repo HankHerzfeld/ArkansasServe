@@ -97,23 +97,50 @@ const Api = (() => {
     list: () => request('GET', '/approvals'),
   };
 
+  // ── Reports ───────────────────────────────────────────────────────────────
+  const Reports = {
+    // SchoolAdmin: schoolId is derived server-side from the token (ignored here).
+    // PlatformAdmin: pass { schoolId } to target a specific school.
+    serviceHours: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.schoolId) qs.set('schoolId', params.schoolId);
+      if (params.from)     qs.set('from', params.from);
+      if (params.to)       qs.set('to', params.to);
+      const q = qs.toString();
+      return request('GET', `/manage/reports/service-hours${q ? `?${q}` : ''}`);
+    },
+  };
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  const Notifications = {
+    list:     ()   => request('GET',   '/notifications'),
+    markRead: (id) => request('PATCH', `/notifications/${encodeURIComponent(id)}`, { isRead: true }),
+  };
+
   // ── Admin ─────────────────────────────────────────────────────────────────
   const Admin = {
-    getTenants:    ()     => request('GET',  '/admin/tenants'),
-    createTenant:  (data) => request('POST', '/admin/tenants', data),
+    getTenants:    ()     => request('GET',  '/manage/tenants'),
+    createTenant:  (data) => request('POST', '/manage/tenants', data),
   };
 
   // ── Admin Backend ─────────────────────────────────────────────────────────
   const AdminBackend = {
-    context:          ()                        => request('GET',  '/admin/backend/context'),
-    users:            ()                        => request('GET',  '/admin/backend/users'),
-    updateUserAccess: (id, data)                => request('PATCH', `/admin/backend/users/${encodeURIComponent(id)}/access`, data),
-    tenantGroups:     (tenantId)                => request('GET',  `/admin/backend/tenants/${encodeURIComponent(tenantId)}/groups`),
-    createTenantGroup:(tenantId, data)          => request('POST', `/admin/backend/tenants/${encodeURIComponent(tenantId)}/groups`, data),
-    updateTenant:     (tenantId, data)          => request('PATCH', `/admin/backend/tenants/${encodeURIComponent(tenantId)}`, data),
-    demoUsers:        ()                        => request('GET',  '/admin/backend/demo-users'),
-    resetDemoUsers:   ()                        => request('POST', '/admin/backend/demo-users/reset'),
+    context:          ()                        => request('GET',  '/manage/backend/context'),
+    users:            ()                        => request('GET',  '/manage/backend/users'),
+    updateUserAccess: (id, data)                => request('PATCH', `/manage/backend/users/${encodeURIComponent(id)}/access`, data),
+    tenantGroups:     (tenantId)                => request('GET',  `/manage/backend/tenants/${encodeURIComponent(tenantId)}/groups`),
+    createTenantGroup:(tenantId, data)          => request('POST', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/groups`, data),
+    updateTenant:     (tenantId, data)          => request('PATCH', `/manage/backend/tenants/${encodeURIComponent(tenantId)}`, data),
+    demoUsers:        ()                        => request('GET',  '/manage/backend/demo-users'),
+    resetDemoUsers:   ()                        => request('POST', '/manage/backend/demo-users/reset'),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Admin, AdminBackend };
+  // ── DB Console (SuperAdmin, read-only) ────────────────────────────────────
+  const Db = {
+    containers: ()                       => request('GET',  '/manage/db/containers'),
+    query:      (container, query, maxItems) =>
+                                            request('POST', '/manage/db/query', { container, query, maxItems }),
+  };
+
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Admin, AdminBackend, Db };
 })();
