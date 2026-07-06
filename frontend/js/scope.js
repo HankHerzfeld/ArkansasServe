@@ -87,8 +87,15 @@ const Scope = (() => {
       const orgId = user.organizationId || user.tenantId;
       let tenant = null;
       try { tenant = (await Api.AdminBackend.context()).tenant; } catch { /* keep null */ }
+      let groups = mapGroups(tenant?.groups);
+      // Group/Event admins (below OrganizationAdmin) only see the groups they
+      // administer; an OrganizationAdmin manages all of the org's groups.
+      if (Auth.adminRank(level) < Auth.adminRank('OrganizationAdmin') && (user.groupIds || []).length) {
+        const own = new Set(user.groupIds);
+        groups = groups.filter(g => own.has(g.id));
+      }
       state.orgs = orgId
-        ? [{ id: orgId, name: tenant?.name || orgId, groups: mapGroups(tenant?.groups), raw: tenant }]
+        ? [{ id: orgId, name: tenant?.name || orgId, groups, raw: tenant }]
         : [];
     } else {
       // Students have no admin scope to denote or switch.

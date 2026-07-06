@@ -46,6 +46,11 @@ public class Event : CosmosDocument
 	[JsonPropertyName("category")]
 	public string? Category { get; set; }
 
+	// Optional nested-group association within the organization, used to scope
+	// which events a GroupAdmin (and the group switcher) sees.
+	[JsonPropertyName("groupId")]
+	public string? GroupId { get; set; }
+
 	[JsonPropertyName("createdByUserId")]
 	public string CreatedByUserId { get; set; } = string.Empty;
 }

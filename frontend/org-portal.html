@@ -88,6 +88,10 @@
       </div>
     </div>
     <div class="form-group">
+      <label>Group (optional)</label>
+      <select id="evt-group"><option value="">No group</option></select>
+    </div>
+    <div class="form-group">
       <label>Event Photo (optional)</label>
       <input type="file" id="evt-photo" accept="image/*">
       <div id="upload-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.4rem;">Uploading…</div>
@@ -148,7 +152,7 @@
 
   async function loadOrgEvents() {
     try {
-      orgEvents = await Api.Events.listOrgEvents(Scope.activeOrgId);
+      orgEvents = await Api.Events.listOrgEvents(Scope.activeOrgId, Scope.activeGroupId);
       document.getElementById('events-loading').style.display = 'none';
       renderOrgEvents(orgEvents);
     } catch (err) {
@@ -222,6 +226,21 @@
     document.getElementById('evt-slots').value       = evt?.maxSlots ?? 0;
     document.getElementById('evt-category').value    = evt?.category || '';
     document.getElementById('evt-photo-url').value   = evt?.photoUrl || '';
+
+    const groupSel = document.getElementById('evt-group');
+    groupSel.innerHTML = '';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = 'No group';
+    groupSel.appendChild(noneOpt);
+    (Scope.activeGroups() || []).forEach(g => {
+      const o = document.createElement('option');
+      o.value = g.id;
+      o.textContent = g.name;
+      groupSel.appendChild(o);
+    });
+    groupSel.value = evt?.groupId || '';
+
     document.getElementById('event-form-error').style.display = 'none';
     document.getElementById('event-modal').classList.add('open');
   }
@@ -269,6 +288,7 @@
       hoursValue:    Number(document.getElementById('evt-hours').value),
       maxSlots:      Number(document.getElementById('evt-slots').value),
       category:      document.getElementById('evt-category').value,
+      groupId:       document.getElementById('evt-group').value || null,
       photoUrl:      document.getElementById('evt-photo-url').value,
     };
     const editId = document.getElementById('edit-event-id').value;
@@ -277,7 +297,7 @@
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
       if (editId) await Api.Events.update(editId, { ...payload, organizationId: orgId });
-      else        await Api.Events.create(payload);
+      else        await Api.Events.create({ ...payload, organizationId: Scope.activeOrgId });
       document.getElementById('event-modal').classList.remove('open');
       loadOrgEvents();
     } catch (err) {

@@ -103,6 +103,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		existing.EligibleSchoolIds = body.EligibleSchoolIds;
 		existing.PhotoUrl = body.PhotoUrl;
 		existing.Category = body.Category;
+		existing.GroupId = body.GroupId;
 		existing.Status = body.Status;
 
 		var updated = await cosmos.UpdateEventAsync(existing);
@@ -145,14 +146,44 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
 		if (ctx == null) return authError!;
 
+		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+
 		// A PlatformAdmin may target any org via ?organizationId=; everyone else is
 		// pinned to their own org.
-		var requestedOrg = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["organizationId"];
+		var requestedOrg = query["organizationId"];
 		var orgId = ctx.IsPlatformAdmin && !string.IsNullOrWhiteSpace(requestedOrg)
 			? requestedOrg
 			: ctx.TenantId;
 
 		var events = await cosmos.GetEventsByOrgAsync(orgId);
+
+		// Narrow to the caller's granular scope. Enforcement is opt-in: an admin
+		// with no assigned events/groups sees the whole org (nothing configured
+		// yet); assigned EventAdmins/GroupAdmins are restricted to theirs.
+		var actor = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
+		var adminLevel = actor?.AdminLevel ?? string.Empty;
+		var requestedGroup = query["groupId"];
+
+		if (string.Equals(adminLevel, "EventAdmin", StringComparison.OrdinalIgnoreCase) && actor!.EventAdminEventIds.Count > 0)
+		{
+			var allowed = new HashSet<string>(actor.EventAdminEventIds);
+			events = events.Where(e => allowed.Contains(e.Id)).ToList();
+		}
+		else if (string.Equals(adminLevel, "GroupAdmin", StringComparison.OrdinalIgnoreCase) && actor!.GroupIds.Count > 0)
+		{
+			// A GroupAdmin only ever sees their own groups; an out-of-scope
+			// ?groupId is ignored rather than honored.
+			var allowed = !string.IsNullOrWhiteSpace(requestedGroup) && actor.GroupIds.Contains(requestedGroup)
+				? new HashSet<string> { requestedGroup }
+				: new HashSet<string>(actor.GroupIds);
+			events = events.Where(e => e.GroupId != null && allowed.Contains(e.GroupId)).ToList();
+		}
+		else if (!string.IsNullOrWhiteSpace(requestedGroup))
+		{
+			// OrganizationAdmin / SuperAdmin narrowing to a group via the switcher.
+			events = events.Where(e => e.GroupId == requestedGroup).ToList();
+		}
+
 		return await HttpHelper.OkJson(req, events);
 	}
 
