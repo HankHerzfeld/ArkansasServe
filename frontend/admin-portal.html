@@ -11,6 +11,7 @@
 <nav class="navbar">
   <a class="navbar-brand" href="/">Arkansas Serve</a>
   <ul class="navbar-links">
+    <li><a class="btn btn-secondary btn-sm" href="/dashboard.html">⌂ Dashboard</a></li>
     <li><a href="/admin-portal.html">Approvals</a></li>
     <li><span class="navbar-user" id="nav-user-name"></span></li>
     <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
@@ -59,6 +60,52 @@
       <tbody id="approvals-tbody"></tbody>
     </table>
   </div>
+
+  <!-- Service-hour report -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem;">
+      <div class="card-title" style="margin:0;">Service-Hour Report</div>
+      <div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;">
+          <label style="font-size:.8rem;">From</label>
+          <input type="date" id="report-from">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label style="font-size:.8rem;">To</label>
+          <input type="date" id="report-to">
+        </div>
+        <button class="btn btn-primary btn-sm" id="report-run">Run</button>
+        <button class="btn btn-secondary btn-sm" id="report-clear">Clear</button>
+      </div>
+    </div>
+
+    <div id="report-loading" class="loading-state" style="display:none;"><div class="spinner"></div></div>
+    <div id="report-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
+      No students found for your school yet.
+    </div>
+
+    <div id="report-content" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem;">
+        <div id="report-summary-line" style="font-size:.85rem;color:var(--gray-600);"></div>
+        <div style="display:flex;gap:.5rem;">
+          <button class="btn btn-secondary btn-sm" id="export-summary">Export summary (CSV)</button>
+          <button class="btn btn-secondary btn-sm" id="export-detail">Export detail (CSV)</button>
+        </div>
+      </div>
+      <table class="table" id="report-table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Grade</th>
+            <th>Approved Hours</th>
+            <th>Pending Hours</th>
+            <th>Events</th>
+          </tr>
+        </thead>
+        <tbody id="report-tbody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <!-- Review modal -->
@@ -90,7 +137,10 @@
 
   Auth.requireAuth('SchoolAdmin').then((p) => {
     profile = p;
-    if (profile) loadApprovals();
+    if (profile) {
+      loadApprovals();
+      loadReport();
+    }
   });
 
   async function loadApprovals() {
@@ -214,6 +264,120 @@
 
   document.getElementById('review-approve').addEventListener('click', () => submitReview('Approved'));
   document.getElementById('review-reject').addEventListener('click',  () => submitReview('Rejected'));
+
+  // ── Service-hour report ───────────────────────────────────────────────────
+  let lastReport = null;
+
+  async function loadReport() {
+    const loading = document.getElementById('report-loading');
+    const empty   = document.getElementById('report-empty');
+    const content = document.getElementById('report-content');
+    loading.style.display = 'block';
+    empty.style.display   = 'none';
+    content.style.display = 'none';
+
+    try {
+      const from = document.getElementById('report-from').value || null;
+      const to   = document.getElementById('report-to').value   || null;
+      const report = await Api.Reports.serviceHours({ from, to });
+      lastReport = report;
+      loading.style.display = 'none';
+
+      const students = report.students || [];
+      if (students.length === 0) {
+        empty.style.display = 'block';
+        empty.textContent = 'No students found for your school yet.';
+        return;
+      }
+
+      const tbody = document.getElementById('report-tbody');
+      tbody.innerHTML = '';
+      let totalApproved = 0, totalPending = 0;
+      students.forEach(s => {
+        totalApproved += s.approvedHours;
+        totalPending  += s.pendingHours;
+
+        const tr = document.createElement('tr');
+        appendCell(tr, s.name, true);
+        appendCell(tr, s.grade || '—');
+        appendCell(tr, s.approvedHours.toFixed(1));
+        appendCell(tr, s.pendingHours.toFixed(1));
+        appendCell(tr, String(s.eventsAttended));
+        tbody.appendChild(tr);
+      });
+
+      const range = (report.from || report.to)
+        ? `${report.from ? new Date(report.from).toLocaleDateString() : '—'} → ${report.to ? new Date(report.to).toLocaleDateString() : '—'}`
+        : 'All time';
+      document.getElementById('report-summary-line').textContent =
+        `${students.length} students · ${totalApproved.toFixed(1)} approved hrs · ${totalPending.toFixed(1)} pending · ${range}`;
+
+      content.style.display = 'block';
+    } catch (err) {
+      loading.style.display = 'none';
+      empty.style.display = 'block';
+      empty.textContent = 'Could not load the report. Please try again.';
+    }
+  }
+
+  function appendCell(tr, text, bold) {
+    const td = document.createElement('td');
+    if (bold) {
+      const strong = document.createElement('strong');
+      strong.textContent = text;
+      td.appendChild(strong);
+    } else {
+      td.textContent = text;
+    }
+    tr.appendChild(td);
+  }
+
+  // ── CSV export ────────────────────────────────────────────────────────────
+  function toCsv(rows) {
+    return rows.map(row => row.map(cell => {
+      const v = cell == null ? '' : String(cell);
+      return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    }).join(',')).join('\r\n');
+  }
+
+  function downloadCsv(filename, csv) {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function stamp() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  document.getElementById('report-run').addEventListener('click', loadReport);
+  document.getElementById('report-clear').addEventListener('click', () => {
+    document.getElementById('report-from').value = '';
+    document.getElementById('report-to').value   = '';
+    loadReport();
+  });
+
+  document.getElementById('export-summary').addEventListener('click', () => {
+    if (!lastReport) return;
+    const rows = [['Student', 'Grade', 'Email', 'Approved Hours', 'Pending Hours', 'Events Attended']];
+    (lastReport.students || []).forEach(s =>
+      rows.push([s.name, s.grade || '', s.email || '', s.approvedHours, s.pendingHours, s.eventsAttended]));
+    downloadCsv(`service-hours-summary-${stamp()}.csv`, toCsv(rows));
+  });
+
+  document.getElementById('export-detail').addEventListener('click', () => {
+    if (!lastReport) return;
+    const rows = [['Student', 'Event', 'Organization', 'Service Date', 'Hours']];
+    (lastReport.logs || []).forEach(l =>
+      rows.push([l.studentName, l.eventTitle, l.organizationName, new Date(l.serviceDate).toLocaleDateString(), l.hoursLogged]));
+    downloadCsv(`service-hours-detail-${stamp()}.csv`, toCsv(rows));
+  });
 </script>
 </body>
 </html>

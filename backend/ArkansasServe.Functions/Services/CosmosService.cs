@@ -396,6 +396,20 @@ public partial class CosmosService
         return results.OrderByDescending(l => l.ServiceDate).ToList();
     }
 
+    // Cross-partition read: ServiceLogs is partitioned by studentId, so a school-wide
+    // report (roster + hours) reads across partitions filtered on schoolId.
+    public async Task<List<ServiceLog>> GetServiceLogsBySchoolAsync(string schoolId, CancellationToken cancellationToken = default)
+    {
+        var query = ServiceLogs.GetItemLinqQueryable<ServiceLog>()
+            .Where(l => l.SchoolId == schoolId)
+            .ToFeedIterator();
+
+        var results = new List<ServiceLog>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+        return results.OrderByDescending(l => l.ServiceDate).ToList();
+    }
+
     // ── PendingApprovals ──────────────────────────────────────────────────────
 
     public async Task<PendingApproval> CreatePendingApprovalAsync(PendingApproval approval, CancellationToken cancellationToken = default)
@@ -460,6 +474,27 @@ public partial class CosmosService
         while (query.HasMoreResults)
             results.AddRange(await query.ReadNextAsync(cancellationToken));
         return results;
+    }
+
+    // Marks a single notification read. Scoped to userId (the partition key), so a
+    // caller can only ever mark their own. Returns null when it does not exist.
+    public async Task<Notification?> MarkNotificationReadAsync(string id, string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await Notifications.ReadItemAsync<Notification>(id, new PartitionKey(userId), cancellationToken: cancellationToken);
+            var notification = response.Resource;
+            if (notification.IsRead) return notification;
+
+            notification.IsRead = true;
+            notification.UpdatedAt = DateTime.UtcNow;
+            var updated = await Notifications.ReplaceItemAsync(notification, id, new PartitionKey(userId), cancellationToken: cancellationToken);
+            return updated.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
     }
 
     // ── Tenants ───────────────────────────────────────────────────────────────

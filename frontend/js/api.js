@@ -97,6 +97,26 @@ const Api = (() => {
     list: () => request('GET', '/approvals'),
   };
 
+  // ── Reports ───────────────────────────────────────────────────────────────
+  const Reports = {
+    // SchoolAdmin: schoolId is derived server-side from the token (ignored here).
+    // PlatformAdmin: pass { schoolId } to target a specific school.
+    serviceHours: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.schoolId) qs.set('schoolId', params.schoolId);
+      if (params.from)     qs.set('from', params.from);
+      if (params.to)       qs.set('to', params.to);
+      const q = qs.toString();
+      return request('GET', `/admin/reports/service-hours${q ? `?${q}` : ''}`);
+    },
+  };
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  const Notifications = {
+    list:     ()   => request('GET',   '/notifications'),
+    markRead: (id) => request('PATCH', `/notifications/${encodeURIComponent(id)}`, { isRead: true }),
+  };
+
   // ── Admin ─────────────────────────────────────────────────────────────────
   const Admin = {
     getTenants:    ()     => request('GET',  '/admin/tenants'),
@@ -115,5 +135,5 @@ const Api = (() => {
     resetDemoUsers:   ()                        => request('POST', '/admin/backend/demo-users/reset'),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Admin, AdminBackend };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Admin, AdminBackend };
 })();
