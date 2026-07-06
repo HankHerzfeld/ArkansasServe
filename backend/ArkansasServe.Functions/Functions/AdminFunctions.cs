@@ -92,7 +92,12 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (!HasAdminAccess(actor))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
-		var tenantId = actor.OrganizationId ?? actor.TenantId;
+		// A SuperAdmin may target any tenant via ?tenantId=; everyone else is
+		// pinned to their own organization.
+		var requestedTenant = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["tenantId"];
+		var tenantId = IsSuperAdmin(actor) && !string.IsNullOrWhiteSpace(requestedTenant)
+			? requestedTenant
+			: actor.OrganizationId ?? actor.TenantId;
 		if (string.IsNullOrWhiteSpace(tenantId))
 			return await HttpHelper.OkJson(req, Array.Empty<User>());
 

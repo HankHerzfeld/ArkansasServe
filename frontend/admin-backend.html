@@ -23,6 +23,17 @@
     <p id="scope-summary">Loading admin scope...</p>
   </div>
 
+  <div class="card" id="tenant-selector-card" style="display:none;">
+    <div class="card-title">Manage Organization (SuperAdmin)</div>
+    <p style="color:var(--gray-600);font-size:.9rem;">
+      Choose which tenant's settings, groups, and users to manage below.
+    </p>
+    <div class="form-group" style="margin:0;max-width:28rem;">
+      <label for="tenant-select">Tenant</label>
+      <select id="tenant-select"></select>
+    </div>
+  </div>
+
   <div class="card" id="tenant-settings-card" style="display:none;">
     <div class="card-title">Organization Settings</div>
     <div class="form-group">
@@ -148,6 +159,8 @@
     currentUser: null,
     users: [],
     groups: [],
+    tenants: [],
+    isSuperAdmin: false,
   };
 
   const adminLevels = ['Student', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
@@ -190,37 +203,89 @@
     const profile = await Auth.requireAuth();
     if (!profile) return;
 
+    // Only a genuine context/auth failure should bounce to the dashboard —
+    // a failing sub-section (groups/users) must not redirect the whole page.
+    let context;
     try {
-      const context = await Api.AdminBackend.context();
-      state.currentUser = context.user;
-      state.tenantId = context.user.organizationId || context.user.tenantId;
-
-      const level = context.user.adminLevel || 'Student';
-      if (userRank(level) === 0) {
-        window.location.href = '/dashboard.html';
-        return;
-      }
-
-      document.getElementById('scope-summary').textContent = `Signed in as ${level} for organization ${state.tenantId}.`;
-      showAdminSections();
-
-      if (context.tenant) {
-        document.getElementById('tenant-name').value = context.tenant.name || '';
-        document.getElementById('tenant-status').value = context.tenant.status || 'active';
-        document.getElementById('tenant-rbac').checked = !!context.tenant.rbacEnabled;
-      }
-
-      if (context.canManageDemoUsers) {
-        document.getElementById('demo-users-card').style.display = 'block';
-        await loadDemoUsers();
-        await initDbConsole();
-      }
-
-      await loadGroups();
-      await loadUsers();
+      context = await Api.AdminBackend.context();
     } catch (err) {
       window.location.href = '/dashboard.html';
+      return;
     }
+
+    state.currentUser = context.user;
+    const level = context.user.adminLevel || 'Student';
+    if (userRank(level) === 0) {
+      window.location.href = '/dashboard.html';
+      return;
+    }
+
+    state.isSuperAdmin = !!context.canManageDemoUsers;
+    showAdminSections();
+
+    if (state.isSuperAdmin) {
+      document.getElementById('demo-users-card').style.display = 'block';
+      await safe(loadDemoUsers);
+      await safe(initDbConsole);
+      // A SuperAdmin's own org is a synthetic platform root with no tenant
+      // document, so they pick which real tenant to manage.
+      await safe(initTenantSelector);
+    } else {
+      state.tenantId = context.user.organizationId || context.user.tenantId;
+      document.getElementById('scope-summary').textContent = `Signed in as ${level} for organization ${state.tenantId}.`;
+      if (context.tenant) populateTenantForm(context.tenant);
+      await safe(loadGroups);
+      await safe(loadUsers);
+    }
+  }
+
+  // Runs a section loader without letting its failure redirect the whole page.
+  async function safe(fn) {
+    try {
+      await fn();
+    } catch (err) {
+      console.error('[admin-backend]', err);
+    }
+  }
+
+  function populateTenantForm(tenant) {
+    document.getElementById('tenant-name').value = tenant.name || '';
+    document.getElementById('tenant-status').value = tenant.status || 'active';
+    document.getElementById('tenant-rbac').checked = !!tenant.rbacEnabled;
+  }
+
+  async function initTenantSelector() {
+    const tenants = await Api.Admin.getTenants();
+    state.tenants = tenants;
+
+    const select = document.getElementById('tenant-select');
+    clearChildren(select);
+
+    if (!tenants.length) {
+      document.getElementById('scope-summary').textContent =
+        'No tenants exist yet. Create one in Platform Admin first.';
+      return;
+    }
+
+    tenants.forEach(t => {
+      const option = document.createElement('option');
+      option.value = t.id;
+      option.textContent = `${t.name} (${t.type})`;
+      select.appendChild(option);
+    });
+
+    document.getElementById('tenant-selector-card').style.display = 'block';
+    await selectTenant(tenants[0].id);
+  }
+
+  async function selectTenant(tenantId) {
+    state.tenantId = tenantId;
+    const tenant = (state.tenants || []).find(t => t.id === tenantId);
+    document.getElementById('scope-summary').textContent =
+      `SuperAdmin — managing ${tenant ? tenant.name : tenantId}.`;
+    if (tenant) populateTenantForm(tenant);
+    await safe(loadGroups);
+    await safe(loadUsers);
   }
 
   async function loadGroups() {
@@ -251,7 +316,7 @@
   }
 
   async function loadUsers() {
-    const users = await Api.AdminBackend.users();
+    const users = await Api.AdminBackend.users(state.tenantId);
     state.users = users;
 
     const table = document.getElementById('users-table');
@@ -356,25 +421,40 @@
 
   document.getElementById('btn-save-tenant').addEventListener('click', async () => {
     const status = document.getElementById('tenant-save-status');
+    if (!state.tenantId) {
+      status.textContent = 'Select a tenant first.';
+      return;
+    }
     status.textContent = 'Saving...';
     try {
-      await Api.AdminBackend.updateTenant(state.tenantId, {
+      const updated = await Api.AdminBackend.updateTenant(state.tenantId, {
         name: document.getElementById('tenant-name').value.trim(),
         status: document.getElementById('tenant-status').value,
         rbacEnabled: document.getElementById('tenant-rbac').checked,
       });
+      const idx = (state.tenants || []).findIndex(t => t.id === state.tenantId);
+      if (idx >= 0 && updated) state.tenants[idx] = updated;
       status.textContent = 'Saved';
-    } catch {
-      status.textContent = 'Failed';
+    } catch (err) {
+      status.textContent = err.message || 'Failed';
     }
   });
 
   document.getElementById('btn-add-group').addEventListener('click', async () => {
     const name = document.getElementById('new-group-name').value.trim();
     if (!name) return;
-    await Api.AdminBackend.createTenantGroup(state.tenantId, { name, status: 'active' });
-    document.getElementById('new-group-name').value = '';
-    await loadGroups();
+    if (!state.tenantId) return;
+    const btn = document.getElementById('btn-add-group');
+    btn.disabled = true;
+    try {
+      await Api.AdminBackend.createTenantGroup(state.tenantId, { name, status: 'active' });
+      document.getElementById('new-group-name').value = '';
+      await loadGroups();
+    } catch (err) {
+      console.error('[admin-backend] add group failed', err);
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   document.getElementById('btn-reset-demo-users').addEventListener('click', async () => {
@@ -427,6 +507,8 @@
       status.textContent = err.message || 'Query failed';
     }
   });
+
+  document.getElementById('tenant-select').addEventListener('change', (e) => selectTenant(e.target.value));
 
   loadContext();
 </script>

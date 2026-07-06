@@ -126,7 +126,7 @@ const Api = (() => {
   // ── Admin Backend ─────────────────────────────────────────────────────────
   const AdminBackend = {
     context:          ()                        => request('GET',  '/manage/backend/context'),
-    users:            ()                        => request('GET',  '/manage/backend/users'),
+    users:            (tenantId)                => request('GET',  `/manage/backend/users${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
     updateUserAccess: (id, data)                => request('PATCH', `/manage/backend/users/${encodeURIComponent(id)}/access`, data),
     tenantGroups:     (tenantId)                => request('GET',  `/manage/backend/tenants/${encodeURIComponent(tenantId)}/groups`),
     createTenantGroup:(tenantId, data)          => request('POST', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/groups`, data),
