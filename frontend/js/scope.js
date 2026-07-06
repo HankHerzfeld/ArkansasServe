@@ -81,17 +81,18 @@ const Scope = (() => {
         id: t.id,
         name: t.name || t.id,
         groups: mapGroups(t.groups),
+        raw: t,
       }));
     } else if (Auth.adminRank(level) > 0) {
       const orgId = user.organizationId || user.tenantId;
       let tenant = null;
       try { tenant = (await Api.AdminBackend.context()).tenant; } catch { /* keep null */ }
       state.orgs = orgId
-        ? [{ id: orgId, name: tenant?.name || orgId, groups: mapGroups(tenant?.groups) }]
+        ? [{ id: orgId, name: tenant?.name || orgId, groups: mapGroups(tenant?.groups), raw: tenant }]
         : [];
     } else {
-      const orgId = user.organizationId || user.tenantId;
-      state.orgs = orgId ? [{ id: orgId, name: orgId, groups: [] }] : [];
+      // Students have no admin scope to denote or switch.
+      state.orgs = [];
     }
 
     const savedOrg = sessionStorage.getItem(KEYS.org);

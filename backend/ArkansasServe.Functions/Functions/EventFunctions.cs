@@ -145,7 +145,14 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
 		if (ctx == null) return authError!;
 
-		var events = await cosmos.GetEventsByOrgAsync(ctx.TenantId);
+		// A PlatformAdmin may target any org via ?organizationId=; everyone else is
+		// pinned to their own org.
+		var requestedOrg = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["organizationId"];
+		var orgId = ctx.IsPlatformAdmin && !string.IsNullOrWhiteSpace(requestedOrg)
+			? requestedOrg
+			: ctx.TenantId;
+
+		var events = await cosmos.GetEventsByOrgAsync(orgId);
 		return await HttpHelper.OkJson(req, events);
 	}
 

@@ -67,7 +67,7 @@ const Api = (() => {
   // ── Events ───────────────────────────────────────────────────────────────
   const Events = {
     list:          ()           => request('GET',  '/events'),
-    listOrgEvents: ()           => request('GET',  '/org/events'),
+    listOrgEvents: (orgId)      => request('GET',  `/org/events${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
     get:           (id, orgId)  => request('GET',  `/events/${encodeURIComponent(id)}${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
     create:        (data)       => request('POST', '/events', data),
     update:        (id, data)   => request('PUT',  `/events/${encodeURIComponent(id)}`, data),
@@ -94,7 +94,8 @@ const Api = (() => {
 
   // ── Approvals ─────────────────────────────────────────────────────────────
   const Approvals = {
-    list: () => request('GET', '/approvals'),
+    // schoolId is honored for PlatformAdmins; ignored (pinned to own school) otherwise.
+    list: (schoolId) => request('GET', `/approvals${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`),
   };
 
   // ── Reports ───────────────────────────────────────────────────────────────

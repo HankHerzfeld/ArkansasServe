@@ -23,6 +23,8 @@
     <div>
       <h1>Organization Portal</h1>
       <p>Create and manage your volunteer events, then log attendance after each one.</p>
+      <div id="scope-bar" style="margin-top:.35rem;"></div>
+      <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
     </div>
     <button class="btn btn-primary" id="btn-new-event">+ New Event</button>
   </div>
@@ -127,20 +129,26 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
 <script>
   Auth.init();
   let profile = null;
   let orgEvents = [];
   let activeLogEventId = null;
 
-  Auth.requireAuth('OrgStaff').then((p) => {
+  Auth.requireAuth('OrgStaff').then(async (p) => {
     profile = p;
-    if (profile) loadOrgEvents();
+    if (!profile) return;
+    await UI.setupHeader('/org-portal.html');
+    // Reload the event list when a SuperAdmin switches the active organization.
+    Scope.onChange(() => loadOrgEvents());
+    loadOrgEvents();
   });
 
   async function loadOrgEvents() {
     try {
-      orgEvents = await Api.Events.listOrgEvents();
+      orgEvents = await Api.Events.listOrgEvents(Scope.activeOrgId);
       document.getElementById('events-loading').style.display = 'none';
       renderOrgEvents(orgEvents);
     } catch (err) {
