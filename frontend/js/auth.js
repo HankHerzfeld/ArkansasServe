@@ -42,6 +42,7 @@ const Auth = (() => {
   const KEYS = {
     appRole:     'as_app_role',
     lastLoginAt: 'as_last_login_at',
+    adminLevel:  'as_admin_level',
   };
 
   // ── Role model (unchanged from previous implementation) ───────────────────
@@ -57,6 +58,36 @@ const Auth = (() => {
     if (adminLevel === 'OrganizationAdmin') return 'SchoolAdmin';
     if (adminLevel === 'GroupAdmin' || adminLevel === 'EventAdmin') return 'OrgStaff';
     return 'Student';
+  }
+
+  // ── Granular 5-level admin model ──────────────────────────────────────────
+  const ADMIN_RANK = Object.freeze({
+    Student: 0,
+    EventAdmin: 1,
+    GroupAdmin: 2,
+    OrganizationAdmin: 3,
+    SuperAdmin: 4,
+  });
+
+  // Floor mapping when only the legacy role is known (e.g. before /users/me
+  // has resolved the precise adminLevel).
+  function mapRoleToAdminLevel(role) {
+    if (role === 'PlatformAdmin') return 'SuperAdmin';
+    if (role === 'SchoolAdmin') return 'OrganizationAdmin';
+    if (role === 'OrgStaff') return 'EventAdmin';
+    return 'Student';
+  }
+
+  function adminRank(level) {
+    return Object.hasOwn(ADMIN_RANK, level) ? ADMIN_RANK[level] : 0;
+  }
+
+  // Resolved adminLevel: the precise value cached from /users/me if present,
+  // otherwise a floor derived from the token's legacy role.
+  function getAdminLevel() {
+    const cached = sessionStorage.getItem(KEYS.adminLevel);
+    if (cached && Object.hasOwn(ADMIN_RANK, cached)) return cached;
+    return mapRoleToAdminLevel(getProfile()?.role);
   }
 
   function normalizeRole(role) {
@@ -227,6 +258,9 @@ const Auth = (() => {
     if (!user) return;
     const roleFromUser = user.role || mapAdminLevelToRole(user.adminLevel);
     sessionStorage.setItem(KEYS.appRole, normalizeRole(roleFromUser));
+    if (user.adminLevel && Object.hasOwn(ADMIN_RANK, user.adminLevel)) {
+      sessionStorage.setItem(KEYS.adminLevel, user.adminLevel);
+    }
   }
 
   function isAuthenticated() {
@@ -242,7 +276,10 @@ const Auth = (() => {
       return null;
     }
     const profile = getProfile();
-    if (requiredRole && profile?.role !== requiredRole && profile?.role !== 'PlatformAdmin') {
+    // Rank-based: a higher role satisfies a lower requirement (the hierarchy
+    // must hold, e.g. a SchoolAdmin can use OrgStaff pages). PlatformAdmin, the
+    // top rank, still clears everything.
+    if (requiredRole && ROLE_RANK[normalizeRole(profile?.role)] < ROLE_RANK[normalizeRole(requiredRole)]) {
       window.location.href = '/dashboard.html';
       return null;
     }
@@ -275,6 +312,8 @@ const Auth = (() => {
     getProfile,
     getAccessToken,
     setResolvedRoleFromUser,
+    getAdminLevel,
+    adminRank,
     clearSession,
     getLastLoginAttemptAt,
     init,

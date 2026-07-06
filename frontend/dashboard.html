@@ -22,13 +22,8 @@
   <div class="page-header">
     <h1 id="greeting">My Dashboard</h1>
     <p>Track your community service hours and upcoming events.</p>
-    <div id="admin-backend-action" style="display:none;margin-top:.75rem;">
-      <a class="btn btn-primary btn-sm" href="/admin-backend.html">Open Admin Backend</a>
-    </div>
-    <div class="superadmin-actions" id="superadmin-actions">
-      <a class="btn btn-primary btn-sm" href="/platform-admin.html">Open Platform Admin</a>
-      <a class="btn btn-secondary btn-sm" href="/events.html">Manage Events</a>
-    </div>
+    <div id="scope-bar" style="margin-top:.5rem;"></div>
+    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;"></div>
   </div>
 
   <!-- Stats -->
@@ -79,6 +74,8 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
 <script>
   Auth.init();
   Auth.requireAuth().then((profile) => {
@@ -108,11 +105,14 @@
         loadNotifications();
         const adminLevel = toAdminLevel(currentUser);
 
+        UI.renderConnectors(document.getElementById('role-actions'), adminLevel, '/dashboard.html');
         if ((rank[adminLevel] || 0) > 0) {
-          document.getElementById('admin-backend-action').style.display = 'block';
-        }
-        if (adminLevel === 'SuperAdmin') {
-          document.getElementById('superadmin-actions').style.display = 'flex';
+          try {
+            await Scope.init(currentUser);
+            UI.mountScopeBar(document.getElementById('scope-bar'));
+          } catch (err) {
+            console.error('[dashboard] scope init failed', err);
+          }
         }
 
         if (adminLevel !== 'Student') {
