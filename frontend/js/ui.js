@@ -98,5 +98,24 @@ const UI = (() => {
     renderScopeBar(container, Scope.snapshot());
   }
 
-  return { renderConnectors, renderScopeBar, mountScopeBar };
+  // One call to wire a page's header: role-gated connectors into #role-actions
+  // (if present) and, for admins, the scope bar into #scope-bar (if present).
+  // Resolves once Scope is ready, so callers can then register Scope.onChange.
+  async function setupHeader(current, currentUser) {
+    const actions = document.getElementById('role-actions');
+    const level = Auth.getAdminLevel();
+    if (actions) renderConnectors(actions, level, current);
+
+    const scopeBar = document.getElementById('scope-bar');
+    if (scopeBar && Auth.adminRank(level) > 0) {
+      try {
+        await Scope.init(currentUser);
+        mountScopeBar(scopeBar);
+      } catch (err) {
+        console.error('[ui] scope init failed', err);
+      }
+    }
+  }
+
+  return { renderConnectors, renderScopeBar, mountScopeBar, setupHeader };
 })();

@@ -22,6 +22,8 @@
   <div class="page-header">
     <h1>School Admin Portal</h1>
     <p>Review and approve service hours submitted for your students.</p>
+    <div id="scope-bar" style="margin-top:.35rem;"></div>
+    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
   </div>
 
   <!-- Stats -->
@@ -129,18 +131,22 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
 <script>
   Auth.init();
   let profile = null;
   let activeApproval = null;
   let approvedTodayCount = 0;
 
-  Auth.requireAuth('SchoolAdmin').then((p) => {
+  Auth.requireAuth('SchoolAdmin').then(async (p) => {
     profile = p;
-    if (profile) {
-      loadApprovals();
-      loadReport();
-    }
+    if (!profile) return;
+    await UI.setupHeader('/admin-portal.html');
+    // Reload when a SuperAdmin switches the active organization.
+    Scope.onChange(() => { loadApprovals(); loadReport(); });
+    loadApprovals();
+    loadReport();
   });
 
   async function loadApprovals() {
@@ -149,7 +155,7 @@
     document.getElementById('approvals-empty').style.display   = 'none';
 
     try {
-      const approvals = await Api.Approvals.list();
+      const approvals = await Api.Approvals.list(Scope.activeOrgId);
       document.getElementById('approvals-loading').style.display = 'none';
       document.getElementById('stat-pending').textContent = approvals.length;
       document.getElementById('stat-approved-today').textContent = approvedTodayCount;
@@ -279,7 +285,7 @@
     try {
       const from = document.getElementById('report-from').value || null;
       const to   = document.getElementById('report-to').value   || null;
-      const report = await Api.Reports.serviceHours({ from, to });
+      const report = await Api.Reports.serviceHours({ from, to, schoolId: Scope.activeOrgId });
       lastReport = report;
       loading.style.display = 'none';
 

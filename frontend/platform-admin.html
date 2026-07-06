@@ -23,6 +23,7 @@
   <div class="page-header">
     <h1>Platform Admin</h1>
     <p>Manage all schools, JDCs, and community organizations on Arkansas Serve.</p>
+    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
   </div>
 
   <!-- Tab bar -->
@@ -140,10 +141,13 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
 <script>
   Auth.init();
   Auth.requireAuth('PlatformAdmin').then((profile) => {
     if (!profile) return;
+    UI.setupHeader('/platform-admin.html');
     loadTenants();
     setupTabs();
   });

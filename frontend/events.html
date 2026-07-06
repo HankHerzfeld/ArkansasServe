@@ -22,6 +22,7 @@
   <div class="page-header">
     <h1>Upcoming Events</h1>
     <p>Find volunteer opportunities in your community.</p>
+    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
   </div>
 
   <!-- Filter bar -->
@@ -63,6 +64,8 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
 <script>
   Auth.init();
   let profile = null;
@@ -72,7 +75,9 @@
 
   Auth.requireAuth().then((p) => {
     profile = p;
-    if (profile) loadEvents();
+    if (!profile) return;
+    UI.setupHeader('/events.html');
+    loadEvents();
   });
 
   async function loadEvents() {
