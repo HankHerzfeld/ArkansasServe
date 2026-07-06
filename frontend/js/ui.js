@@ -47,7 +47,7 @@ const UI = (() => {
     return sel;
   }
 
-  function renderScopeBar(container, snap) {
+  function renderScopeBar(container, snap, showGroups = true) {
     if (!container) return;
     container.innerHTML = '';
     // Nothing to denote for students / users with no admin scope.
@@ -76,7 +76,7 @@ const UI = (() => {
 
     // Group — a switcher (with an "all groups" option) when the org has groups.
     const groups = snap.org.groups || [];
-    if (groups.length) {
+    if (showGroups && groups.length) {
       const sep = document.createElement('span');
       sep.textContent = '›';
       sep.style.color = 'var(--gray-400)';
@@ -92,16 +92,16 @@ const UI = (() => {
   }
 
   // Renders the scope bar now and re-renders whenever the active scope changes.
-  function mountScopeBar(container) {
+  function mountScopeBar(container, showGroups = true) {
     if (!container) return;
-    Scope.onChange((snap) => renderScopeBar(container, snap));
-    renderScopeBar(container, Scope.snapshot());
+    Scope.onChange((snap) => renderScopeBar(container, snap, showGroups));
+    renderScopeBar(container, Scope.snapshot(), showGroups);
   }
 
   // One call to wire a page's header: role-gated connectors into #role-actions
   // (if present) and, for admins, the scope bar into #scope-bar (if present).
   // Resolves once Scope is ready, so callers can then register Scope.onChange.
-  async function setupHeader(current, currentUser) {
+  async function setupHeader(current, currentUser, opts = {}) {
     const actions = document.getElementById('role-actions');
     const level = Auth.getAdminLevel();
     if (actions) renderConnectors(actions, level, current);
@@ -110,7 +110,7 @@ const UI = (() => {
     if (scopeBar && Auth.adminRank(level) > 0) {
       try {
         await Scope.init(currentUser);
-        mountScopeBar(scopeBar);
+        mountScopeBar(scopeBar, opts.showGroups !== false);
       } catch (err) {
         console.error('[ui] scope init failed', err);
       }

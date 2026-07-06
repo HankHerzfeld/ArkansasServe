@@ -21,17 +21,8 @@
   <div class="page-header">
     <h1>Admin Backend</h1>
     <p id="scope-summary">Loading admin scope...</p>
-  </div>
-
-  <div class="card" id="tenant-selector-card" style="display:none;">
-    <div class="card-title">Manage Organization (SuperAdmin)</div>
-    <p style="color:var(--gray-600);font-size:.9rem;">
-      Choose which tenant's settings, groups, and users to manage below.
-    </p>
-    <div class="form-group" style="margin:0;max-width:28rem;">
-      <label for="tenant-select">Tenant</label>
-      <select id="tenant-select"></select>
-    </div>
+    <div id="scope-bar" style="margin-top:.35rem;"></div>
+    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
   </div>
 
   <div class="card" id="tenant-settings-card" style="display:none;">
@@ -149,6 +140,8 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
 <script>
   'use strict';
 
@@ -159,7 +152,6 @@
     currentUser: null,
     users: [],
     groups: [],
-    tenants: [],
     isSuperAdmin: false,
   };
 
@@ -227,16 +219,32 @@
       document.getElementById('demo-users-card').style.display = 'block';
       await safe(loadDemoUsers);
       await safe(initDbConsole);
-      // A SuperAdmin's own org is a synthetic platform root with no tenant
-      // document, so they pick which real tenant to manage.
-      await safe(initTenantSelector);
-    } else {
-      state.tenantId = context.user.organizationId || context.user.tenantId;
-      document.getElementById('scope-summary').textContent = `Signed in as ${level} for organization ${state.tenantId}.`;
-      if (context.tenant) populateTenantForm(context.tenant);
-      await safe(loadGroups);
-      await safe(loadUsers);
     }
+
+    // The shared scope switcher chooses which org's settings/groups/users to
+    // manage — a SuperAdmin gets every tenant; an org admin gets their own org.
+    // Groups are managed in full below, so the bar hides its group switcher here.
+    await UI.setupHeader('/admin-backend.html', context.user, { showGroups: false });
+    Scope.onChange(applyScope);
+    applyScope(Scope.snapshot());
+  }
+
+  function applyScope(snap) {
+    const org = snap.org;
+    const summary = document.getElementById('scope-summary');
+    if (!org) {
+      summary.textContent = state.isSuperAdmin
+        ? 'No tenants exist yet. Create one in Platform Admin first.'
+        : 'No organization is associated with your account.';
+      return;
+    }
+    state.tenantId = org.id;
+    summary.textContent = state.isSuperAdmin
+      ? `Managing ${org.name}.`
+      : `Signed in as ${state.currentUser?.adminLevel || 'Admin'} for ${org.name}.`;
+    if (org.raw) populateTenantForm(org.raw);
+    safe(loadGroups);
+    safe(loadUsers);
   }
 
   // Runs a section loader without letting its failure redirect the whole page.
@@ -252,40 +260,6 @@
     document.getElementById('tenant-name').value = tenant.name || '';
     document.getElementById('tenant-status').value = tenant.status || 'active';
     document.getElementById('tenant-rbac').checked = !!tenant.rbacEnabled;
-  }
-
-  async function initTenantSelector() {
-    const tenants = await Api.Admin.getTenants();
-    state.tenants = tenants;
-
-    const select = document.getElementById('tenant-select');
-    clearChildren(select);
-
-    if (!tenants.length) {
-      document.getElementById('scope-summary').textContent =
-        'No tenants exist yet. Create one in Platform Admin first.';
-      return;
-    }
-
-    tenants.forEach(t => {
-      const option = document.createElement('option');
-      option.value = t.id;
-      option.textContent = `${t.name} (${t.type})`;
-      select.appendChild(option);
-    });
-
-    document.getElementById('tenant-selector-card').style.display = 'block';
-    await selectTenant(tenants[0].id);
-  }
-
-  async function selectTenant(tenantId) {
-    state.tenantId = tenantId;
-    const tenant = (state.tenants || []).find(t => t.id === tenantId);
-    document.getElementById('scope-summary').textContent =
-      `SuperAdmin — managing ${tenant ? tenant.name : tenantId}.`;
-    if (tenant) populateTenantForm(tenant);
-    await safe(loadGroups);
-    await safe(loadUsers);
   }
 
   async function loadGroups() {
@@ -432,8 +406,11 @@
         status: document.getElementById('tenant-status').value,
         rbacEnabled: document.getElementById('tenant-rbac').checked,
       });
-      const idx = (state.tenants || []).findIndex(t => t.id === state.tenantId);
-      if (idx >= 0 && updated) state.tenants[idx] = updated;
+      const org = Scope.activeOrg();
+      if (org && updated) {
+        org.raw = updated;
+        if (updated.name) org.name = updated.name;
+      }
       status.textContent = 'Saved';
     } catch (err) {
       status.textContent = err.message || 'Failed';
@@ -507,8 +484,6 @@
       status.textContent = err.message || 'Query failed';
     }
   });
-
-  document.getElementById('tenant-select').addEventListener('change', (e) => selectTenant(e.target.value));
 
   loadContext();
 </script>
