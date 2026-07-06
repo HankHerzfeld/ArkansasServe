@@ -67,7 +67,13 @@ const Api = (() => {
   // ── Events ───────────────────────────────────────────────────────────────
   const Events = {
     list:          ()           => request('GET',  '/events'),
-    listOrgEvents: (orgId)      => request('GET',  `/org/events${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
+    listOrgEvents: (orgId, groupId) => {
+      const qs = new URLSearchParams();
+      if (orgId)   qs.set('organizationId', orgId);
+      if (groupId) qs.set('groupId', groupId);
+      const q = qs.toString();
+      return request('GET', `/org/events${q ? `?${q}` : ''}`);
+    },
     get:           (id, orgId)  => request('GET',  `/events/${encodeURIComponent(id)}${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
     create:        (data)       => request('POST', '/events', data),
     update:        (id, data)   => request('PUT',  `/events/${encodeURIComponent(id)}`, data),
