@@ -106,6 +106,33 @@
     </table>
     <div id="demo-users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No demo users found.</div>
   </div>
+
+  <div class="card" id="db-console-card" style="display:none;">
+    <div class="card-title">Database Console (SuperAdmin Only)</div>
+    <p style="color:var(--gray-600);font-size:.9rem;">
+      Run read-only <code>SELECT</code> queries against a container. The Cosmos SQL API cannot modify data,
+      so this is an inspection tool only. Results are capped (default 50, max 200).
+    </p>
+    <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.75rem;">
+      <div class="form-group" style="margin:0;min-width:12rem;">
+        <label for="db-container">Container</label>
+        <select id="db-container"></select>
+      </div>
+      <div class="form-group" style="margin:0;width:6rem;">
+        <label for="db-max">Max rows</label>
+        <input id="db-max" type="number" min="1" max="200" value="50">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="db-query">Query</label>
+      <textarea id="db-query" rows="3" style="font-family:monospace;">SELECT * FROM c OFFSET 0 LIMIT 50</textarea>
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <button class="btn btn-primary" id="btn-run-query">Run Query</button>
+      <span id="db-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+    </div>
+    <pre id="db-results" style="display:none;margin-top:1rem;padding:1rem;background:var(--gray-100);border-radius:var(--radius);overflow:auto;max-height:24rem;font-size:.8rem;white-space:pre;"></pre>
+  </div>
 </div>
 
 <script src="/js/vendor/msal-browser.min.js"></script>
@@ -186,6 +213,7 @@
       if (context.canManageDemoUsers) {
         document.getElementById('demo-users-card').style.display = 'block';
         await loadDemoUsers();
+        await initDbConsole();
       }
 
       await loadGroups();
@@ -358,6 +386,45 @@
       status.textContent = 'Reset complete';
     } catch {
       status.textContent = 'Reset failed';
+    }
+  });
+
+  // ── Database Console (SuperAdmin) ─────────────────────────────────────────
+  async function initDbConsole() {
+    try {
+      const containers = await Api.Db.containers();
+      const select = document.getElementById('db-container');
+      clearChildren(select);
+      containers.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+      });
+      document.getElementById('db-console-card').style.display = 'block';
+    } catch {
+      // SuperAdmin-only tool; stay hidden if it can't initialize.
+    }
+  }
+
+  document.getElementById('btn-run-query').addEventListener('click', async () => {
+    const status  = document.getElementById('db-status');
+    const results = document.getElementById('db-results');
+    const container = document.getElementById('db-container').value;
+    const query     = document.getElementById('db-query').value.trim();
+    const maxItems  = parseInt(document.getElementById('db-max').value, 10) || 50;
+
+    if (!query) return;
+    status.textContent = 'Running...';
+    results.style.display = 'none';
+
+    try {
+      const res = await Api.Db.query(container, query, maxItems);
+      status.textContent = `${res.count} row(s)`;
+      results.textContent = JSON.stringify(res.rows, null, 2);
+      results.style.display = 'block';
+    } catch (err) {
+      status.textContent = err.message || 'Query failed';
     }
   });
 

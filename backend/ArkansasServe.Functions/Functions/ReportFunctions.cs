@@ -15,7 +15,7 @@ public class ReportFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 	// approved line items in range, for compliance / court-documentation export.
 	[Function("GetServiceHoursReport")]
 	public async Task<HttpResponseData> GetServiceHours(
-		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/reports/service-hours")] HttpRequestData req)
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/reports/service-hours")] HttpRequestData req)
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "SchoolAdmin", "PlatformAdmin");
 		if (ctx == null) return authError!;
