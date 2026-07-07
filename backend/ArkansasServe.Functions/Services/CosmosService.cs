@@ -396,6 +396,20 @@ public partial class CosmosService
         return results.OrderByDescending(l => l.ServiceDate).ToList();
     }
 
+    // Public events across all orgs — so an admin can attach volunteers to a
+    // shared event created by another organization.
+    public async Task<List<Event>> GetPublicEventsAsync(CancellationToken cancellationToken = default)
+    {
+        var query = Events.GetItemLinqQueryable<Event>()
+            .Where(e => e.Visibility == "public")
+            .ToFeedIterator();
+
+        var results = new List<Event>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+        return results;
+    }
+
     // Cross-partition read: ServiceLogs is partitioned by studentId, so a school-wide
     // report (roster + hours) reads across partitions filtered on schoolId.
     public async Task<List<ServiceLog>> GetServiceLogsBySchoolAsync(string schoolId, CancellationToken cancellationToken = default)
