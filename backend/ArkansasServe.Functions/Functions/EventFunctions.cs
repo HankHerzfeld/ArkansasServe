@@ -143,25 +143,24 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 	public async Task<HttpResponseData> GetOrgEvents(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "org/events")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+		var orgId = string.IsNullOrWhiteSpace(query["organizationId"]) ? ctx.TenantId : query["organizationId"]!;
 
-		// A PlatformAdmin may target any org via ?organizationId=; everyone else is
-		// pinned to their own org.
-		var requestedOrg = query["organizationId"];
-		var orgId = ctx.IsPlatformAdmin && !string.IsNullOrWhiteSpace(requestedOrg)
-			? requestedOrg
-			: ctx.TenantId;
+		// Multi-org: authorize by the caller's membership IN THE TARGET ORG (their
+		// role/groups there), not their token org. Requires EventAdmin+ in that org.
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You do not have event access in this organization");
 
 		var events = await cosmos.GetEventsByOrgAsync(orgId);
 
 		// Narrow to the caller's granular scope. Enforcement is opt-in: an admin
 		// with no assigned events/groups sees the whole org (nothing configured
 		// yet); assigned EventAdmins/GroupAdmins are restricted to theirs.
-		var actor = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
-		var adminLevel = actor?.AdminLevel ?? string.Empty;
+		var adminLevel = actor.AdminLevel;
 		var requestedGroup = query["groupId"];
 
 		if (string.Equals(adminLevel, "EventAdmin", StringComparison.OrdinalIgnoreCase) && actor!.EventAdminEventIds.Count > 0)
