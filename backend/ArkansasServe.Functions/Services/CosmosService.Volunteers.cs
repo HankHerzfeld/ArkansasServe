@@ -98,4 +98,35 @@ public partial class CosmosService
 
         return null;
     }
+
+    // Every user document across all orgs — for the SuperAdmin role matrix.
+    public async Task<List<User>> GetAllUsersAsync(CancellationToken cancellationToken = default)
+    {
+        var query = Users.GetItemLinqQueryable<User>().ToFeedIterator();
+        var results = new List<User>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+        return results;
+    }
+
+    // Removes a membership document, tolerating the /id-vs-/tenantId partition quirk.
+    public async Task DeleteUserWithFallbackAsync(string userId, string tenantId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await Users.DeleteItemAsync<User>(userId, new PartitionKey(tenantId), cancellationToken: cancellationToken);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            await Users.DeleteItemAsync<User>(userId, new PartitionKey(userId), cancellationToken: cancellationToken);
+        }
+    }
+
+    // A person is a platform super if their token says so or any membership is SuperAdmin.
+    public async Task<bool> IsGlobalSuperAsync(string externalId, string tokenRole, CancellationToken cancellationToken = default)
+    {
+        if (string.Equals(tokenRole, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return true;
+        var memberships = await GetMembershipsByExternalIdAsync(externalId, cancellationToken);
+        return memberships.Any(m => string.Equals(m.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
+    }
 }

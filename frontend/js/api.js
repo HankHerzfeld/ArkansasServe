@@ -141,6 +141,13 @@ const Api = (() => {
     markRead: (id) => request('PATCH', `/notifications/${encodeURIComponent(id)}`, { isRead: true }),
   };
 
+  // ── Role matrix (SuperAdmin) ──────────────────────────────────────────────
+  const Matrix = {
+    list:     ()                  => request('GET',    '/manage/matrix'),
+    assign:   (data)              => request('POST',   '/manage/backend/memberships', data),
+    unassign: (userId, tenantId)  => request('DELETE', `/manage/backend/memberships/${encodeURIComponent(userId)}?tenantId=${encodeURIComponent(tenantId)}`),
+  };
+
   // ── Admin ─────────────────────────────────────────────────────────────────
   const Admin = {
     getTenants:    ()     => request('GET',  '/manage/tenants'),
@@ -166,5 +173,5 @@ const Api = (() => {
                                             request('POST', '/manage/db/query', { container, query, maxItems }),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Volunteers, Admin, AdminBackend, Db };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Volunteers, Matrix, Admin, AdminBackend, Db };
 })();

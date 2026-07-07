@@ -30,6 +30,7 @@
   <div style="display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid var(--gray-200);padding-bottom:0;">
     <button class="tab-btn active" data-tab="tenants">Tenants</button>
     <button class="tab-btn" data-tab="approvals">All Approvals</button>
+    <button class="tab-btn" data-tab="roles">Roles</button>
   </div>
 
   <!-- ── Tenants tab ─────────────────────────────────────────────────── -->
@@ -74,6 +75,40 @@
         </tr>
       </thead>
       <tbody id="all-approvals-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Roles tab ───────────────────────────────────────────────────── -->
+  <div id="tab-roles" style="display:none;">
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="card-title">Assign a role</div>
+      <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;min-width:13rem;"><label>Email</label><input id="assign-email" type="email"></div>
+        <div class="form-group" style="margin:0;min-width:10rem;"><label>Name (new person)</label><input id="assign-name" type="text"></div>
+        <div class="form-group" style="margin:0;min-width:12rem;"><label>Organization</label><select id="assign-org"></select></div>
+        <div class="form-group" style="margin:0;min-width:11rem;"><label>Level</label><select id="assign-level"></select></div>
+        <div class="form-group" style="margin:0;min-width:10rem;"><label>Group IDs (CSV)</label><input id="assign-groups" type="text"></div>
+        <button class="btn btn-primary" id="btn-assign">Assign</button>
+        <span id="assign-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:.75rem;">
+      <input type="search" id="matrix-search" placeholder="Filter by name, email, or organization…" style="width:100%;max-width:28rem;">
+    </div>
+    <div id="matrix-loading" class="loading-state" style="display:none;"><div class="spinner"></div></div>
+    <div id="matrix-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No assignments yet.</div>
+    <table class="table" id="matrix-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Person</th>
+          <th>Organization</th>
+          <th>Level</th>
+          <th>Groups</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="matrix-tbody"></tbody>
     </table>
   </div>
 </div>
@@ -161,7 +196,9 @@
         const tab = btn.dataset.tab;
         document.getElementById('tab-tenants').style.display   = tab === 'tenants'   ? 'block' : 'none';
         document.getElementById('tab-approvals').style.display = tab === 'approvals' ? 'block' : 'none';
+        document.getElementById('tab-roles').style.display     = tab === 'roles'     ? 'block' : 'none';
         if (tab === 'approvals') loadAllApprovals();
+        if (tab === 'roles') loadMatrix();
       });
     });
   }
@@ -318,6 +355,143 @@
         `<div class="alert alert-error">Could not load approvals.</div>`;
     }
   }
+
+  // ── Role matrix ─────────────────────────────────────────────────────────
+  const LEVELS = ['Student', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
+  let matrixData = [];
+
+  async function loadMatrix() {
+    const loading = document.getElementById('matrix-loading');
+    const empty = document.getElementById('matrix-empty');
+    const table = document.getElementById('matrix-table');
+    loading.style.display = 'block'; empty.style.display = 'none'; table.style.display = 'none';
+
+    try {
+      const levelSel = document.getElementById('assign-level');
+      if (!levelSel.options.length) {
+        LEVELS.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; levelSel.appendChild(o); });
+      }
+      const tenants = await Api.Admin.getTenants();
+      const orgSel = document.getElementById('assign-org');
+      orgSel.innerHTML = '';
+      tenants.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; orgSel.appendChild(o); });
+
+      matrixData = await Api.Matrix.list();
+      loading.style.display = 'none';
+      renderMatrix();
+    } catch (err) {
+      loading.style.display = 'none';
+      empty.style.display = 'block';
+      empty.textContent = 'Could not load the role matrix.';
+    }
+  }
+
+  function renderMatrix() {
+    const table = document.getElementById('matrix-table');
+    const empty = document.getElementById('matrix-empty');
+    const tbody = document.getElementById('matrix-tbody');
+    const q = (document.getElementById('matrix-search').value || '').toLowerCase();
+    tbody.innerHTML = '';
+    let rows = 0;
+
+    matrixData.forEach(person => {
+      (person.memberships || []).forEach(m => {
+        const hay = `${person.displayName} ${person.email} ${m.organizationName} ${m.adminLevel}`.toLowerCase();
+        if (q && !hay.includes(q)) return;
+        rows++;
+
+        const tr = document.createElement('tr');
+
+        const tdP = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = person.displayName || person.email;
+        tdP.appendChild(strong);
+        const sub = document.createElement('div');
+        sub.style.cssText = 'font-size:.8rem;color:var(--gray-600);';
+        sub.textContent = person.email + (person.externalId ? '' : ' · managed');
+        tdP.appendChild(sub);
+        tr.appendChild(tdP);
+
+        appendCell(tr, m.organizationName);
+
+        const tdL = document.createElement('td');
+        const sel = document.createElement('select');
+        sel.style.cssText = 'padding:.2rem .4rem;font-size:.85rem;';
+        LEVELS.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; if (l === m.adminLevel) o.selected = true; sel.appendChild(o); });
+        sel.addEventListener('change', () => changeLevel(person, m, sel));
+        tdL.appendChild(sel);
+        tr.appendChild(tdL);
+
+        appendCell(tr, (m.groupIds || []).join(', '));
+
+        const tdA = document.createElement('td');
+        const rm = document.createElement('button');
+        rm.className = 'btn btn-danger btn-sm';
+        rm.textContent = 'Remove';
+        rm.addEventListener('click', () => removeMembership(m, rm));
+        tdA.appendChild(rm);
+        tr.appendChild(tdA);
+
+        tbody.appendChild(tr);
+      });
+    });
+
+    if (rows === 0) { table.style.display = 'none'; empty.style.display = 'block'; empty.textContent = 'No matching assignments.'; }
+    else { table.style.display = 'table'; empty.style.display = 'none'; }
+  }
+
+  function appendCell(tr, text) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    tr.appendChild(td);
+  }
+
+  async function changeLevel(person, m, sel) {
+    sel.disabled = true;
+    try {
+      await Api.Matrix.assign({ email: person.email, organizationId: m.organizationId, adminLevel: sel.value, externalId: person.externalId || null, groupIds: m.groupIds || [] });
+      m.adminLevel = sel.value;
+    } catch (err) {
+      sel.value = m.adminLevel;
+      console.error('[matrix] assign failed', err);
+    } finally {
+      sel.disabled = false;
+    }
+  }
+
+  async function removeMembership(m, btn) {
+    btn.disabled = true;
+    try {
+      await Api.Matrix.unassign(m.userId, m.organizationId);
+      await loadMatrix();
+    } catch (err) {
+      btn.disabled = false;
+      console.error('[matrix] remove failed', err);
+    }
+  }
+
+  document.getElementById('btn-assign').addEventListener('click', async () => {
+    const status = document.getElementById('assign-status');
+    const email = document.getElementById('assign-email').value.trim();
+    const name  = document.getElementById('assign-name').value.trim();
+    const org   = document.getElementById('assign-org').value;
+    const level = document.getElementById('assign-level').value;
+    const groups = document.getElementById('assign-groups').value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!email || !org || !level) { status.textContent = 'Email, organization, and level are required.'; return; }
+    status.textContent = 'Assigning...';
+    try {
+      await Api.Matrix.assign({ email, displayName: name || undefined, organizationId: org, adminLevel: level, groupIds: groups });
+      status.textContent = 'Assigned';
+      document.getElementById('assign-email').value = '';
+      document.getElementById('assign-name').value = '';
+      document.getElementById('assign-groups').value = '';
+      await loadMatrix();
+    } catch (err) {
+      status.textContent = err.message || 'Failed to assign';
+    }
+  });
+
+  document.getElementById('matrix-search').addEventListener('input', renderMatrix);
 </script>
 </body>
 </html>
