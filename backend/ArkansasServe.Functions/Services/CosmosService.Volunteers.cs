@@ -109,6 +109,45 @@ public partial class CosmosService
         return results;
     }
 
+    // One page of membership documents for the role matrix, filtered server-side
+    // by org and/or a name/email search so the matrix scales past a full-container
+    // scan. When organizationId is set the query is scoped to that partition;
+    // otherwise it pages across partitions with a continuation token. Returns the
+    // page plus the token to fetch the next page (null when the last page).
+    public async Task<(List<User> Items, string? ContinuationToken)> QueryMembershipsPageAsync(
+        string? organizationId,
+        string? search,
+        int pageSize,
+        string? continuationToken,
+        CancellationToken cancellationToken = default)
+    {
+        var hasSearch = !string.IsNullOrWhiteSpace(search);
+
+        var queryText = "SELECT * FROM c";
+        if (hasSearch)
+            queryText += " WHERE CONTAINS(LOWER(c.displayName), @q) OR CONTAINS(LOWER(c.email), @q)";
+        queryText += " ORDER BY c.displayName";
+
+        var queryDef = new QueryDefinition(queryText);
+        if (hasSearch)
+            queryDef = queryDef.WithParameter("@q", search!.Trim().ToLowerInvariant());
+
+        var requestOptions = new QueryRequestOptions { MaxItemCount = pageSize };
+        if (!string.IsNullOrWhiteSpace(organizationId))
+            requestOptions.PartitionKey = new PartitionKey(organizationId);
+
+        using var iterator = Users.GetItemQueryIterator<User>(
+            queryDef,
+            continuationToken: string.IsNullOrWhiteSpace(continuationToken) ? null : continuationToken,
+            requestOptions: requestOptions);
+
+        if (!iterator.HasMoreResults)
+            return (new List<User>(), null);
+
+        var page = await iterator.ReadNextAsync(cancellationToken);
+        return (page.ToList(), page.ContinuationToken);
+    }
+
     // Removes a membership document, tolerating the /id-vs-/tenantId partition quirk.
     public async Task DeleteUserWithFallbackAsync(string userId, string tenantId, CancellationToken cancellationToken = default)
     {
