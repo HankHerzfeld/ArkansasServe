@@ -76,6 +76,7 @@ const Scope = (() => {
     state.isSuperAdmin = level === 'SuperAdmin';
 
     if (state.isSuperAdmin) {
+      // Supers can act in any tenant.
       const tenants = await Api.Admin.getTenants().catch(() => []);
       state.orgs = (tenants || []).map(t => ({
         id: t.id,
@@ -83,23 +84,27 @@ const Scope = (() => {
         groups: mapGroups(t.groups),
         raw: t,
       }));
-    } else if (Auth.adminRank(level) > 0) {
-      const orgId = user.organizationId || user.tenantId;
-      let tenant = null;
-      try { tenant = (await Api.AdminBackend.context()).tenant; } catch { /* keep null */ }
-      let groups = mapGroups(tenant?.groups);
-      // Group/Event admins (below OrganizationAdmin) only see the groups they
-      // administer; an OrganizationAdmin manages all of the org's groups.
-      if (Auth.adminRank(level) < Auth.adminRank('OrganizationAdmin') && (user.groupIds || []).length) {
-        const own = new Set(user.groupIds);
-        groups = groups.filter(g => own.has(g.id));
-      }
-      state.orgs = orgId
-        ? [{ id: orgId, name: tenant?.name || orgId, groups, raw: tenant }]
-        : [];
     } else {
-      // Students have no admin scope to denote or switch.
-      state.orgs = [];
+      // Everyone else: the orgs they actually hold a membership in (multi-org).
+      const memberships = await Api.Memberships.list().catch(() => []);
+      state.orgs = (memberships || []).map(m => {
+        let groups = mapGroups(m.groups);
+        // Group/Event admins (below OrganizationAdmin) only see the groups they
+        // administer; an OrganizationAdmin manages all of the org's groups.
+        const rank = Auth.adminRank(m.adminLevel);
+        if (rank > 0 && rank < Auth.adminRank('OrganizationAdmin') && (m.groupIds || []).length) {
+          const own = new Set(m.groupIds);
+          groups = groups.filter(g => own.has(g.id));
+        }
+        return {
+          id: m.organizationId,
+          name: m.organizationName || m.organizationId,
+          groups,
+          adminLevel: m.adminLevel,
+          // Minimal tenant record for admin-backend's settings form.
+          raw: { id: m.organizationId, name: m.organizationName, status: m.status, rbacEnabled: m.rbacEnabled },
+        };
+      });
     }
 
     const savedOrg = sessionStorage.getItem(KEYS.org);
