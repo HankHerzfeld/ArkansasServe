@@ -127,6 +127,122 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 		return await HttpHelper.OkJson(req, new { count = created.Count, eventId, logs = created });
 	}
 
+	// Bulk import from a spreadsheet: each row links a volunteer by email (creating
+	// a managed record if new) and logs approved hours, reusing/creating events by
+	// title. Returns a per-row result so the client can report failures.
+	[Function("ImportServiceLogs")]
+	public async Task<HttpResponseData> ImportServiceLogs(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/servicelogs/import")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var body = await HttpHelper.ReadBody<ImportRequest>(req);
+		if (body == null || string.IsNullOrWhiteSpace(body.OrganizationId) || body.Rows is not { Count: > 0 })
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "organizationId and rows are required");
+
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, body.OrganizationId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+
+		var tenant = await cosmos.GetTenantAsync(body.OrganizationId);
+		var orgName = tenant?.Name ?? body.OrganizationId;
+
+		// Reuse events by title so repeated rows share one event.
+		var existingEvents = (await cosmos.GetEventsByOrgAsync(body.OrganizationId))
+			.GroupBy(e => (e.Title ?? string.Empty).Trim().ToLowerInvariant())
+			.ToDictionary(g => g.Key, g => g.First());
+		var eventCache = new Dictionary<string, (string Id, string Title)>(StringComparer.OrdinalIgnoreCase);
+
+		var results = new List<object>();
+		var imported = 0;
+		for (var i = 0; i < body.Rows.Count; i++)
+		{
+			var row = body.Rows[i];
+			var rowNum = i + 1;
+			try
+			{
+				var email = (row.Email ?? string.Empty).Trim().ToLowerInvariant();
+				if (string.IsNullOrWhiteSpace(email)) throw new InvalidOperationException("Email is required");
+				if (row.Hours <= 0) throw new InvalidOperationException("Hours must be greater than 0");
+				if (!DateTime.TryParse(row.Date, out var date)) throw new InvalidOperationException("Invalid date");
+
+				var vol = await cosmos.GetMembershipByEmailAsync(email, body.OrganizationId)
+					?? await cosmos.CreateManagedVolunteerAsync(new User
+					{
+						ExternalId = string.Empty,
+						TenantId = body.OrganizationId,
+						OrganizationId = body.OrganizationId,
+						Email = email,
+						DisplayName = string.IsNullOrWhiteSpace(row.Name) ? email : row.Name.Trim(),
+						Role = "Student",
+						AdminLevel = AdminLevels.Student,
+						Status = "active",
+						IsManaged = true,
+						ManagedByUserId = ctx.UserId,
+					});
+
+				var eventId = string.Empty;
+				var eventTitle = "Off-site service";
+				var evtTitle = (row.Event ?? string.Empty).Trim();
+				if (!string.IsNullOrWhiteSpace(evtTitle))
+				{
+					var key = evtTitle.ToLowerInvariant();
+					if (eventCache.TryGetValue(key, out var cached)) { eventId = cached.Id; eventTitle = cached.Title; }
+					else if (existingEvents.TryGetValue(key, out var ex)) { eventId = ex.Id; eventTitle = ex.Title; eventCache[key] = (ex.Id, ex.Title); }
+					else
+					{
+						var newEvt = await cosmos.CreateEventAsync(new Event
+						{
+							OrganizationId = body.OrganizationId,
+							OrganizationName = orgName,
+							Title = evtTitle,
+							StartDateTime = date,
+							EndDateTime = date,
+							HoursValue = row.Hours,
+							Status = "Completed",
+							Visibility = "org",
+							CreatedByUserId = ctx.UserId,
+						});
+						eventId = newEvt.Id;
+						eventTitle = newEvt.Title;
+						eventCache[key] = (newEvt.Id, newEvt.Title);
+					}
+				}
+
+				await cosmos.CreateServiceLogAsync(new ServiceLog
+				{
+					StudentId = string.IsNullOrWhiteSpace(vol.ExternalId) ? vol.Id : vol.ExternalId,
+					StudentName = vol.DisplayName,
+					SchoolId = body.OrganizationId,
+					EventId = eventId,
+					EventTitle = eventTitle,
+					OrganizationId = body.OrganizationId,
+					OrganizationName = orgName,
+					HoursLogged = row.Hours,
+					ServiceDate = date,
+					Status = "Approved",
+					SubmittedByUserId = ctx.UserId,
+					ReviewedByUserId = ctx.UserId,
+					ReviewedAt = DateTime.UtcNow,
+				});
+
+				imported++;
+				results.Add(new { row = rowNum, email, ok = true });
+			}
+			catch (Exception ex)
+			{
+				results.Add(new { row = rowNum, email = row.Email, ok = false, message = ex.Message });
+			}
+		}
+
+		return await HttpHelper.OkJson(req, new { imported, failed = body.Rows.Count - imported, results });
+	}
+
+	private sealed record ImportRequest(string OrganizationId, List<ImportRow> Rows);
+
+	private sealed record ImportRow(string? Email, string? Name, double Hours, string? Date, string? Event);
+
 	private sealed record BulkLogRequest(
 		string OrganizationId,
 		List<string> VolunteerIds,
