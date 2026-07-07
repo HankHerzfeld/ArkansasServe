@@ -71,9 +71,9 @@ public partial class CosmosService
     // THERE (multi-org: a person may be an admin in one org and a student in
     // another). Platform admins may act in any org even without a membership doc;
     // everyone else only where they actually hold a membership (else null).
-    public async Task<User?> ResolveActorInOrgAsync(string externalId, string tokenRole, string orgId, CancellationToken cancellationToken = default)
+    public async Task<User?> ResolveActorInOrgAsync(string externalId, string tokenAdminLevel, string orgId, CancellationToken cancellationToken = default)
     {
-        var isSuper = string.Equals(tokenRole, "PlatformAdmin", StringComparison.OrdinalIgnoreCase);
+        var isSuper = string.Equals(tokenAdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
 
         var membership = await GetUserByExternalIdAsync(externalId, orgId, cancellationToken);
         if (membership != null)
@@ -90,7 +90,6 @@ public partial class CosmosService
                 ExternalId = externalId,
                 TenantId = orgId,
                 OrganizationId = orgId,
-                Role = "PlatformAdmin",
                 AdminLevel = "SuperAdmin",
                 Status = "active",
             };
@@ -161,10 +160,11 @@ public partial class CosmosService
         }
     }
 
-    // A person is a platform super if their token says so or any membership is SuperAdmin.
-    public async Task<bool> IsGlobalSuperAsync(string externalId, string tokenRole, CancellationToken cancellationToken = default)
+    // A person is a platform super if their token level is SuperAdmin (from the
+    // role claim or the email-domain bootstrap) or any membership is SuperAdmin.
+    public async Task<bool> IsGlobalSuperAsync(string externalId, string tokenAdminLevel, CancellationToken cancellationToken = default)
     {
-        if (string.Equals(tokenRole, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(tokenAdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)) return true;
         var memberships = await GetMembershipsByExternalIdAsync(externalId, cancellationToken);
         return memberships.Any(m => string.Equals(m.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
     }

@@ -108,7 +108,7 @@ const Api = (() => {
 
   // ── Approvals ─────────────────────────────────────────────────────────────
   const Approvals = {
-    // schoolId is honored for PlatformAdmins; ignored (pinned to own school) otherwise.
+    // schoolId is honored for SuperAdmins; ignored (pinned to own school) otherwise.
     list: (schoolId) => request('GET', `/approvals${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`),
   };
 
@@ -138,8 +138,8 @@ const Api = (() => {
 
   // ── Reports ───────────────────────────────────────────────────────────────
   const Reports = {
-    // SchoolAdmin: schoolId is derived server-side from the token (ignored here).
-    // PlatformAdmin: pass { schoolId } to target a specific school.
+    // OrganizationAdmin: schoolId is derived server-side from the token (ignored here).
+    // SuperAdmin: pass { schoolId } to target a specific school.
     serviceHours: (params = {}) => {
       const qs = new URLSearchParams();
       if (params.schoolId) qs.set('schoolId', params.schoolId);

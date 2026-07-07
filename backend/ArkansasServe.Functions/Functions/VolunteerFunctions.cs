@@ -22,7 +22,7 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 		var orgId = string.IsNullOrWhiteSpace(query["organizationId"]) ? ctx.TenantId : query["organizationId"]!;
 
 		// Per-org: the caller must be a GroupAdmin+ in the target org.
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.GroupAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
@@ -52,7 +52,7 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 
 		var orgId = string.IsNullOrWhiteSpace(body.OrganizationId) ? ctx.TenantId : body.OrganizationId!;
 
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.GroupAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
@@ -88,7 +88,6 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 			OrganizationId = orgId,
 			Email = email,
 			DisplayName = body.DisplayName.Trim(),
-			Role = "Student",
 			AdminLevel = AdminLevels.Student,
 			GroupIds = groupIds,
 			Status = "active",

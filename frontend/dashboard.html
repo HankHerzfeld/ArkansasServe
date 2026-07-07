@@ -92,17 +92,13 @@
     };
 
     function toAdminLevel(user) {
-      if (user?.adminLevel) return user.adminLevel;
-      if (profile.role === 'PlatformAdmin') return 'SuperAdmin';
-      if (profile.role === 'SchoolAdmin') return 'OrganizationAdmin';
-      if (profile.role === 'OrgStaff') return 'EventAdmin';
-      return 'Student';
+      return user?.adminLevel || profile.adminLevel || 'Student';
     }
 
     async function loadDashboard() {
       try {
         const currentUser = await Api.Users.getMe();
-        Auth.setResolvedRoleFromUser(currentUser);
+        Auth.setResolvedLevelFromUser(currentUser);
         loadNotifications();
         const adminLevel = toAdminLevel(currentUser);
 

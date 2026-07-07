@@ -24,7 +24,7 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 
 		// Per-org: the caller must be an EventAdmin+ in the org the log is for.
 		var orgId = string.IsNullOrWhiteSpace(body.OrganizationId) ? ctx.TenantId : body.OrganizationId;
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You cannot log service in this organization");
 
@@ -54,7 +54,7 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		if (log == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Service log not found");
 
 		// Per-org: the reviewer must be an OrganizationAdmin+ in the log's school.
-		var reviewer = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, log.SchoolId);
+		var reviewer = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, log.SchoolId);
 		if (reviewer == null || !AdminLevels.AtLeast(reviewer.AdminLevel, AdminLevels.OrganizationAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot review logs for this school");
 
@@ -73,7 +73,7 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 	public async Task<HttpResponseData> GetMyLogs(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "students/me/servicelogs")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var logs = await cosmos.GetServiceLogsByStudentAsync(ctx.UserId);

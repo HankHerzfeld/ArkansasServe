@@ -27,7 +27,7 @@ public class MatrixFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
-		if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.Role)) return await Forbid(req);
+		if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel)) return await Forbid(req);
 
 		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
 		var organizationId = query["organizationId"];
@@ -80,7 +80,7 @@ public class MatrixFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 		if (body == null || string.IsNullOrWhiteSpace(body.OrganizationId) || string.IsNullOrWhiteSpace(body.AdminLevel) || string.IsNullOrWhiteSpace(body.Email))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "organizationId, adminLevel and email are required");
 
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, body.OrganizationId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, body.OrganizationId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
 			return await Forbid(req);
 
@@ -101,7 +101,6 @@ public class MatrixFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot modify a user at or above your own level");
 
 			membership.AdminLevel = body.AdminLevel;
-			membership.Role = AdminLevels.ToLegacyRole(body.AdminLevel);
 			membership.GroupIds = body.GroupIds ?? [];
 			var updated = await cosmos.UpsertUserAsync(membership);
 			return await HttpHelper.OkJson(req, updated);
@@ -115,7 +114,6 @@ public class MatrixFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 			Email = email,
 			DisplayName = string.IsNullOrWhiteSpace(body.DisplayName) ? email : body.DisplayName.Trim(),
 			AdminLevel = body.AdminLevel,
-			Role = AdminLevels.ToLegacyRole(body.AdminLevel),
 			GroupIds = body.GroupIds ?? [],
 			Status = "active",
 			IsManaged = string.IsNullOrWhiteSpace(body.ExternalId),
@@ -141,7 +139,7 @@ public class MatrixFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 		if (target == null)
 			return await HttpHelper.OkJson(req, new { removed = true });
 
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, tenantId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, tenantId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
 			return await Forbid(req);
 

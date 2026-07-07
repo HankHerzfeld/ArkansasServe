@@ -61,7 +61,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (ctx == null) return authError!;
 
 		var orgId = OrgFromQuery(req, ctx);
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await Forbid(req);
 
@@ -82,7 +82,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (ctx == null) return authError!;
 
 		var orgId = QueryValue(req, "tenantId") ?? OrgFromQuery(req, ctx);
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await Forbid(req);
 
@@ -110,7 +110,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
 
 		// Authorize by the actor's membership IN THE TARGET USER'S ORG.
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, target.TenantId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, target.TenantId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
 			return await Forbid(req);
 
@@ -127,7 +127,6 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		}
 
 		target.AdminLevel = body.AdminLevel;
-		target.Role = MapAdminLevelToLegacyRole(body.AdminLevel);
 		target.OrganizationId = body.OrganizationId ?? target.OrganizationId ?? target.TenantId;
 		target.GroupIds = body.GroupIds ?? [];
 		target.EventAdminEventIds = body.EventAdminEventIds ?? [];
@@ -282,11 +281,11 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	// ── Authorization helpers ───────────────────────────────────────────────
 
-	// A person is a platform super if their token says so or any of their
-	// memberships is SuperAdmin (e.g. granted via the role matrix).
+	// A person is a platform super if their token level is SuperAdmin or any of
+	// their memberships is SuperAdmin (e.g. granted via the role matrix).
 	private async Task<bool> IsGlobalSuperAsync(UserContext ctx)
 	{
-		if (string.Equals(ctx.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return true;
+		if (ctx.IsSuperAdmin) return true;
 		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
 		return memberships.Any(m => string.Equals(m.AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase));
 	}
@@ -295,7 +294,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	// OrganizationAdmin+ membership in that specific tenant.
 	private async Task<bool> CanManageTenantAsync(UserContext ctx, string tenantId)
 	{
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, tenantId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, tenantId);
 		return actor != null && AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin);
 	}
 
@@ -316,15 +315,6 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	private static Task<HttpResponseData> Forbid(HttpRequestData req)
 		=> HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
-	private static string MapAdminLevelToLegacyRole(string adminLevel) => adminLevel switch
-	{
-		AdminLevels.SuperAdmin => "PlatformAdmin",
-		AdminLevels.OrganizationAdmin => "SchoolAdmin",
-		AdminLevels.GroupAdmin => "OrgStaff",
-		AdminLevels.EventAdmin => "OrgStaff",
-		_ => "Student",
-	};
-
 	private static List<User> BuildDefaultDemoUsers(string tenantId)
 	{
 		var levels = new[] { AdminLevels.SuperAdmin, AdminLevels.OrganizationAdmin, AdminLevels.GroupAdmin, AdminLevels.EventAdmin, AdminLevels.Student };
@@ -339,7 +329,6 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 					ExternalId = $"demo-{level.ToLowerInvariant()}-{i}",
 					TenantId = tenantId,
 					OrganizationId = tenantId,
-					Role = MapAdminLevelToLegacyRole(level),
 					AdminLevel = level,
 					DisplayName = $"Demo {level} {i}",
 					Email = $"demo.{level.ToLowerInvariant()}.{i}@arkansasserve.local",

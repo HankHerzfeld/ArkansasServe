@@ -185,7 +185,7 @@
 <script src="/js/ui.js"></script>
 <script>
   Auth.init();
-  Auth.requireAuth('PlatformAdmin').then((profile) => {
+  Auth.requireAuth('SuperAdmin').then((profile) => {
     if (!profile) return;
     UI.setupHeader('/platform-admin.html');
     loadTenants();

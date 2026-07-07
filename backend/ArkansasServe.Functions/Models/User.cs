@@ -10,9 +10,6 @@ public class User : CosmosDocument
     [JsonPropertyName("externalId")]
     public string ExternalId { get; set; } = string.Empty;
 
-    [JsonPropertyName("role")]
-    public string Role { get; set; } = string.Empty;
-
     [JsonPropertyName("adminLevel")]
     public string AdminLevel { get; set; } = "Student";
 

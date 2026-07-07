@@ -142,7 +142,7 @@
       card.appendChild(status);
       card.appendChild(document.createElement('br'));
 
-      if (profile.role === 'Student' && evt.status === 'Open') {
+      if (profile.adminLevel === 'Student' && evt.status === 'Open') {
         const btn = document.createElement('button');
         btn.className = 'btn btn-primary btn-sm';
         btn.textContent = 'Sign Up';

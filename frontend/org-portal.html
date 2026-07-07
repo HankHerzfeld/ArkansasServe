@@ -141,7 +141,7 @@
   let orgEvents = [];
   let activeLogEventId = null;
 
-  Auth.requireAuth('OrgStaff').then(async (p) => {
+  Auth.requireAuth('EventAdmin').then(async (p) => {
     profile = p;
     if (!profile) return;
     await UI.setupHeader('/org-portal.html');

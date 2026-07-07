@@ -27,7 +27,7 @@ public class ReportFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "schoolId is required");
 
 		// Per-org: the caller must be an OrganizationAdmin+ in the target school.
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, schoolId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, schoolId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You do not have reporting access in this organization");
 
@@ -37,8 +37,7 @@ public class ReportFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 		var to = toParsed == DateTime.MaxValue ? DateTime.MaxValue : toParsed.Date.AddDays(1).AddTicks(-1);
 
 		var roster = (await cosmos.GetUsersByTenantAsync(schoolId))
-			.Where(u => string.Equals(u.Role, "Student", StringComparison.OrdinalIgnoreCase)
-					 || string.Equals(u.AdminLevel, "Student", StringComparison.OrdinalIgnoreCase))
+			.Where(u => string.Equals(u.AdminLevel, "Student", StringComparison.OrdinalIgnoreCase))
 			.ToList();
 
 		var inRange = (await cosmos.GetServiceLogsBySchoolAsync(schoolId))
