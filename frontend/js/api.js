@@ -114,7 +114,14 @@ const Api = (() => {
 
   // ── Memberships (the orgs the current person belongs to) ──────────────────
   const Memberships = {
-    list: () => request('GET', '/manage/me/memberships'),
+    list:  ()      => request('GET',    '/manage/me/memberships'),
+    join:  (orgId) => request('POST',   '/manage/me/memberships', { organizationId: orgId }),
+    leave: (orgId) => request('DELETE', `/manage/me/memberships/${encodeURIComponent(orgId)}`),
+  };
+
+  // ── Organizations (public directory for volunteer self-service) ────────────
+  const Orgs = {
+    browse: () => request('GET', '/manage/orgs'),
   };
 
   // ── Volunteers ────────────────────────────────────────────────────────────
@@ -181,5 +188,5 @@ const Api = (() => {
                                             request('POST', '/manage/db/query', { container, query, maxItems }),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Volunteers, Matrix, Admin, AdminBackend, Db };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Db };
 })();
