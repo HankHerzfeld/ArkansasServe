@@ -79,6 +79,12 @@ const Api = (() => {
     update:        (id, data)   => request('PUT',  `/events/${encodeURIComponent(id)}`, data),
     registrations: (id)         => request('GET',  `/events/${encodeURIComponent(id)}/registrations`),
     uploadToken:   (fileName)   => request('POST', '/events/upload-token', { fileName }),
+    match:         (orgId, q)   => {
+      const qs = new URLSearchParams();
+      if (orgId) qs.set('organizationId', orgId);
+      if (q)     qs.set('q', q);
+      return request('GET', `/manage/events/match?${qs.toString()}`);
+    },
   };
 
   // ── Registrations ─────────────────────────────────────────────────────────
@@ -96,6 +102,7 @@ const Api = (() => {
     review:   (id, studentId, status, note) =>
                                   request('PATCH', `/servicelogs/${encodeURIComponent(id)}`, { studentId, status, reviewNote: note }),
     myLogs:   ()               => request('GET',   '/students/me/servicelogs'),
+    bulkCreate: (data)         => request('POST',  '/manage/servicelogs/bulk', data),
   };
 
   // ── Approvals ─────────────────────────────────────────────────────────────

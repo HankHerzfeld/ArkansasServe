@@ -104,6 +104,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		existing.PhotoUrl = body.PhotoUrl;
 		existing.Category = body.Category;
 		existing.GroupId = body.GroupId;
+		if (!string.IsNullOrWhiteSpace(body.Visibility)) existing.Visibility = body.Visibility;
 		existing.Status = body.Status;
 
 		var updated = await cosmos.UpdateEventAsync(existing);

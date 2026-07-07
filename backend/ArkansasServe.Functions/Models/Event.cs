@@ -51,6 +51,11 @@ public class Event : CosmosDocument
 	[JsonPropertyName("groupId")]
 	public string? GroupId { get; set; }
 
+	// "org" (default) = visible only within the owning organization; "public" =
+	// discoverable by admins in other orgs so they can add their own volunteers.
+	[JsonPropertyName("visibility")]
+	public string Visibility { get; set; } = "org";
+
 	[JsonPropertyName("createdByUserId")]
 	public string CreatedByUserId { get; set; } = string.Empty;
 }

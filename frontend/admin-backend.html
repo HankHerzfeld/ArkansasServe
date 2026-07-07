@@ -118,6 +118,7 @@
     <table class="table" id="volunteers-table" style="margin-top:.5rem;display:none;">
       <thead>
         <tr>
+          <th style="width:2rem;"></th>
           <th>Name</th>
           <th>Email</th>
           <th>Groups</th>
@@ -127,6 +128,40 @@
       <tbody id="volunteers-tbody"></tbody>
     </table>
     <div id="volunteers-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No volunteers yet.</div>
+
+    <div id="log-service-panel" style="display:none;margin-top:1rem;border-top:1px solid var(--gray-200);padding-top:1rem;">
+      <div class="card-title" style="font-size:1rem;">Log service for selected volunteers</div>
+      <p style="color:var(--gray-600);font-size:.85rem;">Check volunteers above, then log off-site service — it's approved immediately.</p>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end;">
+        <div class="form-group" style="margin:0;min-width:16rem;">
+          <label for="log-event-title">Event / activity</label>
+          <input id="log-event-title" type="text" placeholder="e.g. Riverside park cleanup" autocomplete="off">
+          <input type="hidden" id="log-event-id">
+          <div id="log-event-matches" style="font-size:.8rem;margin-top:.3rem;"></div>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label for="log-date">Date</label>
+          <input id="log-date" type="date">
+        </div>
+        <div class="form-group" style="margin:0;width:6rem;">
+          <label for="log-hours">Hours</label>
+          <input id="log-hours" type="number" min="0.5" step="0.5" value="2">
+        </div>
+        <div class="form-group" style="margin:0;min-width:10rem;">
+          <label for="log-visibility">New event visibility</label>
+          <select id="log-visibility">
+            <option value="org">This org only</option>
+            <option value="public">Public (shared)</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;min-width:11rem;">
+          <label for="log-note">Note (optional)</label>
+          <input id="log-note" type="text">
+        </div>
+        <button class="btn btn-primary" id="btn-log-service">Log for selected</button>
+        <span id="log-service-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+      </div>
+    </div>
   </div>
 
   <div class="card" id="demo-users-card" style="display:none;">
@@ -336,16 +371,26 @@
     const tbody = document.getElementById('volunteers-tbody');
     clearChildren(tbody);
 
+    const panel = document.getElementById('log-service-panel');
     const vols = await Api.Volunteers.list({ organizationId: state.tenantId });
     if (!vols.length) {
       table.style.display = 'none';
       empty.style.display = 'block';
+      panel.style.display = 'none';
       return;
     }
     table.style.display = 'table';
     empty.style.display = 'none';
+    panel.style.display = 'block';
     vols.forEach(v => {
       const tr = document.createElement('tr');
+      const tdChk = document.createElement('td');
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.className = 'vol-check';
+      chk.value = v.id;
+      tdChk.appendChild(chk);
+      tr.appendChild(tdChk);
       tr.appendChild(createTextCell(v.displayName || ''));
       tr.appendChild(createTextCell(v.email || ''));
       tr.appendChild(createTextCell((v.groupIds || []).join(', ')));
@@ -605,6 +650,81 @@
       await loadVolunteers();
     } catch (err) {
       status.textContent = err.message || 'Failed to add volunteer';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ── Log service (bulk, auto-approved) ─────────────────────────────────────
+  let logMatchTimer = null;
+  document.getElementById('log-event-title').addEventListener('input', () => {
+    document.getElementById('log-event-id').value = '';
+    clearTimeout(logMatchTimer);
+    const q = document.getElementById('log-event-title').value.trim();
+    const box = document.getElementById('log-event-matches');
+    if (q.length < 2) { box.innerHTML = ''; return; }
+    logMatchTimer = setTimeout(async () => {
+      try {
+        const matches = await Api.Events.match(state.tenantId, q);
+        box.innerHTML = '';
+        if (!matches.length) return;
+        const label = document.createElement('span');
+        label.style.color = 'var(--gray-600)';
+        label.textContent = 'Reuse existing: ';
+        box.appendChild(label);
+        matches.forEach(m => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-secondary btn-sm';
+          btn.style.margin = '.15rem';
+          btn.textContent = m.title + (m.organizationId !== state.tenantId ? ' (shared)' : '');
+          btn.addEventListener('click', () => {
+            document.getElementById('log-event-id').value = m.id;
+            document.getElementById('log-event-title').value = m.title;
+            box.textContent = 'Using existing event: ' + m.title;
+          });
+          box.appendChild(btn);
+        });
+      } catch { /* suggestions are best-effort */ }
+    }, 300);
+  });
+
+  document.getElementById('btn-log-service').addEventListener('click', async () => {
+    const status = document.getElementById('log-service-status');
+    const ids = Array.from(document.querySelectorAll('.vol-check:checked')).map(c => c.value);
+    if (!ids.length) { status.textContent = 'Select at least one volunteer above.'; return; }
+
+    const title = document.getElementById('log-event-title').value.trim();
+    const eventId = document.getElementById('log-event-id').value;
+    const date = document.getElementById('log-date').value;
+    const hours = Number(document.getElementById('log-hours').value);
+    if (!title) { status.textContent = 'An event/activity name is required.'; return; }
+    if (!date || !hours) { status.textContent = 'Date and hours are required.'; return; }
+
+    const btn = document.getElementById('btn-log-service');
+    btn.disabled = true;
+    status.textContent = 'Logging...';
+    try {
+      const payload = {
+        organizationId: state.tenantId,
+        volunteerIds: ids,
+        hoursLogged: hours,
+        serviceDate: new Date(date).toISOString(),
+        note: document.getElementById('log-note').value.trim() || null,
+        visibility: document.getElementById('log-visibility').value,
+      };
+      if (eventId) { payload.eventId = eventId; payload.eventTitle = title; }
+      else { payload.newEventTitle = title; }
+
+      const res = await Api.ServiceLogs.bulkCreate(payload);
+      status.textContent = `Logged ${hours}h for ${res.count} volunteer(s).`;
+      document.querySelectorAll('.vol-check:checked').forEach(c => { c.checked = false; });
+      document.getElementById('log-event-title').value = '';
+      document.getElementById('log-event-id').value = '';
+      document.getElementById('log-event-matches').innerHTML = '';
+      document.getElementById('log-note').value = '';
+    } catch (err) {
+      status.textContent = err.message || 'Failed to log service';
     } finally {
       btn.disabled = false;
     }
