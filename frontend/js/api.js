@@ -103,6 +103,7 @@ const Api = (() => {
                                   request('PATCH', `/servicelogs/${encodeURIComponent(id)}`, { studentId, status, reviewNote: note }),
     myLogs:   ()               => request('GET',   '/students/me/servicelogs'),
     bulkCreate: (data)         => request('POST',  '/manage/servicelogs/bulk', data),
+    import:     (data)         => request('POST',  '/manage/servicelogs/import', data),
   };
 
   // ── Approvals ─────────────────────────────────────────────────────────────

@@ -162,6 +162,19 @@
         <span id="log-service-status" style="font-size:.85rem;color:var(--gray-600);"></span>
       </div>
     </div>
+
+    <div id="import-panel" style="display:none;margin-top:1rem;border-top:1px solid var(--gray-200);padding-top:1rem;">
+      <div class="card-title" style="font-size:1rem;">Import service hours from CSV</div>
+      <p style="color:var(--gray-600);font-size:.85rem;">
+        Columns: <code>email, name, hours, date, event</code>. Unknown emails become managed volunteers; every row is approved.
+      </p>
+      <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+        <input type="file" id="import-file" accept=".csv,text/csv">
+        <button class="btn btn-primary" id="btn-import" disabled>Import</button>
+        <span id="import-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+      </div>
+      <div id="import-results" style="display:none;margin-top:.75rem;font-size:.85rem;"></div>
+    </div>
   </div>
 
   <div class="card" id="demo-users-card" style="display:none;">
@@ -331,6 +344,7 @@
     } else {
       volCard.style.display = 'none';
     }
+    document.getElementById('import-panel').style.display = canVolunteers ? 'block' : 'none';
   }
 
   // Runs a section loader without letting its failure redirect the whole page.
@@ -729,6 +743,96 @@
       btn.disabled = false;
     }
   });
+
+  // ── CSV import ────────────────────────────────────────────────────────────
+  let importRows = [];
+
+  document.getElementById('import-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    const status = document.getElementById('import-status');
+    document.getElementById('btn-import').disabled = true;
+    document.getElementById('import-results').style.display = 'none';
+    if (!file) return;
+    try {
+      importRows = parseCsv(await file.text());
+      if (!importRows.length) { status.textContent = 'No data rows found.'; return; }
+      status.textContent = `${importRows.length} row(s) ready to import.`;
+      document.getElementById('btn-import').disabled = false;
+    } catch {
+      status.textContent = 'Could not read the file.';
+    }
+  });
+
+  document.getElementById('btn-import').addEventListener('click', async () => {
+    const status = document.getElementById('import-status');
+    if (!importRows.length || !state.tenantId) return;
+    const btn = document.getElementById('btn-import');
+    btn.disabled = true;
+    status.textContent = 'Importing...';
+    try {
+      const res = await Api.ServiceLogs.import({ organizationId: state.tenantId, rows: importRows });
+      status.textContent = `Imported ${res.imported}, failed ${res.failed}.`;
+      renderImportResults(res.results || []);
+      await loadVolunteers();
+    } catch (err) {
+      status.textContent = err.message || 'Import failed';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  function renderImportResults(results) {
+    const box = document.getElementById('import-results');
+    box.innerHTML = '';
+    box.style.display = 'block';
+    const failures = results.filter(r => !r.ok);
+    if (!failures.length) { box.textContent = 'All rows imported successfully.'; return; }
+    const title = document.createElement('div');
+    title.style.cssText = 'color:var(--red);margin-bottom:.25rem;';
+    title.textContent = `${failures.length} row(s) failed:`;
+    box.appendChild(title);
+    failures.forEach(f => {
+      const line = document.createElement('div');
+      line.textContent = `Row ${f.row} (${f.email || 'no email'}): ${f.message}`;
+      box.appendChild(line);
+    });
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+    if (!lines.length) return [];
+    const header = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+    const idx = (n) => header.indexOf(n);
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const c = splitCsvLine(lines[i]);
+      const at = (n) => { const j = idx(n); return j >= 0 ? (c[j] || '').trim() : ''; };
+      rows.push({ email: at('email'), name: at('name'), hours: Number(at('hours')) || 0, date: at('date'), event: at('event') });
+    }
+    return rows;
+  }
+
+  function splitCsvLine(line) {
+    const out = [];
+    let cur = '';
+    let q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) {
+        if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+      } else if (ch === '"') {
+        q = true;
+      } else if (ch === ',') {
+        out.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
 
   loadContext();
 </script>
