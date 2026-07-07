@@ -34,6 +34,11 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("rbacEnabled")]
 	public bool RbacEnabled { get; set; } = true;
 
+	// When true (default), GroupAdmins may add managed volunteers organization-wide,
+	// not just within their own groups.
+	[JsonPropertyName("allowGroupAdminAddVolunteers")]
+	public bool AllowGroupAdminAddVolunteers { get; set; } = true;
+
 	[JsonPropertyName("groups")]
 	public List<TenantGroup> Groups { get; set; } = [];
 
