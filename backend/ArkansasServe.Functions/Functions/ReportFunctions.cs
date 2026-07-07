@@ -17,16 +17,19 @@ public class ReportFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 	public async Task<HttpResponseData> GetServiceHours(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/reports/service-hours")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "SchoolAdmin", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
 
-		// schoolId scoping: a SchoolAdmin is always pinned to their own tenant and
-		// can never read another school's data; only a PlatformAdmin may target one.
-		var schoolId = ctx.IsPlatformAdmin ? query["schoolId"] : ctx.TenantId;
+		var schoolId = string.IsNullOrWhiteSpace(query["schoolId"]) ? ctx.TenantId : query["schoolId"]!;
 		if (string.IsNullOrWhiteSpace(schoolId))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "schoolId is required");
+
+		// Per-org: the caller must be an OrganizationAdmin+ in the target school.
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, schoolId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You do not have reporting access in this organization");
 
 		var from = ParseDate(query["from"], DateTime.MinValue);
 		var toParsed = ParseDate(query["to"], DateTime.MaxValue);

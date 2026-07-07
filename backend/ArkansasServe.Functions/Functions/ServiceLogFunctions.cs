@@ -15,14 +15,20 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 	public async Task<HttpResponseData> CreateLog(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "servicelogs")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<ServiceLog>(req);
 		if (body == null || string.IsNullOrEmpty(body.StudentId) || body.HoursLogged <= 0)
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "studentId and hoursLogged > 0 are required");
 
-		body.OrganizationId = ctx.IsPlatformAdmin ? body.OrganizationId : ctx.TenantId;
+		// Per-org: the caller must be an EventAdmin+ in the org the log is for.
+		var orgId = string.IsNullOrWhiteSpace(body.OrganizationId) ? ctx.TenantId : body.OrganizationId;
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You cannot log service in this organization");
+
+		body.OrganizationId = orgId;
 		body.SubmittedByUserId = ctx.UserId;
 		body.Status = "Pending";
 
@@ -37,7 +43,7 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		[HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "servicelogs/{id}")] HttpRequestData req,
 		string id)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "SchoolAdmin", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<ReviewRequest>(req);
@@ -47,8 +53,10 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		var log = await cosmos.GetServiceLogAsync(id, body.StudentId);
 		if (log == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Service log not found");
 
-		if (ctx.IsSchoolAdmin && log.SchoolId != ctx.TenantId)
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot review logs for another school");
+		// Per-org: the reviewer must be an OrganizationAdmin+ in the log's school.
+		var reviewer = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, log.SchoolId);
+		if (reviewer == null || !AdminLevels.AtLeast(reviewer.AdminLevel, AdminLevels.OrganizationAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot review logs for this school");
 
 		log.Status = body.Status;
 		log.ReviewNote = body.ReviewNote;

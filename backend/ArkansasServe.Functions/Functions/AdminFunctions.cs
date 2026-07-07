@@ -12,17 +12,7 @@ namespace ArkansasServe.Functions.Functions;
 
 public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<AdminFunctions> logger)
 {
-	private const string ArkansasServeEmailDomain = "@arkansasserve.com";
-	private const string UnknownTenantId = "unknown-tenant";
-
-	private static readonly IReadOnlyDictionary<string, int> AdminRank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-	{
-		["Student"] = 0,
-		["EventAdmin"] = 1,
-		["GroupAdmin"] = 2,
-		["OrganizationAdmin"] = 3,
-		["SuperAdmin"] = 4,
-	};
+	private const string RootTenantId = "arkansas-serve-root";
 
 	[Function("GetTenants")]
 	public async Task<HttpResponseData> GetTenants(
@@ -31,13 +21,19 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!HasAdminAccess(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		if (await IsGlobalSuperAsync(ctx))
+			return await HttpHelper.OkJson(req, await cosmos.GetAllTenantsAsync());
 
-		var tenants = IsSuperAdmin(actor)
-			? await cosmos.GetAllTenantsAsync()
-			: [.. (await cosmos.GetAllTenantsAsync()).Where(t => string.Equals(t.Id, actor.OrganizationId ?? actor.TenantId, StringComparison.OrdinalIgnoreCase))];
+		// A non-super sees the tenants where they hold an OrganizationAdmin+ membership.
+		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
+		var orgIds = memberships
+			.Where(m => AdminLevels.AtLeast(m.AdminLevel, AdminLevels.OrganizationAdmin))
+			.Select(m => m.OrganizationId ?? m.TenantId)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		var tenants = (await cosmos.GetAllTenantsAsync())
+			.Where(t => orgIds.Contains(t.Id))
+			.ToList();
 		return await HttpHelper.OkJson(req, tenants);
 	}
 
@@ -47,10 +43,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
-
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!IsSuperAdmin(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
 		var body = await HttpHelper.ReadBody<Tenant>(req);
 		if (body == null || string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Type))
@@ -67,16 +60,16 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!HasAdminAccess(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		var orgId = OrgFromQuery(req, ctx);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
+			return await Forbid(req);
 
-		var tenantId = actor.OrganizationId ?? actor.TenantId;
-		var tenant = string.IsNullOrWhiteSpace(tenantId) ? null : await cosmos.GetTenantAsync(tenantId);
+		var tenant = string.IsNullOrWhiteSpace(orgId) ? null : await cosmos.GetTenantAsync(orgId);
 		return await HttpHelper.OkJson(req, new
 		{
 			user = actor,
-			canManageDemoUsers = IsSuperAdmin(actor),
+			canManageDemoUsers = await IsGlobalSuperAsync(ctx),
 			tenant,
 		});
 	}
@@ -88,20 +81,15 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!HasAdminAccess(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		var orgId = QueryValue(req, "tenantId") ?? OrgFromQuery(req, ctx);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
+			return await Forbid(req);
 
-		// A SuperAdmin may target any tenant via ?tenantId=; everyone else is
-		// pinned to their own organization.
-		var requestedTenant = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["tenantId"];
-		var tenantId = IsSuperAdmin(actor) && !string.IsNullOrWhiteSpace(requestedTenant)
-			? requestedTenant
-			: actor.OrganizationId ?? actor.TenantId;
-		if (string.IsNullOrWhiteSpace(tenantId))
+		if (string.IsNullOrWhiteSpace(orgId))
 			return await HttpHelper.OkJson(req, Array.Empty<User>());
 
-		var users = await cosmos.GetUsersForAdminScopeAsync(tenantId);
+		var users = await cosmos.GetUsersForAdminScopeAsync(orgId);
 		return await HttpHelper.OkJson(req, users);
 	}
 
@@ -113,10 +101,6 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!HasAdminAccess(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
-
 		var body = await HttpHelper.ReadBody<UpdateUserAccessRequest>(req);
 		if (body == null || string.IsNullOrWhiteSpace(body.TenantId))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "tenantId is required");
@@ -125,11 +109,22 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (target == null)
 			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
 
-		if (!CanManageTenant(actor, target.TenantId))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		// Authorize by the actor's membership IN THE TARGET USER'S ORG.
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, target.TenantId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
+			return await Forbid(req);
 
-		if (!CanAssignLevel(actor, body.AdminLevel))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot assign this level");
+		var actorRank = AdminLevels.RankOf(actor.AdminLevel);
+		var isSuper = actorRank >= AdminLevels.RankOf(AdminLevels.SuperAdmin);
+		if (!isSuper)
+		{
+			// A non-super may only assign a level below their own, and may not
+			// modify a user who already holds a level at or above their own.
+			if (actorRank <= AdminLevels.RankOf(body.AdminLevel))
+				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot assign a level at or above your own");
+			if (actorRank <= AdminLevels.RankOf(target.AdminLevel))
+				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot modify a user at or above your own level");
+		}
 
 		target.AdminLevel = body.AdminLevel;
 		target.Role = MapAdminLevelToLegacyRole(body.AdminLevel);
@@ -148,14 +143,10 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
-
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!CanManageTenant(actor, tenantId))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
 
 		var tenant = await cosmos.GetTenantAsync(tenantId);
-		if (tenant == null)
-			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
 
 		return await HttpHelper.OkJson(req, tenant.Groups);
 	}
@@ -167,18 +158,14 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
-
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!CanManageTenant(actor, tenantId) || !CanAssignLevel(actor, "GroupAdmin"))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
 
 		var body = await HttpHelper.ReadBody<CreateGroupRequest>(req);
 		if (body == null || string.IsNullOrWhiteSpace(body.Name))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "name is required");
 
 		var tenant = await cosmos.GetTenantAsync(tenantId);
-		if (tenant == null)
-			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
 
 		tenant.Groups.Add(new TenantGroup
 		{
@@ -198,22 +185,18 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
-
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!CanManageTenant(actor, tenantId))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
 
 		var body = await HttpHelper.ReadBody<UpdateTenantRequest>(req);
-		if (body == null)
-			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
+		if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
 
 		var tenant = await cosmos.GetTenantAsync(tenantId);
-		if (tenant == null)
-			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
 
 		if (!string.IsNullOrWhiteSpace(body.Name)) tenant.Name = body.Name;
 		if (!string.IsNullOrWhiteSpace(body.Status)) tenant.Status = body.Status;
 		if (body.RbacEnabled.HasValue) tenant.RbacEnabled = body.RbacEnabled.Value;
+		if (body.AllowGroupAdminAddVolunteers.HasValue) tenant.AllowGroupAdminAddVolunteers = body.AllowGroupAdminAddVolunteers.Value;
 
 		var updated = await cosmos.UpdateTenantAsync(tenant);
 		return await HttpHelper.OkJson(req, updated);
@@ -225,16 +208,13 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!IsSuperAdmin(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
-
-		var tenantId = actor.OrganizationId ?? actor.TenantId;
-		if (string.IsNullOrWhiteSpace(tenantId))
+		var orgId = OrgFromQuery(req, ctx);
+		if (string.IsNullOrWhiteSpace(orgId))
 			return await HttpHelper.OkJson(req, Array.Empty<User>());
 
-		var demoUsers = await cosmos.GetDemoUsersByTenantAsync(tenantId);
+		var demoUsers = await cosmos.GetDemoUsersByTenantAsync(orgId);
 		return await HttpHelper.OkJson(req, demoUsers);
 	}
 
@@ -244,19 +224,14 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!IsSuperAdmin(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
-
-		var tenantId = actor.OrganizationId ?? actor.TenantId;
-		if (string.IsNullOrWhiteSpace(tenantId))
+		var orgId = OrgFromQuery(req, ctx);
+		if (string.IsNullOrWhiteSpace(orgId))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Tenant scope not found");
 
-		await cosmos.DeleteDemoUsersByTenantAsync(tenantId);
-
-		var demoUsers = BuildDefaultDemoUsers(tenantId);
-		var created = await cosmos.UpsertDemoUsersAsync(tenantId, demoUsers);
+		await cosmos.DeleteDemoUsersByTenantAsync(orgId);
+		var created = await cosmos.UpsertDemoUsersAsync(orgId, BuildDefaultDemoUsers(orgId));
 		return await HttpHelper.OkJson(req, created);
 	}
 
@@ -266,10 +241,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
-
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!IsSuperAdmin(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
 		return await HttpHelper.OkJson(req, cosmos.QueryableContainers);
 	}
@@ -283,17 +255,12 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 	{
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
-
-		var actor = await GetOrCreateActorAsync(ctx);
-		if (!IsSuperAdmin(actor))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
 		var body = await HttpHelper.ReadBody<DbQueryRequest>(req);
 		if (body == null || string.IsNullOrWhiteSpace(body.Container) || string.IsNullOrWhiteSpace(body.Query))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "container and query are required");
 
-		// Cosmos SQL is already read-only; requiring an explicit SELECT keeps the
-		// console unambiguously an inspection tool and rejects obvious mistakes.
 		if (!body.Query.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Only SELECT queries are allowed");
 
@@ -313,91 +280,54 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		}
 	}
 
-	private async Task<User> GetOrCreateActorAsync(UserContext ctx)
+	// ── Authorization helpers ───────────────────────────────────────────────
+
+	// A person is a platform super if their token says so or any of their
+	// memberships is SuperAdmin (e.g. granted via the role matrix).
+	private async Task<bool> IsGlobalSuperAsync(UserContext ctx)
 	{
-		var tenantId = ResolveActorTenantId(ctx);
-		var actor = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
-		if (actor != null)
-		{
-			if (string.IsNullOrWhiteSpace(actor.AdminLevel))
-			{
-				actor.AdminLevel = MapLegacyRoleToAdminLevel(ctx.Role);
-				actor.Role = string.IsNullOrWhiteSpace(actor.Role) ? ctx.Role : actor.Role;
-				actor.TenantId = string.IsNullOrWhiteSpace(actor.TenantId) ? tenantId : actor.TenantId;
-				actor.OrganizationId ??= actor.TenantId;
-				actor = await cosmos.UpsertUserWithPartitionFallbackAsync(actor);
-			}
-
-			return actor;
-		}
-
-		var adminLevel = MapLegacyRoleToAdminLevel(ctx.Role);
-		var created = new User
-		{
-			ExternalId = ctx.UserId,
-			TenantId = tenantId,
-			OrganizationId = tenantId,
-			Role = string.IsNullOrWhiteSpace(ctx.Role) ? MapAdminLevelToLegacyRole(adminLevel) : ctx.Role,
-			AdminLevel = adminLevel,
-			DisplayName = string.IsNullOrWhiteSpace(ctx.DisplayName) ? "User" : ctx.DisplayName,
-			Email = ctx.Email,
-			Status = "active",
-		};
-
-		return await cosmos.UpsertUserWithPartitionFallbackAsync(created);
+		if (string.Equals(ctx.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return true;
+		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
+		return memberships.Any(m => string.Equals(m.AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase));
 	}
 
-	private static string ResolveActorTenantId(UserContext ctx)
+	// True when the caller may manage the given tenant: a super, or an
+	// OrganizationAdmin+ membership in that specific tenant.
+	private async Task<bool> CanManageTenantAsync(UserContext ctx, string tenantId)
 	{
-		if (!string.IsNullOrWhiteSpace(ctx.TenantId)) return ctx.TenantId;
-		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
-			? "arkansas-serve-root"
-			: UnknownTenantId;
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, tenantId);
+		return actor != null && AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin);
 	}
 
-	private static bool HasAdminAccess(User user) => GetRank(user.AdminLevel) > 0;
-
-	private static bool IsSuperAdmin(User user) => string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
-
-	private static bool CanManageTenant(User actor, string tenantId)
+	// The org the request targets: ?organizationId=, else the caller's token org.
+	private static string OrgFromQuery(HttpRequestData req, UserContext ctx)
 	{
-		if (IsSuperAdmin(actor)) return true;
-		var actorTenant = actor.OrganizationId ?? actor.TenantId;
-		return string.Equals(actorTenant, tenantId, StringComparison.OrdinalIgnoreCase)
-			&& GetRank(actor.AdminLevel) >= GetRank("OrganizationAdmin");
+		var requested = QueryValue(req, "organizationId");
+		if (!string.IsNullOrWhiteSpace(requested)) return requested;
+		return string.IsNullOrWhiteSpace(ctx.TenantId) ? RootTenantId : ctx.TenantId;
 	}
 
-	private static bool CanAssignLevel(User actor, string level)
+	private static string? QueryValue(HttpRequestData req, string key)
 	{
-		return GetRank(actor.AdminLevel) > GetRank(level);
+		var value = System.Web.HttpUtility.ParseQueryString(req.Url.Query)[key];
+		return string.IsNullOrWhiteSpace(value) ? null : value;
 	}
 
-	private static int GetRank(string level)
-	{
-		if (AdminRank.TryGetValue(level, out var rank)) return rank;
-		return 0;
-	}
+	private static Task<HttpResponseData> Forbid(HttpRequestData req)
+		=> HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
-	private static string MapLegacyRoleToAdminLevel(string role)
+	private static string MapAdminLevelToLegacyRole(string adminLevel) => adminLevel switch
 	{
-		if (string.Equals(role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return "SuperAdmin";
-		if (string.Equals(role, "SchoolAdmin", StringComparison.OrdinalIgnoreCase)) return "OrganizationAdmin";
-		if (string.Equals(role, "OrgStaff", StringComparison.OrdinalIgnoreCase)) return "EventAdmin";
-		return "Student";
-	}
-
-	private static string MapAdminLevelToLegacyRole(string adminLevel)
-	{
-		if (string.Equals(adminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)) return "PlatformAdmin";
-		if (string.Equals(adminLevel, "OrganizationAdmin", StringComparison.OrdinalIgnoreCase)) return "SchoolAdmin";
-		if (string.Equals(adminLevel, "GroupAdmin", StringComparison.OrdinalIgnoreCase)) return "OrgStaff";
-		if (string.Equals(adminLevel, "EventAdmin", StringComparison.OrdinalIgnoreCase)) return "OrgStaff";
-		return "Student";
-	}
+		AdminLevels.SuperAdmin => "PlatformAdmin",
+		AdminLevels.OrganizationAdmin => "SchoolAdmin",
+		AdminLevels.GroupAdmin => "OrgStaff",
+		AdminLevels.EventAdmin => "OrgStaff",
+		_ => "Student",
+	};
 
 	private static List<User> BuildDefaultDemoUsers(string tenantId)
 	{
-		var levels = new[] { "SuperAdmin", "OrganizationAdmin", "GroupAdmin", "EventAdmin", "Student" };
+		var levels = new[] { AdminLevels.SuperAdmin, AdminLevels.OrganizationAdmin, AdminLevels.GroupAdmin, AdminLevels.EventAdmin, AdminLevels.Student };
 		var users = new List<User>();
 		foreach (var level in levels)
 		{
@@ -433,5 +363,5 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	private sealed record DbQueryRequest(string Container, string Query, int? MaxItems);
 
-	private sealed record UpdateTenantRequest(string? Name, string? Status, bool? RbacEnabled);
+	private sealed record UpdateTenantRequest(string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers);
 }
