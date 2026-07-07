@@ -396,6 +396,39 @@ public partial class CosmosService
         return results.OrderByDescending(l => l.ServiceDate).ToList();
     }
 
+    // When a managed volunteer signs in and their record is adopted (externalId
+    // set), their existing service logs still sit in the old studentId partition
+    // (the managed doc's Id). Move them into the externalId partition so
+    // GetServiceLogsByStudentAsync (which queries by externalId) finds them.
+    // studentId is the partition key, so each log is recreated in the new
+    // partition and the old copy deleted. Returns the number of logs migrated.
+    public async Task<int> MigrateServiceLogsStudentIdAsync(string oldStudentId, string newExternalId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(oldStudentId)
+            || string.IsNullOrWhiteSpace(newExternalId)
+            || string.Equals(oldStudentId, newExternalId, StringComparison.Ordinal))
+            return 0;
+
+        var logs = await GetServiceLogsByStudentAsync(oldStudentId, cancellationToken);
+        var migrated = 0;
+        foreach (var log in logs)
+        {
+            log.StudentId = newExternalId;
+            log.UpdatedAt = DateTime.UtcNow;
+
+            // Write the copy in the new partition first, then delete the old one,
+            // so a mid-migration failure never loses a log (at worst it leaves a
+            // stale copy that a later adoption run reconciles).
+            await ServiceLogs.UpsertItemAsync(log, new PartitionKey(newExternalId), cancellationToken: cancellationToken);
+            await ServiceLogs.DeleteItemAsync<ServiceLog>(log.Id, new PartitionKey(oldStudentId), cancellationToken: cancellationToken);
+            migrated++;
+        }
+
+        if (migrated > 0)
+            _logger.LogInformation("Migrated {Count} service log(s) from studentId {Old} to {New}.", migrated, oldStudentId, newExternalId);
+        return migrated;
+    }
+
     // Public events across all orgs — so an admin can attach volunteers to a
     // shared event created by another organization.
     public async Task<List<Event>> GetPublicEventsAsync(CancellationToken cancellationToken = default)

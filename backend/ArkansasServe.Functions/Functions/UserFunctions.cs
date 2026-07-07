@@ -46,6 +46,7 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 						managed.ManagedByUserId = null;
 						if (string.IsNullOrWhiteSpace(managed.DisplayName)) managed.DisplayName = ctx.DisplayName;
 						var adopted = await cosmos.UpsertUserWithPartitionFallbackAsync(managed);
+						await TryMigrateAdoptedLogsAsync(adopted.Id, ctx.UserId);
 						logger.LogInformation("Adopted managed volunteer record on first sign-in for tenant {TenantId}.", tenantId);
 						return await HttpHelper.OkJson(req, adopted);
 					}
@@ -132,6 +133,21 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		{
 			logger.LogError(ex, "Unexpected error while updating current user {UserId}", ctx.UserId);
 			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to update user profile");
+		}
+	}
+
+	// Move an adopted managed volunteer's service logs from the old studentId
+	// (their doc Id) into the externalId partition. Best-effort: a failure here
+	// must never break sign-in — the logs can be migrated on a later adoption.
+	private async Task TryMigrateAdoptedLogsAsync(string oldStudentId, string externalId)
+	{
+		try
+		{
+			await cosmos.MigrateServiceLogsStudentIdAsync(oldStudentId, externalId);
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Failed to migrate service logs from {Old} to {New} on adoption", oldStudentId, externalId);
 		}
 	}
 

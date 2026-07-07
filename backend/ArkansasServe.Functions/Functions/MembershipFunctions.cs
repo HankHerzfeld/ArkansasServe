@@ -119,6 +119,7 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 				byEmail.ManagedByUserId = null;
 				if (string.IsNullOrWhiteSpace(byEmail.DisplayName)) byEmail.DisplayName = ctx.DisplayName;
 				var adopted = await cosmos.UpsertUserWithPartitionFallbackAsync(byEmail);
+				await TryMigrateAdoptedLogsAsync(adopted.Id, ctx.UserId);
 				return await HttpHelper.OkJson(req, adopted);
 			}
 			if (byEmail != null)
@@ -164,6 +165,21 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 
 		await cosmos.DeleteUserWithFallbackAsync(membership.Id, membership.TenantId);
 		return await HttpHelper.OkJson(req, new { removed = true });
+	}
+
+	// Move an adopted managed volunteer's service logs from the old studentId
+	// (their doc Id) into the externalId partition. Best-effort: a failure here
+	// must never break the join — the logs can be migrated on a later adoption.
+	private async Task TryMigrateAdoptedLogsAsync(string oldStudentId, string externalId)
+	{
+		try
+		{
+			await cosmos.MigrateServiceLogsStudentIdAsync(oldStudentId, externalId);
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Failed to migrate service logs from {Old} to {New} on adoption", oldStudentId, externalId);
+		}
 	}
 
 	private sealed record JoinOrgRequest(string OrganizationId);
