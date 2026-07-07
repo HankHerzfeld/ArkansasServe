@@ -43,6 +43,11 @@
         <input id="tenant-rbac" type="checkbox" /> Enable RBAC
       </label>
     </div>
+    <div class="form-group">
+      <label>
+        <input id="tenant-allow-groupadmin-volunteers" type="checkbox" /> Allow group admins to add volunteers organization-wide
+      </label>
+    </div>
     <div style="display:flex;gap:.5rem;">
       <button class="btn btn-primary" id="btn-save-tenant">Save Tenant Settings</button>
       <span id="tenant-save-status" style="font-size:.85rem;color:var(--gray-600);"></span>
@@ -87,6 +92,41 @@
       <tbody id="users-tbody"></tbody>
     </table>
     <div id="users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No users in scope.</div>
+  </div>
+
+  <div class="card" id="volunteers-card" style="display:none;">
+    <div class="card-title">Volunteers</div>
+    <p style="color:var(--gray-600);font-size:.9rem;">
+      Add volunteers to monitor their service. If a volunteer later signs in with the same email, their account links automatically.
+    </p>
+    <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.5rem;">
+      <div class="form-group" style="margin:0;min-width:11rem;">
+        <label for="vol-name">Name</label>
+        <input id="vol-name" type="text" />
+      </div>
+      <div class="form-group" style="margin:0;min-width:13rem;">
+        <label for="vol-email">Email</label>
+        <input id="vol-email" type="email" />
+      </div>
+      <div class="form-group" style="margin:0;min-width:11rem;">
+        <label for="vol-group">Group (optional)</label>
+        <select id="vol-group"><option value="">No group</option></select>
+      </div>
+      <button class="btn btn-primary" id="btn-add-volunteer">Add Volunteer</button>
+      <span id="vol-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+    </div>
+    <table class="table" id="volunteers-table" style="margin-top:.5rem;display:none;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Groups</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="volunteers-tbody"></tbody>
+    </table>
+    <div id="volunteers-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No volunteers yet.</div>
   </div>
 
   <div class="card" id="demo-users-card" style="display:none;">
@@ -245,6 +285,17 @@
     if (org.raw) populateTenantForm(org.raw);
     safe(loadGroups);
     safe(loadUsers);
+
+    // Volunteers roster is available to GroupAdmin+ (and supers).
+    const canVolunteers = state.isSuperAdmin || Auth.adminRank(org.adminLevel) >= Auth.adminRank('GroupAdmin');
+    const volCard = document.getElementById('volunteers-card');
+    if (canVolunteers) {
+      volCard.style.display = 'block';
+      populateVolGroupSelect(org.groups || []);
+      safe(loadVolunteers);
+    } else {
+      volCard.style.display = 'none';
+    }
   }
 
   // Runs a section loader without letting its failure redirect the whole page.
@@ -260,6 +311,47 @@
     document.getElementById('tenant-name').value = tenant.name || '';
     document.getElementById('tenant-status').value = tenant.status || 'active';
     document.getElementById('tenant-rbac').checked = !!tenant.rbacEnabled;
+    // Defaults to allowed when the field is absent.
+    document.getElementById('tenant-allow-groupadmin-volunteers').checked = tenant.allowGroupAdminAddVolunteers !== false;
+  }
+
+  function populateVolGroupSelect(groups) {
+    const sel = document.getElementById('vol-group');
+    clearChildren(sel);
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'No group';
+    sel.appendChild(none);
+    (groups || []).forEach(g => {
+      const o = document.createElement('option');
+      o.value = g.id;
+      o.textContent = g.name;
+      sel.appendChild(o);
+    });
+  }
+
+  async function loadVolunteers() {
+    const table = document.getElementById('volunteers-table');
+    const empty = document.getElementById('volunteers-empty');
+    const tbody = document.getElementById('volunteers-tbody');
+    clearChildren(tbody);
+
+    const vols = await Api.Volunteers.list({ organizationId: state.tenantId });
+    if (!vols.length) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+    table.style.display = 'table';
+    empty.style.display = 'none';
+    vols.forEach(v => {
+      const tr = document.createElement('tr');
+      tr.appendChild(createTextCell(v.displayName || ''));
+      tr.appendChild(createTextCell(v.email || ''));
+      tr.appendChild(createTextCell((v.groupIds || []).join(', ')));
+      tr.appendChild(createTextCell(v.isManaged ? 'managed (no login yet)' : 'active'));
+      tbody.appendChild(tr);
+    });
   }
 
   async function loadGroups() {
@@ -405,6 +497,7 @@
         name: document.getElementById('tenant-name').value.trim(),
         status: document.getElementById('tenant-status').value,
         rbacEnabled: document.getElementById('tenant-rbac').checked,
+        allowGroupAdminAddVolunteers: document.getElementById('tenant-allow-groupadmin-volunteers').checked,
       });
       const org = Scope.activeOrg();
       if (org && updated) {
@@ -482,6 +575,38 @@
       results.style.display = 'block';
     } catch (err) {
       status.textContent = err.message || 'Query failed';
+    }
+  });
+
+  document.getElementById('btn-add-volunteer').addEventListener('click', async () => {
+    const status = document.getElementById('vol-status');
+    const name = document.getElementById('vol-name').value.trim();
+    const email = document.getElementById('vol-email').value.trim();
+    const groupId = document.getElementById('vol-group').value;
+    if (!name || !email) {
+      status.textContent = 'Name and email are required.';
+      return;
+    }
+    if (!state.tenantId) return;
+    const btn = document.getElementById('btn-add-volunteer');
+    btn.disabled = true;
+    status.textContent = 'Adding...';
+    try {
+      await Api.Volunteers.create({
+        displayName: name,
+        email,
+        organizationId: state.tenantId,
+        groupIds: groupId ? [groupId] : [],
+      });
+      document.getElementById('vol-name').value = '';
+      document.getElementById('vol-email').value = '';
+      document.getElementById('vol-group').value = '';
+      status.textContent = 'Added';
+      await loadVolunteers();
+    } catch (err) {
+      status.textContent = err.message || 'Failed to add volunteer';
+    } finally {
+      btn.disabled = false;
     }
   });
 
