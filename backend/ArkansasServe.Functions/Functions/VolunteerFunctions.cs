@@ -11,25 +11,6 @@ namespace ArkansasServe.Functions.Functions;
 
 public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<VolunteerFunctions> logger)
 {
-	private static readonly IReadOnlyDictionary<string, int> Rank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-	{
-		["Student"] = 0,
-		["EventAdmin"] = 1,
-		["GroupAdmin"] = 2,
-		["OrganizationAdmin"] = 3,
-		["SuperAdmin"] = 4,
-	};
-
-	private static int RankOf(string? level) => level != null && Rank.TryGetValue(level, out var r) ? r : 0;
-
-	private static string MapRole(string? role) => role switch
-	{
-		"PlatformAdmin" => "SuperAdmin",
-		"SchoolAdmin" => "OrganizationAdmin",
-		"OrgStaff" => "EventAdmin",
-		_ => "Student",
-	};
-
 	[Function("GetVolunteers")]
 	public async Task<HttpResponseData> GetVolunteers(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/volunteers")] HttpRequestData req)
@@ -37,21 +18,21 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		var actor = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
-		var level = actor?.AdminLevel ?? MapRole(ctx.Role);
-		if (RankOf(level) < RankOf("GroupAdmin"))
+		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+		var orgId = string.IsNullOrWhiteSpace(query["organizationId"]) ? ctx.TenantId : query["organizationId"]!;
+
+		// Per-org: the caller must be a GroupAdmin+ in the target org.
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.GroupAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
-		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-		var orgId = ResolveOrg(actor, ctx, level, query["organizationId"]);
 		var groupId = query["groupId"];
-
 		var volunteers = await cosmos.GetVolunteersByTenantAsync(orgId, groupId);
 
 		// A GroupAdmin only sees volunteers in the groups they administer.
-		if (RankOf(level) == RankOf("GroupAdmin"))
+		if (AdminLevels.RankOf(actor.AdminLevel) == AdminLevels.RankOf(AdminLevels.GroupAdmin))
 		{
-			var own = new HashSet<string>(actor?.GroupIds ?? []);
+			var own = new HashSet<string>(actor.GroupIds ?? []);
 			volunteers = volunteers.Where(v => v.GroupIds.Any(own.Contains)).ToList();
 		}
 
@@ -65,24 +46,24 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		var actor = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
-		var level = actor?.AdminLevel ?? MapRole(ctx.Role);
-		if (RankOf(level) < RankOf("GroupAdmin"))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
-
 		var body = await HttpHelper.ReadBody<CreateVolunteerRequest>(req);
 		if (body == null || string.IsNullOrWhiteSpace(body.DisplayName) || string.IsNullOrWhiteSpace(body.Email))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "displayName and email are required");
 
-		var orgId = ResolveOrg(actor, ctx, level, body.OrganizationId);
+		var orgId = string.IsNullOrWhiteSpace(body.OrganizationId) ? ctx.TenantId : body.OrganizationId!;
+
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.GroupAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
+
 		var email = body.Email.Trim().ToLowerInvariant();
 		var groupIds = body.GroupIds ?? [];
 
 		// GroupAdmins may only add within their own groups, and only org-wide (no
 		// group) when the tenant setting allows it.
-		if (RankOf(level) == RankOf("GroupAdmin"))
+		if (AdminLevels.RankOf(actor.AdminLevel) == AdminLevels.RankOf(AdminLevels.GroupAdmin))
 		{
-			var own = new HashSet<string>(actor?.GroupIds ?? []);
+			var own = new HashSet<string>(actor.GroupIds ?? []);
 			if (groupIds.Count == 0)
 			{
 				var tenant = await cosmos.GetTenantAsync(orgId);
@@ -108,7 +89,7 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 			Email = email,
 			DisplayName = body.DisplayName.Trim(),
 			Role = "Student",
-			AdminLevel = "Student",
+			AdminLevel = AdminLevels.Student,
 			GroupIds = groupIds,
 			Status = "active",
 			IsManaged = true,
@@ -117,14 +98,6 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 
 		var created = await cosmos.CreateManagedVolunteerAsync(volunteer);
 		return await HttpHelper.CreatedJson(req, created);
-	}
-
-	// A SuperAdmin may target any org; everyone else is pinned to their own.
-	private static string ResolveOrg(User? actor, UserContext ctx, string? level, string? requestedOrg)
-	{
-		if (RankOf(level) >= RankOf("SuperAdmin") && !string.IsNullOrWhiteSpace(requestedOrg))
-			return requestedOrg;
-		return actor?.OrganizationId ?? actor?.TenantId ?? ctx.TenantId;
 	}
 
 	private sealed record CreateVolunteerRequest(string DisplayName, string Email, string? OrganizationId, List<string>? GroupIds);
