@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Organizations — Arkansas Serve</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a class="btn btn-secondary btn-sm" href="/dashboard.html">⌂ Dashboard</a></li>
+    <li><a href="/events.html">Find Events</a></li>
+    <li><a href="/organizations.html">Organizations</a></li>
+    <li><span class="navbar-user" id="nav-user-name"></span></li>
+    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1>Organizations</h1>
+    <p>Browse organizations and join the ones you volunteer with.</p>
+    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="card" style="padding:.75rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+    <input type="search" id="filter-search" placeholder="Search organizations…"
+      style="flex:1;min-width:200px;padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+    <label style="font-size:.85rem;color:var(--gray-600);display:flex;align-items:center;gap:.35rem;">
+      <input type="checkbox" id="filter-mine"> My organizations only
+    </label>
+  </div>
+
+  <!-- Loading / empty / grid -->
+  <div id="orgs-loading" class="loading-state"><div class="spinner"></div><p>Loading organizations…</p></div>
+  <div id="orgs-empty" class="card" style="display:none;text-align:center;color:var(--gray-600);">
+    No organizations found.
+  </div>
+  <div class="event-grid" id="orgs-grid" style="display:none;"></div>
+</div>
+
+<script src="/js/vendor/msal-browser.min.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
+<script>
+  Auth.init();
+  let profile = null;
+  let allOrgs = [];
+
+  Auth.requireAuth().then((p) => {
+    profile = p;
+    if (!profile) return;
+    UI.setupHeader('/organizations.html');
+    loadOrgs();
+  });
+
+  async function loadOrgs() {
+    try {
+      allOrgs = await Api.Orgs.browse();
+      document.getElementById('orgs-loading').style.display = 'none';
+      applyFilters();
+    } catch (err) {
+      document.getElementById('orgs-loading').innerHTML =
+        `<div class="alert alert-error">Could not load organizations. Please refresh.</div>`;
+    }
+  }
+
+  function applyFilters() {
+    const search  = document.getElementById('filter-search').value.toLowerCase();
+    const mineOnly = document.getElementById('filter-mine').checked;
+    renderOrgs(allOrgs.filter(o =>
+      (!search   || (o.name || '').toLowerCase().includes(search) || (o.type || '').toLowerCase().includes(search)) &&
+      (!mineOnly || o.alreadyMember)
+    ));
+  }
+
+  function renderOrgs(orgs) {
+    const grid  = document.getElementById('orgs-grid');
+    const empty = document.getElementById('orgs-empty');
+    if (orgs.length === 0) {
+      grid.style.display  = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.style.display  = 'grid';
+
+    grid.innerHTML = '';
+    orgs.forEach(org => grid.appendChild(orgCard(org)));
+  }
+
+  function orgCard(org) {
+    const card = document.createElement('div');
+    card.className = 'card event-card';
+
+    const title = document.createElement('div');
+    title.className = 'card-title';
+    title.textContent = org.name || org.id;
+    card.appendChild(title);
+
+    if (org.type) {
+      const badge = document.createElement('span');
+      badge.className = 'event-badge';
+      badge.textContent = org.type;
+      card.appendChild(badge);
+    }
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;align-items:center;gap:.5rem;margin-top:.75rem;flex-wrap:wrap;';
+
+    if (org.alreadyMember) {
+      const joined = document.createElement('span');
+      joined.className = 'status status-approved';
+      joined.textContent = 'Joined ✓';
+      actions.appendChild(joined);
+
+      const leaveBtn = document.createElement('button');
+      leaveBtn.className = 'btn btn-secondary btn-sm';
+      leaveBtn.textContent = 'Leave';
+      leaveBtn.addEventListener('click', () => doLeave(org, card));
+      actions.appendChild(leaveBtn);
+    } else {
+      const joinBtn = document.createElement('button');
+      joinBtn.className = 'btn btn-primary btn-sm';
+      joinBtn.textContent = 'Join';
+      joinBtn.addEventListener('click', () => doJoin(org, card));
+      actions.appendChild(joinBtn);
+    }
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  async function doJoin(org, card) {
+    const btn = card.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = 'Joining…';
+    try {
+      await Api.Memberships.join(org.id);
+      org.alreadyMember = true;
+      card.replaceWith(orgCard(org));
+      showToast(`Joined ${org.name || org.id}.`, 'success');
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Join';
+      showToast(err.message || 'Could not join. Please try again.', 'error');
+    }
+  }
+
+  async function doLeave(org, card) {
+    const btn = card.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = 'Leaving…';
+    try {
+      await Api.Memberships.leave(org.id);
+      org.alreadyMember = false;
+      card.replaceWith(orgCard(org));
+      showToast(`Left ${org.name || org.id}.`, 'success');
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Leave';
+      showToast(err.message || 'Could not leave this organization.', 'error');
+    }
+  }
+
+  ['filter-search', 'filter-mine'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', applyFilters);
+    document.getElementById(id)?.addEventListener('change', applyFilters);
+  });
+
+  function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type}`;
+    toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,.15);';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  }
+</script>
+</body>
+</html>
