@@ -33,7 +33,24 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
 			if (user == null)
 			{
-				logger.LogInformation("No user profile found for current principal; starting bootstrap create.");
+				// Auto-link: if an admin pre-created a managed volunteer with this
+					// email in the tenant, adopt that record instead of making a new one.
+					var managedEmail = ctx.Email?.Trim().ToLowerInvariant();
+					var managed = string.IsNullOrWhiteSpace(managedEmail)
+						? null
+						: await cosmos.GetMembershipByEmailAsync(managedEmail, tenantId);
+					if (managed is { IsManaged: true })
+					{
+						managed.ExternalId = ctx.UserId;
+						managed.IsManaged = false;
+						managed.ManagedByUserId = null;
+						if (string.IsNullOrWhiteSpace(managed.DisplayName)) managed.DisplayName = ctx.DisplayName;
+						var adopted = await cosmos.UpsertUserWithPartitionFallbackAsync(managed);
+						logger.LogInformation("Adopted managed volunteer record on first sign-in for tenant {TenantId}.", tenantId);
+						return await HttpHelper.OkJson(req, adopted);
+					}
+
+					logger.LogInformation("No user profile found for current principal; starting bootstrap create.");
 
 				var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
 				var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;

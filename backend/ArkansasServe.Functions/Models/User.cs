@@ -54,4 +54,12 @@ public class User : CosmosDocument
 
     [JsonPropertyName("totalApprovedHours")]
     public double TotalApprovedHours { get; set; } = 0;
+
+    // Managed volunteer: created by an admin, no login yet. On first sign-in with
+    // a matching email, the record is adopted (IsManaged cleared, ExternalId set).
+    [JsonPropertyName("isManaged")]
+    public bool IsManaged { get; set; }
+
+    [JsonPropertyName("managedByUserId")]
+    public string? ManagedByUserId { get; set; }
 }
