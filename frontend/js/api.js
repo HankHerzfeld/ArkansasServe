@@ -104,6 +104,23 @@ const Api = (() => {
     list: (schoolId) => request('GET', `/approvals${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`),
   };
 
+  // ── Memberships (the orgs the current person belongs to) ──────────────────
+  const Memberships = {
+    list: () => request('GET', '/manage/me/memberships'),
+  };
+
+  // ── Volunteers ────────────────────────────────────────────────────────────
+  const Volunteers = {
+    list:   (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.organizationId) qs.set('organizationId', params.organizationId);
+      if (params.groupId)        qs.set('groupId', params.groupId);
+      const q = qs.toString();
+      return request('GET', `/manage/volunteers${q ? `?${q}` : ''}`);
+    },
+    create: (data) => request('POST', '/manage/volunteers', data),
+  };
+
   // ── Reports ───────────────────────────────────────────────────────────────
   const Reports = {
     // SchoolAdmin: schoolId is derived server-side from the token (ignored here).
@@ -149,5 +166,5 @@ const Api = (() => {
                                             request('POST', '/manage/db/query', { container, query, maxItems }),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Admin, AdminBackend, Db };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Volunteers, Admin, AdminBackend, Db };
 })();

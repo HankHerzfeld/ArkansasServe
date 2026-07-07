@@ -66,4 +66,36 @@ public partial class CosmosService
     {
         return await UpsertUserWithPartitionFallbackAsync(volunteer, cancellationToken);
     }
+
+    // The acting user's membership within a specific org — their role and groups
+    // THERE (multi-org: a person may be an admin in one org and a student in
+    // another). Platform admins may act in any org even without a membership doc;
+    // everyone else only where they actually hold a membership (else null).
+    public async Task<User?> ResolveActorInOrgAsync(string externalId, string tokenRole, string orgId, CancellationToken cancellationToken = default)
+    {
+        var isSuper = string.Equals(tokenRole, "PlatformAdmin", StringComparison.OrdinalIgnoreCase);
+
+        var membership = await GetUserByExternalIdAsync(externalId, orgId, cancellationToken);
+        if (membership != null)
+        {
+            if (isSuper && !string.Equals(membership.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                membership.AdminLevel = "SuperAdmin";
+            return membership;
+        }
+
+        if (isSuper)
+        {
+            return new User
+            {
+                ExternalId = externalId,
+                TenantId = orgId,
+                OrganizationId = orgId,
+                Role = "PlatformAdmin",
+                AdminLevel = "SuperAdmin",
+                Status = "active",
+            };
+        }
+
+        return null;
+    }
 }
