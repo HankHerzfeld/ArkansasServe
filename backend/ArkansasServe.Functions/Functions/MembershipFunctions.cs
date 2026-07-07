@@ -32,6 +32,7 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 				organizationName = tenant?.Name ?? orgId,
 				status = tenant?.Status,
 				rbacEnabled = tenant?.RbacEnabled,
+				allowGroupAdminAddVolunteers = tenant?.AllowGroupAdminAddVolunteers,
 				adminLevel = m.AdminLevel,
 				role = m.Role,
 				groupIds = m.GroupIds,

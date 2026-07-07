@@ -102,7 +102,7 @@ const Scope = (() => {
           groups,
           adminLevel: m.adminLevel,
           // Minimal tenant record for admin-backend's settings form.
-          raw: { id: m.organizationId, name: m.organizationName, status: m.status, rbacEnabled: m.rbacEnabled },
+          raw: { id: m.organizationId, name: m.organizationName, status: m.status, rbacEnabled: m.rbacEnabled, allowGroupAdminAddVolunteers: m.allowGroupAdminAddVolunteers },
         };
       });
     }
