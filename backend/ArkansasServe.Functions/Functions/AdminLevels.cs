@@ -31,4 +31,13 @@ public static class AdminLevels
 		"OrgStaff" => EventAdmin,
 		_ => Student,
 	};
+
+	public static string ToLegacyRole(string? adminLevel) => adminLevel switch
+	{
+		SuperAdmin => "PlatformAdmin",
+		OrganizationAdmin => "SchoolAdmin",
+		GroupAdmin => "OrgStaff",
+		EventAdmin => "OrgStaff",
+		_ => "Student",
+	};
 }
