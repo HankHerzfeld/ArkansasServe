@@ -23,7 +23,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 		var orgId = string.IsNullOrWhiteSpace(query["organizationId"]) ? ctx.TenantId : query["organizationId"]!;
 		var q = (query["q"] ?? string.Empty).Trim();
 
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
@@ -65,7 +65,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 		if (body == null || string.IsNullOrWhiteSpace(body.OrganizationId) || body.VolunteerIds is not { Count: > 0 } || body.HoursLogged <= 0)
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "organizationId, volunteerIds and hoursLogged > 0 are required");
 
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, body.OrganizationId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, body.OrganizationId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
@@ -141,7 +141,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 		if (body == null || string.IsNullOrWhiteSpace(body.OrganizationId) || body.Rows is not { Count: > 0 })
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "organizationId and rows are required");
 
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, body.OrganizationId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, body.OrganizationId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
@@ -175,7 +175,6 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 						OrganizationId = body.OrganizationId,
 						Email = email,
 						DisplayName = string.IsNullOrWhiteSpace(row.Name) ? email : row.Name.Trim(),
-						Role = "Student",
 						AdminLevel = AdminLevels.Student,
 						Status = "active",
 						IsManaged = true,

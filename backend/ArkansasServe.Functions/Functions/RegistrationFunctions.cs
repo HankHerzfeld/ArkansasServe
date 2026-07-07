@@ -15,7 +15,8 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 	public async Task<HttpResponseData> Register(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "registrations")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "PlatformAdmin");
+		// Any authenticated user may register themselves; ownership is enforced below.
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<RegistrationRequest>(req);
@@ -87,7 +88,7 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "registrations/{id}")] HttpRequestData req,
 		string id)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "Student", "SchoolAdmin", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
@@ -96,7 +97,8 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		var reg = await cosmos.GetRegistrationAsync(id, eventId);
 		if (reg == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Registration not found");
 
-		if (ctx.IsStudent && reg.UserId != ctx.UserId)
+		// A non-admin may only cancel their own registration.
+		if (ctx.IsStudentLevel && reg.UserId != ctx.UserId)
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot cancel another user's registration");
 
 		if (reg.Status == "Cancelled")

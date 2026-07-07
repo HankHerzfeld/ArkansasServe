@@ -24,8 +24,8 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		var tenantId = ResolveTenantId(ctx);
 
 		logger.LogInformation(
-			"GetOrCreateCurrentUser invoked. Role={Role}; HasTenant={HasTenant}",
-			ctx.Role,
+			"GetOrCreateCurrentUser invoked. AdminLevel={AdminLevel}; HasTenant={HasTenant}",
+			ctx.AdminLevel,
 			!string.IsNullOrWhiteSpace(ctx.TenantId));
 
 		try
@@ -54,15 +54,13 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 					logger.LogInformation("No user profile found for current principal; starting bootstrap create.");
 
 				var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
-				var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;
-				var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : MapLegacyRoleToAdminLevel(role);
+				var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : ctx.AdminLevel;
 
 				user = new User
 				{
 					ExternalId = ctx.UserId,
 					TenantId = tenantId,
 					OrganizationId = tenantId,
-					Role = role,
 					AdminLevel = adminLevel,
 					DisplayName = ctx.DisplayName,
 					Email = ctx.Email
@@ -75,11 +73,9 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 					user.TenantId);
 			}
 			else if (ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
-				&& (!string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)
-					|| !string.Equals(user.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)))
+				&& !string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
 			{
 				user.AdminLevel = "SuperAdmin";
-				user.Role = "PlatformAdmin";
 				user.OrganizationId ??= user.TenantId;
 				user = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
 
@@ -157,13 +153,5 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
 			? "arkansas-serve-root"
 			: "unknown-tenant";
-	}
-
-	private static string MapLegacyRoleToAdminLevel(string role)
-	{
-		if (string.Equals(role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return "SuperAdmin";
-		if (string.Equals(role, "SchoolAdmin", StringComparison.OrdinalIgnoreCase)) return "OrganizationAdmin";
-		if (string.Equals(role, "OrgStaff", StringComparison.OrdinalIgnoreCase)) return "EventAdmin";
-		return "Student";
 	}
 }

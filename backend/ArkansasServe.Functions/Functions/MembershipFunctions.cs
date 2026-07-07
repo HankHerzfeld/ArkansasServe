@@ -39,7 +39,6 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 				rbacEnabled = tenant?.RbacEnabled,
 				allowGroupAdminAddVolunteers = tenant?.AllowGroupAdminAddVolunteers,
 				adminLevel = m.AdminLevel,
-				role = m.Role,
 				groupIds = m.GroupIds,
 				groups = tenant?.Groups ?? new List<TenantGroup>(),
 			});
@@ -133,7 +132,6 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 			OrganizationId = orgId,
 			Email = email ?? string.Empty,
 			DisplayName = ctx.DisplayName,
-			Role = "Student",
 			AdminLevel = AdminLevels.Student,
 			Status = "active",
 			SelfJoined = true,

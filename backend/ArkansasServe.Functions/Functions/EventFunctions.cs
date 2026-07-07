@@ -21,7 +21,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
 		var schoolId = query["schoolId"];
 
-		var effectiveSchoolId = ctx.IsStudent ? ctx.TenantId : schoolId;
+		var effectiveSchoolId = ctx.IsStudentLevel ? ctx.TenantId : schoolId;
 
 		try
 		{
@@ -59,7 +59,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 	public async Task<HttpResponseData> CreateEvent(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<Event>(req);
@@ -67,7 +67,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (string.IsNullOrWhiteSpace(body.Title) || body.StartDateTime == default)
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Title and StartDateTime are required");
 
-		body.OrganizationId = ctx.IsPlatformAdmin ? body.OrganizationId : ctx.TenantId;
+		body.OrganizationId = ctx.IsSuperAdmin ? body.OrganizationId : ctx.TenantId;
 		body.CreatedByUserId = ctx.UserId;
 		body.Status = "Open";
 		body.CurrentSlots = 0;
@@ -81,7 +81,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		[HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "events/{id}")] HttpRequestData req,
 		string id)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<Event>(req);
@@ -90,7 +90,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var existing = await cosmos.GetEventAsync(id, body.OrganizationId);
 		if (existing == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
 
-		if (ctx.IsOrgStaff && existing.OrganizationId != ctx.TenantId)
+		if (!ctx.IsSuperAdmin && existing.OrganizationId != ctx.TenantId)
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot edit another organization's event");
 
 		existing.Title = body.Title;
@@ -116,7 +116,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "events/{id}/registrations")] HttpRequestData req,
 		string id)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "SchoolAdmin", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
 		if (ctx == null) return authError!;
 
 		var registrations = await cosmos.GetRegistrationsByEventAsync(id);
@@ -127,7 +127,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 	public async Task<HttpResponseData> GetUploadToken(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events/upload-token")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, "OrgStaff", "PlatformAdmin");
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<UploadTokenRequest>(req);
@@ -152,7 +152,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 
 		// Multi-org: authorize by the caller's membership IN THE TARGET ORG (their
 		// role/groups there), not their token org. Requires EventAdmin+ in that org.
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You do not have event access in this organization");
 

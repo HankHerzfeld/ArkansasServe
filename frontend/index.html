@@ -118,12 +118,13 @@
     if (Auth.isAuthenticated()) {
       const profile = Auth.getProfile();
       const destinations = {
-        Student:       '/dashboard.html',
-        OrgStaff:      '/org-portal.html',
-        SchoolAdmin:   '/admin-portal.html',
-        PlatformAdmin: '/platform-admin.html',
+        Student:           '/dashboard.html',
+        EventAdmin:        '/org-portal.html',
+        GroupAdmin:        '/org-portal.html',
+        OrganizationAdmin: '/admin-portal.html',
+        SuperAdmin:        '/platform-admin.html',
       };
-      window.location.href = destinations[profile?.role] || '/dashboard.html';
+      window.location.href = destinations[profile?.adminLevel] || '/dashboard.html';
     }
   });
 </script>

@@ -139,7 +139,7 @@
   let activeApproval = null;
   let approvedTodayCount = 0;
 
-  Auth.requireAuth('SchoolAdmin').then(async (p) => {
+  Auth.requireAuth('OrganizationAdmin').then(async (p) => {
     profile = p;
     if (!profile) return;
     await UI.setupHeader('/admin-portal.html');
