@@ -158,7 +158,16 @@ const Api = (() => {
 
   // ── Role matrix (SuperAdmin) ──────────────────────────────────────────────
   const Matrix = {
-    list:     ()                  => request('GET',    '/manage/matrix'),
+    // Server-side filtered + paginated: { items, continuationToken }.
+    list: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.organizationId)    qs.set('organizationId', params.organizationId);
+      if (params.search)            qs.set('search', params.search);
+      if (params.continuationToken) qs.set('continuationToken', params.continuationToken);
+      if (params.pageSize)          qs.set('pageSize', params.pageSize);
+      const q = qs.toString();
+      return request('GET', `/manage/matrix${q ? `?${q}` : ''}`);
+    },
     assign:   (data)              => request('POST',   '/manage/backend/memberships', data),
     unassign: (userId, tenantId)  => request('DELETE', `/manage/backend/memberships/${encodeURIComponent(userId)}?tenantId=${encodeURIComponent(tenantId)}`),
   };

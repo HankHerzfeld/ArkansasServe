@@ -14,6 +14,13 @@ namespace ArkansasServe.Functions.Functions;
 // within their own org (subject to the same rank rules as UpdateUserAccess).
 public class MatrixFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<MatrixFunctions> logger)
 {
+	private const int DefaultPageSize = 50;
+	private const int MaxPageSize = 100;
+
+	// One page of the role matrix, flattened to one row per membership document.
+	// Filter server-side with ?organizationId= (scopes to that org's partition)
+	// and/or ?search= (name/email), and page with ?continuationToken=&pageSize=.
+	// Returns { items, continuationToken } — token is null on the last page.
 	[Function("GetRoleMatrix")]
 	public async Task<HttpResponseData> GetRoleMatrix(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/matrix")] HttpRequestData req)
@@ -22,42 +29,44 @@ public class MatrixFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 		if (ctx == null) return authError!;
 		if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.Role)) return await Forbid(req);
 
-		var users = await cosmos.GetAllUsersAsync();
+		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+		var organizationId = query["organizationId"];
+		var search = query["search"];
+		var continuationToken = query["continuationToken"];
+		var pageSize = ParsePageSize(query["pageSize"]);
+
+		var (users, nextToken) = await cosmos.QueryMembershipsPageAsync(organizationId, search, pageSize, continuationToken);
+
 		var tenantNames = (await cosmos.GetAllTenantsAsync())
 			.ToDictionary(t => t.Id, t => t.Name, StringComparer.OrdinalIgnoreCase);
 
-		// Group memberships by person: externalId when signed in, else email.
-		var people = users
-			.GroupBy(u => string.IsNullOrWhiteSpace(u.ExternalId) ? $"email:{u.Email}" : $"ext:{u.ExternalId}")
-			.Select(g =>
+		var items = users
+			.Select(u =>
 			{
-				var first = g.First();
+				var orgId = string.IsNullOrWhiteSpace(u.OrganizationId) ? u.TenantId : u.OrganizationId!;
 				return new
 				{
-					externalId = first.ExternalId,
-					email = first.Email,
-					displayName = g.Select(x => x.DisplayName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? first.Email,
-					memberships = g.Select(u =>
-					{
-						var orgId = string.IsNullOrWhiteSpace(u.OrganizationId) ? u.TenantId : u.OrganizationId!;
-						return new
-						{
-							userId = u.Id,
-							organizationId = orgId,
-							organizationName = tenantNames.GetValueOrDefault(orgId, orgId),
-							adminLevel = u.AdminLevel,
-							groupIds = u.GroupIds,
-							isManaged = u.IsManaged,
-						};
-					})
-					.OrderBy(m => m.organizationName)
-					.ToList(),
+					userId = u.Id,
+					externalId = u.ExternalId,
+					email = u.Email,
+					displayName = string.IsNullOrWhiteSpace(u.DisplayName) ? u.Email : u.DisplayName,
+					organizationId = orgId,
+					organizationName = tenantNames.GetValueOrDefault(orgId, orgId),
+					adminLevel = u.AdminLevel,
+					groupIds = u.GroupIds,
+					isManaged = u.IsManaged,
 				};
 			})
-			.OrderBy(p => p.displayName)
 			.ToList();
 
-		return await HttpHelper.OkJson(req, people);
+		return await HttpHelper.OkJson(req, new { items, continuationToken = nextToken });
+	}
+
+	private static int ParsePageSize(string? raw)
+	{
+		if (int.TryParse(raw, out var n) && n > 0)
+			return Math.Min(n, MaxPageSize);
+		return DefaultPageSize;
 	}
 
 	[Function("UpsertMembership")]
