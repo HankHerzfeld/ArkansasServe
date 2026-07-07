@@ -97,6 +97,7 @@
       <select id="matrix-org" style="min-width:14rem;"><option value="">All organizations</option></select>
       <input type="search" id="matrix-search" placeholder="Search by name or email…" style="flex:1;min-width:14rem;max-width:28rem;">
     </div>
+    <div id="matrix-error" class="alert alert-error" style="display:none;margin-bottom:.75rem;"></div>
     <div id="matrix-loading" class="loading-state" style="display:none;"><div class="spinner"></div></div>
     <div id="matrix-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No assignments yet.</div>
     <table class="table" id="matrix-table" style="display:none;">
@@ -370,6 +371,7 @@
   let matrixLoading = false;
 
   async function loadMatrix() {
+    clearMatrixError();
     // Populate the level + org selects once (assign form + filter dropdown).
     const levelSel = document.getElementById('assign-level');
     if (!levelSel.options.length) {
@@ -479,14 +481,31 @@
     tr.appendChild(td);
   }
 
+  // Surface a matrix action failure inline (auto-hides). The API layer already
+  // extracts the server's error message, so err.message is user-meaningful.
+  let matrixErrorTimer = null;
+  function showMatrixError(msg) {
+    const el = document.getElementById('matrix-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    clearTimeout(matrixErrorTimer);
+    matrixErrorTimer = setTimeout(() => { el.style.display = 'none'; }, 6000);
+  }
+  function clearMatrixError() {
+    const el = document.getElementById('matrix-error');
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+
   async function changeLevel(item, sel) {
     sel.disabled = true;
+    clearMatrixError();
     try {
       await Api.Matrix.assign({ email: item.email, organizationId: item.organizationId, adminLevel: sel.value, externalId: item.externalId || null, groupIds: item.groupIds || [] });
       item.adminLevel = sel.value;
     } catch (err) {
-      sel.value = item.adminLevel;
-      console.error('[matrix] assign failed', err);
+      sel.value = item.adminLevel; // revert the select to the last saved level
+      showMatrixError(`Couldn't change ${item.displayName || item.email}'s level: ${err.message || 'please try again.'}`);
     } finally {
       sel.disabled = false;
     }
@@ -494,12 +513,13 @@
 
   async function removeMembership(item, btn) {
     btn.disabled = true;
+    clearMatrixError();
     try {
       await Api.Matrix.unassign(item.userId, item.organizationId);
       await loadMatrix();
     } catch (err) {
       btn.disabled = false;
-      console.error('[matrix] remove failed', err);
+      showMatrixError(`Couldn't remove ${item.displayName || item.email} from ${item.organizationName}: ${err.message || 'please try again.'}`);
     }
   }
 
