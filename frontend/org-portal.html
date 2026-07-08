@@ -88,6 +88,32 @@
       <select id="evt-group"><option value="">No group</option></select>
     </div>
     <div class="form-group">
+      <label for="evt-tags">Tags (comma-separated, optional)</label>
+      <input type="text" id="evt-tags" placeholder="Outdoors, Family-friendly">
+    </div>
+    <div class="form-group">
+      <label for="evt-requirements">What to know / bring (optional)</label>
+      <textarea id="evt-requirements" placeholder="Wear closed-toe shoes; water provided."></textarea>
+    </div>
+    <div class="form-group">
+      <label for="evt-external-url">External info link (optional)</label>
+      <input type="url" id="evt-external-url" placeholder="https://…">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+      <div class="form-group">
+        <label for="evt-contact-name">Contact name (optional)</label>
+        <input type="text" id="evt-contact-name">
+      </div>
+      <div class="form-group">
+        <label for="evt-contact-email">Contact email (optional)</label>
+        <input type="email" id="evt-contact-email">
+      </div>
+      <div class="form-group">
+        <label for="evt-contact-phone">Contact phone (optional)</label>
+        <input type="tel" id="evt-contact-phone">
+      </div>
+    </div>
+    <div class="form-group">
       <label>Event Photo (optional)</label>
       <input type="file" id="evt-photo" accept="image/*">
       <div id="upload-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.4rem;">Uploading…</div>
@@ -221,6 +247,12 @@
     document.getElementById('evt-hours').value       = evt?.hoursValue ?? 2;
     document.getElementById('evt-slots').value       = evt?.maxSlots ?? 0;
     document.getElementById('evt-category').value    = evt?.category || '';
+    document.getElementById('evt-tags').value          = (evt?.tags || []).join(', ');
+    document.getElementById('evt-requirements').value  = evt?.requirements || '';
+    document.getElementById('evt-external-url').value  = evt?.externalUrl || '';
+    document.getElementById('evt-contact-name').value  = evt?.contactName || '';
+    document.getElementById('evt-contact-email').value = evt?.contactEmail || '';
+    document.getElementById('evt-contact-phone').value = evt?.contactPhone || '';
     document.getElementById('evt-photo-url').value   = evt?.photoUrl || '';
 
     const groupSel = document.getElementById('evt-group');
@@ -284,6 +316,12 @@
       hoursValue:    Number(document.getElementById('evt-hours').value),
       maxSlots:      Number(document.getElementById('evt-slots').value),
       category:      document.getElementById('evt-category').value,
+      tags:          document.getElementById('evt-tags').value.split(',').map(s => s.trim()).filter(Boolean),
+      requirements:  document.getElementById('evt-requirements').value.trim() || null,
+      externalUrl:   document.getElementById('evt-external-url').value.trim() || null,
+      contactName:   document.getElementById('evt-contact-name').value.trim() || null,
+      contactEmail:  document.getElementById('evt-contact-email').value.trim() || null,
+      contactPhone:  document.getElementById('evt-contact-phone').value.trim() || null,
       groupId:       document.getElementById('evt-group').value || null,
       photoUrl:      document.getElementById('evt-photo-url').value,
     };
