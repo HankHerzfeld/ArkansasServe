@@ -4,7 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Organizations — Arkansas Serve</title>
+  <meta name="description" content="Browse organizations and join the ones you volunteer with on Arkansas Serve.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
@@ -28,7 +32,7 @@
 
   <!-- Filter bar -->
   <div class="card" style="padding:.75rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-    <input type="search" id="filter-search" placeholder="Search organizations…"
+    <input type="search" id="filter-search" placeholder="Search organizations…" aria-label="Search organizations by name"
       style="flex:1;min-width:200px;padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
     <label style="font-size:.85rem;color:var(--gray-600);display:flex;align-items:center;gap:.35rem;">
       <input type="checkbox" id="filter-mine"> My organizations only

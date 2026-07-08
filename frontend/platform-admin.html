@@ -4,7 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Platform Admin — Arkansas Serve</title>
+  <meta name="description" content="Platform administration for schools, organizations, roles, and approvals on Arkansas Serve.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
@@ -94,8 +98,8 @@
     </div>
 
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;">
-      <select id="matrix-org" style="min-width:14rem;"><option value="">All organizations</option></select>
-      <input type="search" id="matrix-search" placeholder="Search by name or email…" style="flex:1;min-width:14rem;max-width:28rem;">
+      <select id="matrix-org" aria-label="Filter role matrix by organization" style="min-width:14rem;"><option value="">All organizations</option></select>
+      <input type="search" id="matrix-search" placeholder="Search by name or email…" aria-label="Search role matrix by name or email" style="flex:1;min-width:14rem;max-width:28rem;">
     </div>
     <div id="matrix-error" class="alert alert-error" style="display:none;margin-bottom:.75rem;"></div>
     <div id="matrix-loading" class="loading-state" style="display:none;"><div class="spinner"></div></div>

@@ -4,7 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Find Events — Arkansas Serve</title>
+  <meta name="description" content="Find and sign up for volunteer events in your community on Arkansas Serve.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
@@ -28,9 +32,9 @@
 
   <!-- Filter bar -->
   <div class="card" style="padding:.75rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-    <input type="search" id="filter-search" placeholder="Search by name or organization…"
+    <input type="search" id="filter-search" placeholder="Search by name or organization…" aria-label="Search events by name or organization"
       style="flex:1;min-width:200px;padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
-    <select id="filter-category" style="padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+    <select id="filter-category" aria-label="Filter events by category" style="padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
       <option value="">All categories</option>
       <option>Environmental</option>
       <option>Food Bank</option>
