@@ -14,10 +14,10 @@ namespace ArkansasServe.Functions.Functions;
 ///
 /// Routes
 /// ──────
-///   POST   /api/admin/events/crawl           — run crawl, return import summary
-///   GET    /api/admin/events/crawl/queue     — list Draft events awaiting review
-///   POST   /api/admin/events/crawl/{id}/publish — approve a draft → "Open"
-///   DELETE /api/admin/events/crawl/{id}      — dismiss/delete a draft
+///   POST   /api/manage/events/crawl           — run crawl, return import summary
+///   GET    /api/manage/events/crawl/queue     — list Draft events awaiting review
+///   POST   /api/manage/events/crawl/{id}/publish — approve a draft → "Open"
+///   DELETE /api/manage/events/crawl/{id}      — dismiss/delete a draft
 /// </summary>
 public class CrawlerFunctions(
     CosmosService cosmos,
@@ -25,7 +25,7 @@ public class CrawlerFunctions(
     AuthConfig authConfig,
     ILogger<CrawlerFunctions> logger)
 {
-    // ── POST /api/admin/events/crawl ──────────────────────────────────────────
+    // ── POST /api/manage/events/crawl ─────────────────────────────────────────
 
     /// <summary>
     /// Runs the event crawler against one or more external sources and persists new
@@ -51,7 +51,7 @@ public class CrawlerFunctions(
     /// </summary>
     [Function("RunEventCrawl")]
     public async Task<HttpResponseData> RunCrawl(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/events/crawl")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/events/crawl")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
         var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
@@ -131,7 +131,7 @@ public class CrawlerFunctions(
         });
     }
 
-    // ── GET /api/admin/events/crawl/queue ─────────────────────────────────────
+    // ── GET /api/manage/events/crawl/queue ───────────────────────────────────
 
     /// <summary>
     /// Returns all Draft events that the crawler has imported and that a PlatformAdmin
@@ -139,7 +139,7 @@ public class CrawlerFunctions(
     /// </summary>
     [Function("GetCrawlQueue")]
     public async Task<HttpResponseData> GetQueue(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/events/crawl/queue")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/events/crawl/queue")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
         var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
@@ -159,7 +159,7 @@ public class CrawlerFunctions(
         }
     }
 
-    // ── POST /api/admin/events/crawl/{id}/publish ─────────────────────────────
+    // ── POST /api/manage/events/crawl/{id}/publish ────────────────────────────
 
     /// <summary>
     /// Promotes a Draft crawled event to "Open", making it visible to students in the
@@ -171,7 +171,7 @@ public class CrawlerFunctions(
     /// </summary>
     [Function("PublishCrawledEvent")]
     public async Task<HttpResponseData> Publish(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/events/crawl/{id}/publish")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/events/crawl/{id}/publish")] HttpRequestData req,
         string id,
         CancellationToken cancellationToken)
     {
@@ -200,7 +200,7 @@ public class CrawlerFunctions(
         }
     }
 
-    // ── DELETE /api/admin/events/crawl/{id} ───────────────────────────────────
+    // ── DELETE /api/manage/events/crawl/{id} ─────────────────────────────────
 
     /// <summary>
     /// Dismisses a crawled Draft event from the review queue.
@@ -210,7 +210,7 @@ public class CrawlerFunctions(
     /// </summary>
     [Function("DismissCrawledEvent")]
     public async Task<HttpResponseData> Dismiss(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "admin/events/crawl/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "manage/events/crawl/{id}")] HttpRequestData req,
         string id,
         CancellationToken cancellationToken)
     {

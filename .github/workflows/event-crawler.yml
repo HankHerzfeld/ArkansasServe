@@ -89,7 +89,7 @@ jobs:
             -H "Authorization: Bearer ${CRAWLER_TOKEN}" \
             -H "Content-Type: application/json" \
             -d '${{ steps.body.outputs.body }}' \
-            "${BASE_URL}/admin/events/crawl")
+            "${BASE_URL}/manage/events/crawl")
 
           HTTP_BODY=$(echo "$HTTP_RESPONSE" | head -n -1)
           HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n 1)

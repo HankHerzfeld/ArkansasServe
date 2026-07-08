@@ -207,13 +207,13 @@ const Api = (() => {
      * @param {boolean} [dryRun=false] - Fetch only; do not persist new events.
      * @returns {Promise<{imported: number, skipped: number, dryRun: boolean, errors: string[]}>}
      */
-    run: (sources, dryRun = false) => request('POST', '/admin/events/crawl', { sources, dryRun }),
+    run: (sources, dryRun = false) => request('POST', '/manage/events/crawl', { sources, dryRun }),
 
     /**
      * Fetch the list of crawled Draft events awaiting review.
      * @returns {Promise<Object[]>} Array of Draft Event documents.
      */
-    queue: () => request('GET', '/admin/events/crawl/queue'),
+    queue: () => request('GET', '/manage/events/crawl/queue'),
 
     /**
      * Publish a crawled Draft event, making it visible to students.
@@ -222,14 +222,14 @@ const Api = (() => {
      * @returns {Promise<Object>} The updated Event document.
      */
     publish: (id, organizationName = null) =>
-      request('POST', `/admin/events/crawl/${encodeURIComponent(id)}/publish`, { organizationName }),
+      request('POST', `/manage/events/crawl/${encodeURIComponent(id)}/publish`, { organizationName }),
 
     /**
      * Permanently dismiss a crawled Draft event from the review queue.
      * @param {string} id - Cosmos document id of the Draft event.
      * @returns {Promise<{dismissed: boolean}>}
      */
-    dismiss: (id) => request('DELETE', `/admin/events/crawl/${encodeURIComponent(id)}`),
+    dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
   return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Db, Crawler };
