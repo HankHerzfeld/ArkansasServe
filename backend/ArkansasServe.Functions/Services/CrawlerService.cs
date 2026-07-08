@@ -28,18 +28,6 @@ public sealed class CrawlerService(
     ILogger<CrawlerService> logger)
 {
     // Major Arkansas population-centre zip codes used for JustServe radius searches.
-    private static readonly string[] ArkansasZipCodes =
-    [
-        "72201", // Little Rock
-        "72401", // Jonesboro
-        "71601", // Pine Bluff
-        "72701", // Fayetteville
-        "71901", // Hot Springs
-        "72101", // Conway (approx — closest match is 72034)
-        "72450", // Paragould
-        "71730", // El Dorado
-    ];
-
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -400,6 +388,20 @@ public sealed class CrawlerService(
     /// </summary>
     private async Task<IReadOnlyList<CrawledEvent>> FetchJustServeAsync(CancellationToken ct)
     {
+        // Major Arkansas population-centre zip codes for JustServe radius searches.
+        // These are public geographic identifiers, not sensitive data.
+        string[] arkansasZipCodes =
+        [
+            "72201", // Little Rock
+            "72401", // Jonesboro
+            "71601", // Pine Bluff
+            "72701", // Fayetteville
+            "71901", // Hot Springs
+            "72101", // Conway (approx — closest match is 72034)
+            "72450", // Paragould
+            "71730", // El Dorado
+        ];
+
         var client = httpClientFactory.CreateClient();
         client.DefaultRequestHeaders.Add("User-Agent",
             "ArkansasServe-Crawler/1.0 (+https://arkansasserve.com)");
@@ -408,7 +410,7 @@ public sealed class CrawlerService(
         var results = new List<CrawledEvent>();
         var seenIds = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var zip in ArkansasZipCodes)
+        foreach (var zip in arkansasZipCodes)
         {
             if (ct.IsCancellationRequested) break;
             try

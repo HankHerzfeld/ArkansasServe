@@ -35,6 +35,8 @@ jobs:
     name: Crawl external event sources
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # No repository permissions needed — this job only calls an external HTTP endpoint.
+    permissions: {}
 
     steps:
       - name: Validate required secrets
