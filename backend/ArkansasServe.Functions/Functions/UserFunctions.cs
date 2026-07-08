@@ -113,6 +113,13 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
 			if (user == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
 
+			// Per-org: self-editing can be locked. Org admins can always self-edit.
+			var tenant = await cosmos.GetTenantAsync(tenantId);
+			if (tenant is { AllowProfileSelfEdit: false }
+				&& !AdminLevels.AtLeast(ctx.AdminLevel, AdminLevels.OrganizationAdmin)
+				&& !AdminLevels.AtLeast(user.AdminLevel, AdminLevels.OrganizationAdmin))
+				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Profile editing is disabled for your organization");
+
 			user.DisplayName = body.DisplayName;
 			user.Phone = body.Phone;
 			user.Grade = body.Grade;
