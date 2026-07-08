@@ -19,7 +19,23 @@
     <h1 id="greeting">My Dashboard</h1>
     <p>Track your community service hours and upcoming events.</p>
     <div id="scope-bar" style="margin-top:.5rem;"></div>
-    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;"></div>
+  </div>
+
+  <!-- Profile -->
+  <div class="card" id="profile-card" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+      <div style="display:flex;gap:1rem;align-items:center;">
+        <div id="profile-avatar" style="width:3rem;height:3rem;border-radius:50%;background:var(--green-pale);color:var(--green);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.2rem;flex-shrink:0;"></div>
+        <div>
+          <div id="profile-name" style="font-weight:600;font-size:1.1rem;"></div>
+          <div id="profile-email" style="font-size:.85rem;color:var(--gray-600);"></div>
+          <div id="profile-level" style="margin-top:.35rem;"></div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btn-edit-profile" style="display:none;">Edit profile</button>
+    </div>
+    <div id="profile-details" style="display:flex;gap:1.75rem;flex-wrap:wrap;margin-top:1rem;font-size:.9rem;"></div>
+    <div id="profile-orgs" style="margin-top:1rem;"></div>
   </div>
 
   <!-- Stats -->
@@ -67,6 +83,21 @@
   </div>
 </div>
 
+<!-- Edit profile modal -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal">
+    <div class="modal-title">Edit profile</div>
+    <div class="form-group"><label for="edit-name">Name</label><input id="edit-name" type="text"></div>
+    <div class="form-group"><label for="edit-phone">Phone</label><input id="edit-phone" type="tel" placeholder="Optional"></div>
+    <div class="form-group"><label for="edit-grade">Grade</label><input id="edit-grade" type="text" placeholder="Optional"></div>
+    <div id="profile-modal-error" class="alert alert-error" style="display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="profile-cancel">Cancel</button>
+      <button class="btn btn-primary" id="profile-save">Save</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
@@ -90,6 +121,106 @@
       return user?.adminLevel || profile.adminLevel || 'Student';
     }
 
+    // ── Profile card ─────────────────────────────────────────────────────────
+    let profileUser = null;
+    let profileMemberships = [];
+
+    const LEVEL_LABEL = {
+      Student: 'Volunteer', EventAdmin: 'Event Admin', GroupAdmin: 'Group Admin',
+      OrganizationAdmin: 'Org Admin', SuperAdmin: 'Super Admin',
+    };
+    const prettyLevel = (lvl) => LEVEL_LABEL[lvl] || lvl || 'Volunteer';
+
+    function renderProfile(user, memberships) {
+      const name = user.displayName || profile.name || user.email || '';
+      document.getElementById('profile-card').style.display = 'block';
+      document.getElementById('profile-name').textContent = name;
+      document.getElementById('profile-email').textContent = user.email || '';
+      document.getElementById('profile-avatar').textContent = (name || '?').trim().charAt(0).toUpperCase();
+
+      const levelWrap = document.getElementById('profile-level');
+      levelWrap.innerHTML = '';
+      const badge = document.createElement('span');
+      badge.className = 'event-badge';
+      badge.textContent = prettyLevel(user.adminLevel);
+      levelWrap.appendChild(badge);
+
+      // Progressive: only render fields that have a value.
+      const details = document.getElementById('profile-details');
+      details.innerHTML = '';
+      const rows = [];
+      if (user.phone) rows.push(['Phone', user.phone]);
+      if (user.grade) rows.push(['Grade', user.grade]);
+      rows.forEach(([label, val]) => {
+        const wrap = document.createElement('div');
+        const l = document.createElement('div');
+        l.style.cssText = 'color:var(--gray-600);font-size:.75rem;';
+        l.textContent = label;
+        const v = document.createElement('div');
+        v.textContent = val;
+        wrap.appendChild(l); wrap.appendChild(v);
+        details.appendChild(wrap);
+      });
+
+      const orgsWrap = document.getElementById('profile-orgs');
+      orgsWrap.innerHTML = '';
+      if (memberships && memberships.length) {
+        const h = document.createElement('div');
+        h.style.cssText = 'color:var(--gray-600);font-size:.75rem;margin-bottom:.4rem;';
+        h.textContent = memberships.length > 1 ? 'Organizations' : 'Organization';
+        orgsWrap.appendChild(h);
+        const list = document.createElement('div');
+        list.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;';
+        memberships.forEach(m => {
+          const chip = document.createElement('span');
+          chip.className = 'event-badge';
+          chip.textContent = `${m.organizationName || m.organizationId} · ${prettyLevel(m.adminLevel)}`;
+          list.appendChild(chip);
+        });
+        orgsWrap.appendChild(list);
+      }
+
+      // Editable if you're an org admin, or your org allows self-edit (backend
+      // enforces the real per-org rule; this is a UI hint).
+      const canEdit = rank[user.adminLevel] >= rank.OrganizationAdmin
+        || (memberships && memberships.length ? memberships.some(m => m.allowProfileSelfEdit !== false) : true);
+      document.getElementById('btn-edit-profile').style.display = canEdit ? 'inline-block' : 'none';
+    }
+
+    document.getElementById('btn-edit-profile').addEventListener('click', () => {
+      document.getElementById('edit-name').value  = profileUser?.displayName || '';
+      document.getElementById('edit-phone').value = profileUser?.phone || '';
+      document.getElementById('edit-grade').value = profileUser?.grade || '';
+      document.getElementById('profile-modal-error').style.display = 'none';
+      document.getElementById('profile-modal').classList.add('open');
+    });
+    document.getElementById('profile-cancel').addEventListener('click', () =>
+      document.getElementById('profile-modal').classList.remove('open'));
+    document.getElementById('profile-save').addEventListener('click', async () => {
+      const btn = document.getElementById('profile-save');
+      const err = document.getElementById('profile-modal-error');
+      const name = document.getElementById('edit-name').value.trim();
+      if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+      btn.disabled = true; btn.textContent = 'Saving…'; err.style.display = 'none';
+      try {
+        const updated = await Api.Users.updateMe({
+          displayName: name,
+          phone: document.getElementById('edit-phone').value.trim() || null,
+          grade: document.getElementById('edit-grade').value.trim() || null,
+        });
+        profileUser = updated;
+        Auth.setResolvedLevelFromUser(updated);
+        renderProfile(updated, profileMemberships);
+        document.getElementById('greeting').textContent = `Welcome, ${(updated.displayName || '').split(' ')[0] || 'back'}`;
+        document.getElementById('profile-modal').classList.remove('open');
+      } catch (e) {
+        err.textContent = e.message || 'Could not save your profile.';
+        err.style.display = 'block';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save';
+      }
+    });
+
     async function loadDashboard() {
       try {
         const currentUser = await Api.Users.getMe();
@@ -98,6 +229,11 @@
         const adminLevel = toAdminLevel(currentUser);
 
         await UI.setupHeader('/dashboard.html', currentUser);
+
+        const memberships = await Api.Memberships.list().catch(() => []);
+        profileUser = currentUser;
+        profileMemberships = memberships;
+        renderProfile(currentUser, memberships);
 
         if (adminLevel !== 'Student') {
           document.getElementById('stat-total').textContent = '—';

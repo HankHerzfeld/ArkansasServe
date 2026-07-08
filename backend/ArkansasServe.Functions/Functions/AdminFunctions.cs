@@ -196,6 +196,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (!string.IsNullOrWhiteSpace(body.Status)) tenant.Status = body.Status;
 		if (body.RbacEnabled.HasValue) tenant.RbacEnabled = body.RbacEnabled.Value;
 		if (body.AllowGroupAdminAddVolunteers.HasValue) tenant.AllowGroupAdminAddVolunteers = body.AllowGroupAdminAddVolunteers.Value;
+		if (body.AllowProfileSelfEdit.HasValue) tenant.AllowProfileSelfEdit = body.AllowProfileSelfEdit.Value;
 
 		var updated = await cosmos.UpdateTenantAsync(tenant);
 		return await HttpHelper.OkJson(req, updated);
@@ -352,5 +353,5 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	private sealed record DbQueryRequest(string Container, string Query, int? MaxItems);
 
-	private sealed record UpdateTenantRequest(string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers);
+	private sealed record UpdateTenantRequest(string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers, bool? AllowProfileSelfEdit);
 }

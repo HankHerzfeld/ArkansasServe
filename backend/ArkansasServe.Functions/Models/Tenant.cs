@@ -39,6 +39,11 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("allowGroupAdminAddVolunteers")]
 	public bool AllowGroupAdminAddVolunteers { get; set; } = true;
 
+	// When true (default), members may edit their own profile. Set false to lock
+	// profiles so only org admins can change them; admins can always self-edit.
+	[JsonPropertyName("allowProfileSelfEdit")]
+	public bool AllowProfileSelfEdit { get; set; } = true;
+
 	[JsonPropertyName("groups")]
 	public List<TenantGroup> Groups { get; set; } = [];
 

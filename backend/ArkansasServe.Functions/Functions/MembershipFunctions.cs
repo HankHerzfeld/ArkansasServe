@@ -38,6 +38,7 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 				status = tenant?.Status,
 				rbacEnabled = tenant?.RbacEnabled,
 				allowGroupAdminAddVolunteers = tenant?.AllowGroupAdminAddVolunteers,
+				allowProfileSelfEdit = tenant?.AllowProfileSelfEdit,
 				adminLevel = m.AdminLevel,
 				groupIds = m.GroupIds,
 				groups = tenant?.Groups ?? new List<TenantGroup>(),

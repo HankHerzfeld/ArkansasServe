@@ -45,6 +45,11 @@
         <input id="tenant-allow-groupadmin-volunteers" type="checkbox" /> Allow group admins to add volunteers organization-wide
       </label>
     </div>
+    <div class="form-group">
+      <label>
+        <input id="tenant-allow-profile-self-edit" type="checkbox" /> Allow members to edit their own profile
+      </label>
+    </div>
     <div style="display:flex;gap:.5rem;">
       <button class="btn btn-primary" id="btn-save-tenant">Save Tenant Settings</button>
       <span id="tenant-save-status" style="font-size:.85rem;color:var(--gray-600);"></span>
@@ -359,6 +364,7 @@
     document.getElementById('tenant-rbac').checked = !!tenant.rbacEnabled;
     // Defaults to allowed when the field is absent.
     document.getElementById('tenant-allow-groupadmin-volunteers').checked = tenant.allowGroupAdminAddVolunteers !== false;
+    document.getElementById('tenant-allow-profile-self-edit').checked = tenant.allowProfileSelfEdit !== false;
   }
 
   function populateVolGroupSelect(groups) {
@@ -554,6 +560,7 @@
         status: document.getElementById('tenant-status').value,
         rbacEnabled: document.getElementById('tenant-rbac').checked,
         allowGroupAdminAddVolunteers: document.getElementById('tenant-allow-groupadmin-volunteers').checked,
+        allowProfileSelfEdit: document.getElementById('tenant-allow-profile-self-edit').checked,
       });
       const org = Scope.activeOrg();
       if (org && updated) {
