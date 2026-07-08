@@ -89,7 +89,8 @@ const Api = (() => {
 
   // ── Registrations ─────────────────────────────────────────────────────────
   const Registrations = {
-    create: (eventId, organizationId) => request('POST', '/registrations', { eventId, organizationId }),
+    // data: { eventId, organizationId, shiftId?, answers? }
+    create: (data) => request('POST', '/registrations', data),
     cancel: (id, eventId)             => {
       if (!eventId) throw new Error('eventId is required to cancel registration');
       return request('DELETE', `/registrations/${encodeURIComponent(id)}?eventId=${encodeURIComponent(eventId)}`);

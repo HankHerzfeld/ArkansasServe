@@ -140,11 +140,21 @@
       card.appendChild(document.createElement('br'));
 
       if (profile.adminLevel === 'Student' && evt.status === 'Open') {
-        const btn = document.createElement('button');
-        btn.className = 'btn btn-primary btn-sm';
-        btn.textContent = 'Sign Up';
-        btn.addEventListener('click', () => openSignup(evt.id, evt.organizationId, evt.title, evt.location));
-        card.appendChild(btn);
+        const structured = (evt.shifts && evt.shifts.length) || (evt.signupQuestions && evt.signupQuestions.length);
+        if (structured) {
+          // Shifts/questions are collected on the detail page.
+          const link = document.createElement('a');
+          link.className = 'btn btn-primary btn-sm';
+          link.href = `/event.html?id=${encodeURIComponent(evt.id)}&organizationId=${encodeURIComponent(evt.organizationId)}`;
+          link.textContent = 'Sign Up';
+          card.appendChild(link);
+        } else {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-primary btn-sm';
+          btn.textContent = 'Sign Up';
+          btn.addEventListener('click', () => openSignup(evt.id, evt.organizationId, evt.title, evt.location));
+          card.appendChild(btn);
+        }
       }
 
       grid.appendChild(card);
@@ -181,7 +191,7 @@
     btn.disabled = true;
     btn.textContent = 'Signing up…';
     try {
-      await Api.Registrations.create(pendingEventId, pendingOrgId);
+      await Api.Registrations.create({ eventId: pendingEventId, organizationId: pendingOrgId });
       document.getElementById('signup-modal').classList.remove('open');
       await loadEvents(); // refresh to update slot counts
       showToast('You\'re signed up! We\'ll see you there.', 'success');

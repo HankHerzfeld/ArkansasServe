@@ -109,6 +109,14 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		existing.ContactName = body.ContactName;
 		existing.ContactEmail = body.ContactEmail;
 		existing.ContactPhone = body.ContactPhone;
+		// Preserve each shift's filled count across edits (the admin form doesn't own it).
+		var priorFilled = existing.Shifts.ToDictionary(s => s.Id, s => s.Filled);
+		existing.Shifts = (body.Shifts ?? []).Select(s =>
+		{
+			if (priorFilled.TryGetValue(s.Id, out var f)) s.Filled = f;
+			return s;
+		}).ToList();
+		existing.SignupQuestions = body.SignupQuestions ?? [];
 		existing.GroupId = body.GroupId;
 		if (!string.IsNullOrWhiteSpace(body.Visibility)) existing.Visibility = body.Visibility;
 		existing.Status = body.Status;
