@@ -232,5 +232,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/admin/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Volunteers, Matrix, Admin, AdminBackend, Db, Crawler };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Db, Crawler };
 })();
