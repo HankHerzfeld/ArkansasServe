@@ -54,7 +54,9 @@ public class CrawlerFunctions(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/events/crawl")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.Role))
+        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+        if (ctx == null) return authError!;
+        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel, cancellationToken))
             return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "SuperAdmin required");
 
         var body = await HttpHelper.ReadBody<CrawlRequest>(req);
@@ -142,7 +144,7 @@ public class CrawlerFunctions(
     {
         var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
         if (ctx == null) return authError!;
-        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.Role))
+        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel, cancellationToken))
             return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "PlatformAdmin required");
 
         try
@@ -175,7 +177,7 @@ public class CrawlerFunctions(
     {
         var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
         if (ctx == null) return authError!;
-        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.Role))
+        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel, cancellationToken))
             return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "PlatformAdmin required");
 
         var body = await HttpHelper.ReadBody<PublishRequest>(req);
@@ -214,7 +216,7 @@ public class CrawlerFunctions(
     {
         var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
         if (ctx == null) return authError!;
-        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.Role))
+        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel, cancellationToken))
             return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "PlatformAdmin required");
 
         try

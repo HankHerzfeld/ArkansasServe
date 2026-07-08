@@ -67,6 +67,9 @@ public class Event : CosmosDocument
 	[JsonPropertyName("contactPhone")]
 	public string? ContactPhone { get; set; }
 
+	[JsonPropertyName("contactUrl")]
+	public string? ContactUrl { get; set; }
+
 	// Optional nested-group association within the organization, used to scope
 	// which events a GroupAdmin (and the group switcher) sees.
 	[JsonPropertyName("groupId")]
@@ -117,18 +120,4 @@ public class Event : CosmosDocument
 	[JsonPropertyName("crawledAt")]
 	public DateTime? CrawledAt { get; set; }
 
-	/// <summary>Contact email published by the event host on the source platform.</summary>
-	[JsonPropertyName("contactEmail")]
-	public string? ContactEmail { get; set; }
-
-	/// <summary>Contact phone number published by the event host.</summary>
-	[JsonPropertyName("contactPhone")]
-	public string? ContactPhone { get; set; }
-
-	/// <summary>
-	/// URL for contacting or learning more about the host organization
-	/// (website, Facebook page, GivePulse profile, etc.).
-	/// </summary>
-	[JsonPropertyName("contactUrl")]
-	public string? ContactUrl { get; set; }
 }
