@@ -121,7 +121,8 @@ const Api = (() => {
 
   // ── Organizations (public directory for volunteer self-service) ────────────
   const Orgs = {
-    browse: () => request('GET', '/manage/orgs'),
+    browse: ()   => request('GET', '/manage/orgs'),
+    get:    (id) => request('GET', `/manage/orgs/${encodeURIComponent(id)}`),
   };
 
   // ── Volunteers ────────────────────────────────────────────────────────────

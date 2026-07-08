@@ -80,6 +80,62 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		return await HttpHelper.OkJson(req, orgs);
 	}
 
+	// Public profile for one organization: branding + public contact info, whether
+	// the caller already belongs, and the org's upcoming open events. Any signed-in
+	// user may view. Empty fields are returned as-is for the client to omit.
+	[Function("GetOrgProfile")]
+	public async Task<HttpResponseData> GetOrgProfile(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/orgs/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		if (string.IsNullOrWhiteSpace(id) || string.Equals(id, RootTenantId, StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Organization not found");
+
+		var tenant = await cosmos.GetTenantAsync(id);
+		if (tenant == null || !string.Equals(tenant.Status, "active", StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Organization not found");
+
+		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
+		var alreadyMember = memberships.Any(m =>
+			string.Equals(string.IsNullOrWhiteSpace(m.OrganizationId) ? m.TenantId : m.OrganizationId, id, StringComparison.OrdinalIgnoreCase));
+
+		var now = DateTime.UtcNow;
+		var upcomingEvents = (await cosmos.GetEventsByOrgAsync(id))
+			.Where(e => e.StartDateTime >= now && string.Equals(e.Status, "Open", StringComparison.OrdinalIgnoreCase))
+			.OrderBy(e => e.StartDateTime)
+			.Take(20)
+			.Select(e => new
+			{
+				id = e.Id,
+				title = e.Title,
+				category = e.Category,
+				startDateTime = e.StartDateTime,
+				location = e.Location,
+				hoursValue = e.HoursValue,
+				organizationId = e.OrganizationId,
+			})
+			.ToList();
+
+		return await HttpHelper.OkJson(req, new
+		{
+			id = tenant.Id,
+			name = tenant.Name,
+			type = tenant.Type,
+			description = tenant.Description,
+			mission = tenant.Mission,
+			website = tenant.Website,
+			logoUrl = tenant.LogoUrl,
+			contactEmail = tenant.ContactEmail,
+			contactPhone = tenant.ContactPhone,
+			address = tenant.Address,
+			alreadyMember,
+			upcomingEvents,
+		});
+	}
+
 	// Self-service join: the current person adds themselves to an org as a Student.
 	// Idempotent if already a member; adopts a matching admin-created managed
 	// volunteer (email is unique per org) instead of creating a duplicate.
