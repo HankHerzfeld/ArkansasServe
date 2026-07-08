@@ -1,8 +1,8 @@
 name: Daily Event Crawler
 
-# Pulls Arkansas volunteer events from external sources every day at 6 AM CT
-# (11:00 UTC) and once a week on Sunday at 7 AM CT (12:00 UTC) for a fuller pull.
-# Also triggerable manually from the Actions tab.
+# Pulls Arkansas volunteer events from external sources daily at 11:00 UTC
+# and once a week on Sunday at 12:00 UTC for a fuller pull.
+# (GitHub Actions cron uses UTC and does not adjust for daylight saving time.)
 #
 # Because Azure Static Web Apps Free tier only supports HTTP triggers, the
 # scheduled crawl is driven by this workflow calling the crawler's HTTP endpoint
