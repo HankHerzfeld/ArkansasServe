@@ -28,6 +28,16 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("logoUrl")]
 	public string? LogoUrl { get; set; }
 
+	// ── Public profile (rendered only when present) ─────────────────────────────
+	[JsonPropertyName("description")]
+	public string? Description { get; set; }
+
+	[JsonPropertyName("mission")]
+	public string? Mission { get; set; }
+
+	[JsonPropertyName("website")]
+	public string? Website { get; set; }
+
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "active";
 
