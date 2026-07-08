@@ -103,6 +103,12 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		existing.EligibleSchoolIds = body.EligibleSchoolIds;
 		existing.PhotoUrl = body.PhotoUrl;
 		existing.Category = body.Category;
+		existing.Tags = body.Tags ?? [];
+		existing.Requirements = body.Requirements;
+		existing.ExternalUrl = body.ExternalUrl;
+		existing.ContactName = body.ContactName;
+		existing.ContactEmail = body.ContactEmail;
+		existing.ContactPhone = body.ContactPhone;
 		existing.GroupId = body.GroupId;
 		if (!string.IsNullOrWhiteSpace(body.Visibility)) existing.Visibility = body.Visibility;
 		existing.Status = body.Status;
