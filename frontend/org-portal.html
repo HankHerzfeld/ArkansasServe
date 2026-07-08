@@ -114,6 +114,16 @@
       </div>
     </div>
     <div class="form-group">
+      <label>Shifts (optional — volunteers pick one when signing up)</label>
+      <div id="evt-shifts" style="display:flex;flex-direction:column;gap:.5rem;"></div>
+      <button type="button" class="btn btn-secondary btn-sm" id="evt-add-shift" style="margin-top:.5rem;">+ Add shift</button>
+    </div>
+    <div class="form-group">
+      <label>Sign-up questions (optional)</label>
+      <div id="evt-questions" style="display:flex;flex-direction:column;gap:.5rem;"></div>
+      <button type="button" class="btn btn-secondary btn-sm" id="evt-add-question" style="margin-top:.5rem;">+ Add question</button>
+    </div>
+    <div class="form-group">
       <label>Event Photo (optional)</label>
       <input type="file" id="evt-photo" accept="image/*">
       <div id="upload-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.4rem;">Uploading…</div>
@@ -235,6 +245,76 @@
   // ── New / Edit event ────────────────────────────────────────────────────
   document.getElementById('btn-new-event').addEventListener('click', () => openEventModal());
 
+  // ── Shift + question builders ──────────────────────────────────────────────
+  function newId() { return (crypto.randomUUID ? crypto.randomUUID() : 'x' + Date.now() + Math.random().toString(16).slice(2)); }
+
+  function buildShiftRow(s = {}) {
+    const row = document.createElement('div');
+    row.className = 'shift-row';
+    row.dataset.id = s.id || newId();
+    row.style.cssText = 'display:grid;grid-template-columns:1.2fr 1fr 1fr .7fr auto;gap:.5rem;align-items:center;';
+    const label = document.createElement('input'); label.className = 's-label'; label.placeholder = 'Label (e.g. Morning)'; label.value = s.label || '';
+    const start = document.createElement('input'); start.className = 's-start'; start.type = 'datetime-local'; start.value = s.startDateTime ? s.startDateTime.slice(0, 16) : '';
+    const end   = document.createElement('input'); end.className = 's-end'; end.type = 'datetime-local'; end.value = s.endDateTime ? s.endDateTime.slice(0, 16) : '';
+    const cap   = document.createElement('input'); cap.className = 's-cap'; cap.type = 'number'; cap.min = '0'; cap.placeholder = 'Cap'; cap.value = (s.capacity != null ? s.capacity : '');
+    const rm    = document.createElement('button'); rm.type = 'button'; rm.className = 'btn btn-danger btn-sm'; rm.textContent = '✕';
+    rm.addEventListener('click', () => row.remove());
+    [label, start, end, cap, rm].forEach(el => row.appendChild(el));
+    document.getElementById('evt-shifts').appendChild(row);
+  }
+
+  function buildQuestionRow(q = {}) {
+    const row = document.createElement('div');
+    row.className = 'q-row';
+    row.dataset.id = q.id || newId();
+    row.style.cssText = 'display:grid;grid-template-columns:1.4fr .8fr auto 1.4fr auto;gap:.5rem;align-items:center;';
+    const label = document.createElement('input'); label.className = 'q-label'; label.placeholder = 'Question'; label.value = q.label || '';
+    const type  = document.createElement('select'); type.className = 'q-type';
+    [['text', 'Text'], ['choice', 'Choice']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; type.appendChild(o); });
+    type.value = q.type || 'text';
+    const reqWrap = document.createElement('label'); reqWrap.style.cssText = 'font-size:.8rem;white-space:nowrap;';
+    const req = document.createElement('input'); req.type = 'checkbox'; req.className = 'q-req'; req.checked = !!q.required;
+    reqWrap.appendChild(req); reqWrap.appendChild(document.createTextNode(' Required'));
+    const opts = document.createElement('input'); opts.className = 'q-options'; opts.placeholder = 'Option A, Option B'; opts.value = (q.options || []).join(', ');
+    opts.style.display = type.value === 'choice' ? '' : 'none';
+    type.addEventListener('change', () => { opts.style.display = type.value === 'choice' ? '' : 'none'; });
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'btn btn-danger btn-sm'; rm.textContent = '✕';
+    rm.addEventListener('click', () => row.remove());
+    [label, type, reqWrap, opts, rm].forEach(el => row.appendChild(el));
+    document.getElementById('evt-questions').appendChild(row);
+  }
+
+  function readShifts() {
+    return [...document.querySelectorAll('#evt-shifts .shift-row')].map(row => {
+      const start = row.querySelector('.s-start').value;
+      const end   = row.querySelector('.s-end').value;
+      const cap   = row.querySelector('.s-cap').value;
+      return {
+        id: row.dataset.id,
+        label: row.querySelector('.s-label').value.trim(),
+        startDateTime: start ? new Date(start).toISOString() : null,
+        endDateTime: end ? new Date(end).toISOString() : null,
+        capacity: cap ? Number(cap) : 0,
+      };
+    }).filter(s => s.label);
+  }
+
+  function readQuestions() {
+    return [...document.querySelectorAll('#evt-questions .q-row')].map(row => {
+      const type = row.querySelector('.q-type').value;
+      return {
+        id: row.dataset.id,
+        label: row.querySelector('.q-label').value.trim(),
+        type,
+        required: row.querySelector('.q-req').checked,
+        options: type === 'choice' ? row.querySelector('.q-options').value.split(',').map(o => o.trim()).filter(Boolean) : [],
+      };
+    }).filter(q => q.label);
+  }
+
+  document.getElementById('evt-add-shift').addEventListener('click', () => buildShiftRow());
+  document.getElementById('evt-add-question').addEventListener('click', () => buildQuestionRow());
+
   function openEventModal(evt = null) {
     document.getElementById('event-modal-title').textContent = evt ? 'Edit Event' : 'New Event';
     document.getElementById('edit-event-id').value   = evt?.id || '';
@@ -268,6 +348,11 @@
       groupSel.appendChild(o);
     });
     groupSel.value = evt?.groupId || '';
+
+    document.getElementById('evt-shifts').innerHTML = '';
+    (evt?.shifts || []).forEach(buildShiftRow);
+    document.getElementById('evt-questions').innerHTML = '';
+    (evt?.signupQuestions || []).forEach(buildQuestionRow);
 
     document.getElementById('event-form-error').style.display = 'none';
     document.getElementById('event-modal').classList.add('open');
@@ -324,6 +409,8 @@
       contactPhone:  document.getElementById('evt-contact-phone').value.trim() || null,
       groupId:       document.getElementById('evt-group').value || null,
       photoUrl:      document.getElementById('evt-photo-url').value,
+      shifts:          readShifts(),
+      signupQuestions: readQuestions(),
     };
     const editId = document.getElementById('edit-event-id').value;
     const orgId  = document.getElementById('edit-org-id').value;

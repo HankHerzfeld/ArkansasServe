@@ -31,6 +31,15 @@ public class Event : CosmosDocument
 	[JsonPropertyName("currentSlots")]
 	public int CurrentSlots { get; set; } = 0;
 
+	// Optional shifts/time slots. When present, sign-up requires choosing one and
+	// capacity is tracked per shift (alongside the overall slot count).
+	[JsonPropertyName("shifts")]
+	public List<EventShift> Shifts { get; set; } = [];
+
+	// Optional questions volunteers answer when signing up.
+	[JsonPropertyName("signupQuestions")]
+	public List<SignupQuestion> SignupQuestions { get; set; } = [];
+
 	[JsonPropertyName("hoursValue")]
 	public double HoursValue { get; set; }
 
@@ -79,4 +88,45 @@ public class Event : CosmosDocument
 
 	[JsonPropertyName("createdByUserId")]
 	public string CreatedByUserId { get; set; } = string.Empty;
+}
+
+public class EventShift
+{
+	[JsonPropertyName("id")]
+	public string Id { get; set; } = Guid.NewGuid().ToString();
+
+	[JsonPropertyName("label")]
+	public string Label { get; set; } = string.Empty;
+
+	[JsonPropertyName("startDateTime")]
+	public DateTime? StartDateTime { get; set; }
+
+	[JsonPropertyName("endDateTime")]
+	public DateTime? EndDateTime { get; set; }
+
+	// 0 = unlimited.
+	[JsonPropertyName("capacity")]
+	public int Capacity { get; set; } = 0;
+
+	[JsonPropertyName("filled")]
+	public int Filled { get; set; } = 0;
+}
+
+public class SignupQuestion
+{
+	[JsonPropertyName("id")]
+	public string Id { get; set; } = Guid.NewGuid().ToString();
+
+	[JsonPropertyName("label")]
+	public string Label { get; set; } = string.Empty;
+
+	// "text" or "choice".
+	[JsonPropertyName("type")]
+	public string Type { get; set; } = "text";
+
+	[JsonPropertyName("required")]
+	public bool Required { get; set; }
+
+	[JsonPropertyName("options")]
+	public List<string> Options { get; set; } = [];
 }

@@ -32,13 +32,44 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		if (await cosmos.IsAlreadyRegisteredAsync(body.EventId, ctx.UserId))
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Already registered for this event");
 
+		// If the event has shifts, the volunteer must choose one that isn't full.
+		if (evt.Shifts.Count > 0)
+		{
+			if (string.IsNullOrWhiteSpace(body.ShiftId))
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Please choose a shift");
+			var shift = evt.Shifts.FirstOrDefault(s => s.Id == body.ShiftId);
+			if (shift == null)
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "That shift no longer exists");
+			if (shift.Capacity > 0 && shift.Filled >= shift.Capacity)
+				return await HttpHelper.Error(req, HttpStatusCode.Conflict, "That shift is full");
+		}
+
+		// Required custom questions must be answered.
+		foreach (var q in evt.SignupQuestions.Where(q => q.Required))
+		{
+			var a = body.Answers?.FirstOrDefault(x => x.QuestionId == q.Id);
+			if (a == null || string.IsNullOrWhiteSpace(a.Answer))
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"Please answer: {q.Label}");
+		}
+
+		// Keep only answers to real questions, stamped with the question text.
+		var answers = new List<RegistrationAnswer>();
+		foreach (var q in evt.SignupQuestions)
+		{
+			var a = body.Answers?.FirstOrDefault(x => x.QuestionId == q.Id);
+			if (a != null && !string.IsNullOrWhiteSpace(a.Answer))
+				answers.Add(new RegistrationAnswer { QuestionId = q.Id, Question = q.Label, Answer = a.Answer.Trim() });
+		}
+
 		var reg = new EventRegistration
 		{
 			EventId = body.EventId,
 			UserId = ctx.UserId,
 			StudentName = ctx.DisplayName,
 			SchoolId = ctx.TenantId,
-			Status = "Registered"
+			Status = "Registered",
+			ShiftId = evt.Shifts.Count > 0 ? body.ShiftId : null,
+			Answers = answers,
 		};
 
 		var created = await cosmos.CreateRegistrationAsync(reg);
@@ -55,6 +86,19 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 				reg.Status = "Cancelled";
 				await cosmos.UpdateRegistrationAsync(reg);
 				return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Event is full");
+			}
+
+			// Per-shift capacity, checked/incremented atomically with the event doc.
+			if (!string.IsNullOrWhiteSpace(reg.ShiftId))
+			{
+				var fShift = freshEvt.Shifts.FirstOrDefault(s => s.Id == reg.ShiftId);
+				if (fShift != null && fShift.Capacity > 0 && fShift.Filled >= fShift.Capacity)
+				{
+					reg.Status = "Cancelled";
+					await cosmos.UpdateRegistrationAsync(reg);
+					return await HttpHelper.Error(req, HttpStatusCode.Conflict, "That shift is full");
+				}
+				if (fShift != null) fShift.Filled++;
 			}
 
 			freshEvt.CurrentSlots++;
@@ -114,6 +158,11 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			if (freshEvt == null) break;
 
 			if (freshEvt.CurrentSlots > 0) freshEvt.CurrentSlots--;
+			if (!string.IsNullOrWhiteSpace(reg.ShiftId))
+			{
+				var fShift = freshEvt.Shifts.FirstOrDefault(s => s.Id == reg.ShiftId);
+				if (fShift != null && fShift.Filled > 0) fShift.Filled--;
+			}
 			if (freshEvt.Status == "Full" && freshEvt.CurrentSlots < freshEvt.MaxSlots) freshEvt.Status = "Open";
 
 			try
@@ -131,5 +180,5 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		return req.CreateResponse(HttpStatusCode.NoContent);
 	}
 
-	private sealed record RegistrationRequest(string EventId, string? OrganizationId);
+	private sealed record RegistrationRequest(string EventId, string? OrganizationId, string? ShiftId, List<RegistrationAnswer>? Answers);
 }
