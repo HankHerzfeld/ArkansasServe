@@ -23,6 +23,85 @@ public class NotificationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		return await HttpHelper.OkJson(req, ordered);
 	}
 
+	// The shell's notification pane: the caller's own notifications PLUS role-scoped
+	// admin items (pending approvals where they're OrganizationAdmin+, recent
+	// self-joins where they're GroupAdmin+), each with a place to jump and act.
+	// Admin items are scoped to the orgs the caller actually holds a role in.
+	[Function("GetNotificationPane")]
+	public async Task<HttpResponseData> GetPane(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "notifications/pane")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var personal = (await cosmos.GetNotificationsForUserAsync(ctx.UserId))
+			.OrderByDescending(n => n.CreatedAt)
+			.Select(n => new { id = n.Id, type = n.Type, message = n.Message, isRead = n.IsRead, relatedId = n.RelatedId, createdAt = n.CreatedAt })
+			.ToList();
+		var unread = personal.Count(n => !n.isRead);
+
+		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
+		var since = DateTime.UtcNow.AddDays(-14);
+		var admin = new List<object>();
+		var tenantNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+		async Task<string> OrgName(string orgId)
+		{
+			if (tenantNames.TryGetValue(orgId, out var cached)) return cached;
+			var t = await cosmos.GetTenantAsync(orgId);
+			var name = t?.Name ?? orgId;
+			tenantNames[orgId] = name;
+			return name;
+		}
+
+		foreach (var m in memberships)
+		{
+			var orgId = string.IsNullOrWhiteSpace(m.OrganizationId) ? m.TenantId : m.OrganizationId!;
+			if (string.IsNullOrWhiteSpace(orgId)) continue;
+
+			if (AdminLevels.AtLeast(m.AdminLevel, AdminLevels.OrganizationAdmin))
+			{
+				var pending = await cosmos.GetPendingApprovalsBySchoolAsync(orgId);
+				if (pending.Count > 0)
+				{
+					var name = await OrgName(orgId);
+					admin.Add(new
+					{
+						kind = "approvals",
+						orgId,
+						orgName = name,
+						count = pending.Count,
+						message = $"{pending.Count} hour request{(pending.Count == 1 ? "" : "s")} pending approval in {name}",
+						href = "/admin-portal.html",
+					});
+				}
+			}
+
+			if (AdminLevels.AtLeast(m.AdminLevel, AdminLevels.GroupAdmin))
+			{
+				var joins = await cosmos.GetRecentSelfJoinsAsync(orgId, since);
+				foreach (var u in joins.Where(j => j.ExternalId != ctx.UserId))
+				{
+					var name = await OrgName(orgId);
+					var who = string.IsNullOrWhiteSpace(u.DisplayName) ? u.Email : u.DisplayName;
+					admin.Add(new
+					{
+						kind = "selfjoin",
+						orgId,
+						orgName = name,
+						userId = u.Id,
+						who,
+						message = $"{who} joined {name}",
+						createdAt = u.CreatedAt,
+						href = "/admin-backend.html",
+					});
+				}
+			}
+		}
+
+		return await HttpHelper.OkJson(req, new { personal, unread, admin, actionCount = admin.Count });
+	}
+
 	[Function("MarkNotificationRead")]
 	public async Task<HttpResponseData> MarkRead(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "notifications/{id}")] HttpRequestData req,

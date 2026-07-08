@@ -4,19 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Portal — Arkansas Serve</title>
+  <meta name="description" content="Review service-hour approvals and reports for your organization on Arkansas Serve.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
-<nav class="navbar">
-  <a class="navbar-brand" href="/">Arkansas Serve</a>
-  <ul class="navbar-links">
-    <li><a class="btn btn-secondary btn-sm" href="/dashboard.html">⌂ Dashboard</a></li>
-    <li><a href="/admin-portal.html">Approvals</a></li>
-    <li><span class="navbar-user" id="nav-user-name"></span></li>
-    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
-  </ul>
-</nav>
+<div id="app-header"></div>
 
 <div class="container">
   <div class="page-header">
@@ -139,7 +135,7 @@
   let activeApproval = null;
   let approvedTodayCount = 0;
 
-  Auth.requireAuth('SchoolAdmin').then(async (p) => {
+  Auth.requireAuth('OrganizationAdmin').then(async (p) => {
     profile = p;
     if (!profile) return;
     await UI.setupHeader('/admin-portal.html');

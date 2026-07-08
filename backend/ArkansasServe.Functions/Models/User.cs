@@ -10,9 +10,6 @@ public class User : CosmosDocument
     [JsonPropertyName("externalId")]
     public string ExternalId { get; set; } = string.Empty;
 
-    [JsonPropertyName("role")]
-    public string Role { get; set; } = string.Empty;
-
     [JsonPropertyName("adminLevel")]
     public string AdminLevel { get; set; } = "Student";
 
@@ -62,4 +59,11 @@ public class User : CosmosDocument
 
     [JsonPropertyName("managedByUserId")]
     public string? ManagedByUserId { get; set; }
+
+    // True when the person added this membership themselves via the public org
+    // directory (a self-service Student membership), as opposed to an admin- or
+    // token-provisioned one. Lets self-join be reversible without exposing a way
+    // to drop admin memberships.
+    [JsonPropertyName("selfJoined")]
+    public bool SelfJoined { get; set; }
 }

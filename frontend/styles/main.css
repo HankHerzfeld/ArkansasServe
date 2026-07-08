@@ -42,11 +42,36 @@ body {
   top: 0;
   z-index: 100;
 }
-.navbar-brand { font-size: 1.2rem; font-weight: 700; text-decoration: none; color: inherit; }
+.navbar-brand { font-size: 1.2rem; font-weight: 700; text-decoration: none; color: inherit; white-space: nowrap; }
 .navbar-links { display: flex; gap: 1.5rem; align-items: center; list-style: none; }
 .navbar-links a { color: rgba(255,255,255,.85); text-decoration: none; font-size: .9rem; }
 .navbar-links a:hover { color: #fff; }
-.navbar-user { font-size: .85rem; opacity: .8; }
+
+/* Shared shell: role-aware tab bar + right-side cluster (bell, user, sign out). */
+.nav-tabs { display: flex; gap: .25rem; align-items: center; flex: 1; margin: 0 1rem; flex-wrap: wrap; }
+.nav-tab { color: rgba(255,255,255,.85); text-decoration: none; font-size: .9rem; padding: .4rem .7rem; border-radius: var(--radius); white-space: nowrap; transition: background .12s, color .12s; }
+.nav-tab:hover { color: #fff; background: rgba(255,255,255,.12); }
+.nav-tab.active { color: #fff; background: rgba(255,255,255,.2); font-weight: 600; }
+.nav-right { display: flex; align-items: center; gap: 1rem; }
+.navbar-user { font-size: .85rem; color: rgba(255,255,255,.9); text-decoration: none; white-space: nowrap; }
+.navbar-user:hover { color: #fff; text-decoration: underline; }
+
+/* Notification bell + pane */
+.notif { position: relative; display: flex; }
+.notif-bell { background: none; border: none; cursor: pointer; font-size: 1.15rem; color: #fff; position: relative; line-height: 1; padding: .2rem; }
+.notif-badge { position: absolute; top: -.35rem; right: -.45rem; background: var(--red); color: #fff; font-size: .65rem; min-width: 1.05rem; height: 1.05rem; border-radius: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; font-weight: 600; }
+.notif-pane { position: absolute; right: 0; top: 150%; width: 320px; max-width: 90vw; max-height: 24rem; overflow-y: auto; background: #fff; color: var(--gray-800); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 200; }
+.notif-head { font-weight: 600; padding: .75rem 1rem; border-bottom: 1px solid var(--gray-200); font-size: .9rem; }
+.notif-section { padding: .5rem 1rem .25rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gray-600); background: var(--gray-100); }
+.notif-empty { padding: 1rem; color: var(--gray-600); font-size: .85rem; }
+.notif-item.action { background: var(--amber-pale); }
+.notif-item.action .notif-dismiss { color: var(--amber); font-weight: 600; }
+.notif-item { padding: .7rem 1rem; border-bottom: 1px solid var(--gray-100); font-size: .85rem; display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
+.notif-item:last-child { border-bottom: none; }
+.notif-item.unread { background: var(--green-pale); }
+.notif-msg { flex: 1; }
+.notif-dismiss { background: none; border: none; color: var(--green); cursor: pointer; font-size: .75rem; white-space: nowrap; padding: 0; }
+.notif-dismiss:hover { text-decoration: underline; }
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
@@ -215,9 +240,16 @@ body {
 .hero-card h3 { font-size: 1rem; margin-bottom: .4rem; }
 .hero-card p  { font-size: .85rem; opacity: .8; }
 
+/* ── Cross-document view transitions ────────────────────────────────────────
+   Progressive enhancement: where supported, same-origin navigations animate,
+   so moving between pages reads as flipping between tabs. Ignored elsewhere. */
+@view-transition { navigation: auto; }
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
+  .navbar { flex-wrap: wrap; height: auto; padding: .5rem 1rem; gap: .5rem; }
   .navbar-links { gap: 1rem; }
+  .nav-tabs { margin: 0; order: 3; width: 100%; }
   .hero h1 { font-size: 1.8rem; }
   .stats-row { flex-direction: column; }
   .event-grid { grid-template-columns: 1fr; }

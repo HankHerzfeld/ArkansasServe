@@ -14,11 +14,11 @@
 //   Auth.signUp(returnTo?)         async — redirect straight to account creation
 //   Auth.logout()                  async — redirect logout
 //   Auth.handleCallback()          async — ONLY on /auth-callback.html
-//   Auth.requireAuth(role?)        async — resolves profile or null (redirects)
+//   Auth.requireAuth(minAdminLevel?) async — resolves profile or null (redirects)
 //   Auth.getAccessToken()          async — resolves token string or null
 //   Auth.isAuthenticated()         sync (valid after ready)
-//   Auth.getProfile()              sync (valid after ready)
-//   Auth.setResolvedRoleFromUser() sync
+//   Auth.getProfile()              sync (valid after ready; { name, email, adminLevel })
+//   Auth.setResolvedLevelFromUser() sync
 //   Auth.clearSession()            sync
 //   Auth.getLastLoginAttemptAt()   sync
 
@@ -40,27 +40,11 @@ const Auth = (() => {
 
   // ── Storage keys (ours; MSAL manages its own msal.* keys) ─────────────────
   const KEYS = {
-    appRole:     'as_app_role',
     lastLoginAt: 'as_last_login_at',
     adminLevel:  'as_admin_level',
   };
 
-  // ── Role model (unchanged from previous implementation) ───────────────────
-  const ROLE_RANK = Object.freeze({
-    Student: 0,
-    OrgStaff: 1,
-    SchoolAdmin: 2,
-    PlatformAdmin: 3,
-  });
-
-  function mapAdminLevelToRole(adminLevel) {
-    if (adminLevel === 'SuperAdmin') return 'PlatformAdmin';
-    if (adminLevel === 'OrganizationAdmin') return 'SchoolAdmin';
-    if (adminLevel === 'GroupAdmin' || adminLevel === 'EventAdmin') return 'OrgStaff';
-    return 'Student';
-  }
-
-  // ── Granular 5-level admin model ──────────────────────────────────────────
+  // ── Admin level model (the single 5-level hierarchy) ──────────────────────
   const ADMIN_RANK = Object.freeze({
     Student: 0,
     EventAdmin: 1,
@@ -69,36 +53,36 @@ const Auth = (() => {
     SuperAdmin: 4,
   });
 
-  // Floor mapping when only the legacy role is known (e.g. before /users/me
-  // has resolved the precise adminLevel).
-  function mapRoleToAdminLevel(role) {
+  // Boundary adapter for the Entra token's legacy `extension_Role`/`roles` claim,
+  // which still speaks the old 4-role vocabulary. The only place legacy role
+  // names survive on the client — retire once CIAM emits adminLevel directly.
+  function claimRoleToAdminLevel(role) {
     if (role === 'PlatformAdmin') return 'SuperAdmin';
-    if (role === 'SchoolAdmin') return 'OrganizationAdmin';
-    if (role === 'OrgStaff') return 'EventAdmin';
+    if (role === 'SchoolAdmin')   return 'OrganizationAdmin';
+    if (role === 'OrgStaff')      return 'EventAdmin';
     return 'Student';
+  }
+
+  function normalizeLevel(level) {
+    return Object.hasOwn(ADMIN_RANK, level) ? level : 'Student';
   }
 
   function adminRank(level) {
     return Object.hasOwn(ADMIN_RANK, level) ? ADMIN_RANK[level] : 0;
   }
 
+  function strongestLevel(a, b) {
+    const la = normalizeLevel(a);
+    const lb = normalizeLevel(b);
+    return ADMIN_RANK[la] >= ADMIN_RANK[lb] ? la : lb;
+  }
+
   // Resolved adminLevel: the precise value cached from /users/me if present,
-  // otherwise a floor derived from the token's legacy role.
+  // otherwise derived from the token's (legacy) role claim.
   function getAdminLevel() {
     const cached = sessionStorage.getItem(KEYS.adminLevel);
     if (cached && Object.hasOwn(ADMIN_RANK, cached)) return cached;
-    return mapRoleToAdminLevel(getProfile()?.role);
-  }
-
-  function normalizeRole(role) {
-    if (!role) return 'Student';
-    return Object.hasOwn(ROLE_RANK, role) ? role : 'Student';
-  }
-
-  function strongestRole(a, b) {
-    const roleA = normalizeRole(a);
-    const roleB = normalizeRole(b);
-    return ROLE_RANK[roleA] >= ROLE_RANK[roleB] ? roleA : roleB;
+    return getProfile()?.adminLevel || 'Student';
   }
 
   // ── MSAL instance ─────────────────────────────────────────────────────────
@@ -243,22 +227,21 @@ const Auth = (() => {
     if (!account) return null;
     const claims = account.idTokenClaims || {};
 
-    const tokenRole  = claims.extension_Role || claims.roles?.[0] || 'Student';
-    const cachedRole = sessionStorage.getItem(KEYS.appRole);
-    const role = strongestRole(tokenRole, cachedRole);
+    // Precise level from /users/me (cached) wins; else derive from the token claim.
+    const tokenLevel  = claimRoleToAdminLevel(claims.extension_Role || claims.roles?.[0]);
+    const cachedLevel = sessionStorage.getItem(KEYS.adminLevel);
+    const adminLevel  = strongestLevel(tokenLevel, cachedLevel);
 
     return {
       name:  claims.name || account.name || claims.preferred_username || 'User',
-      role,
+      adminLevel,
       email: claims.email || claims.preferred_username || account.username || '',
     };
   }
 
-  function setResolvedRoleFromUser(user) {
-    if (!user) return;
-    const roleFromUser = user.role || mapAdminLevelToRole(user.adminLevel);
-    sessionStorage.setItem(KEYS.appRole, normalizeRole(roleFromUser));
-    if (user.adminLevel && Object.hasOwn(ADMIN_RANK, user.adminLevel)) {
+  function setResolvedLevelFromUser(user) {
+    if (!user || !user.adminLevel) return;
+    if (Object.hasOwn(ADMIN_RANK, user.adminLevel)) {
       sessionStorage.setItem(KEYS.adminLevel, user.adminLevel);
     }
   }
@@ -269,17 +252,16 @@ const Auth = (() => {
 
   // ── Route guard ───────────────────────────────────────────────────────────
   // Resolves the profile, or null after starting a login redirect / role bounce.
-  async function requireAuth(requiredRole = null) {
+  async function requireAuth(minAdminLevel = null) {
     await _ready;
     if (!getAccount()) {
       await login(window.location.pathname);
       return null;
     }
     const profile = getProfile();
-    // Rank-based: a higher role satisfies a lower requirement (the hierarchy
-    // must hold, e.g. a SchoolAdmin can use OrgStaff pages). PlatformAdmin, the
-    // top rank, still clears everything.
-    if (requiredRole && ROLE_RANK[normalizeRole(profile?.role)] < ROLE_RANK[normalizeRole(requiredRole)]) {
+    // Rank-based: a higher level satisfies a lower requirement (e.g. an
+    // OrganizationAdmin clears an EventAdmin gate; SuperAdmin clears everything).
+    if (minAdminLevel && adminRank(profile?.adminLevel) < adminRank(minAdminLevel)) {
       window.location.href = '/dashboard.html';
       return null;
     }
@@ -297,7 +279,7 @@ const Auth = (() => {
     const navName = document.getElementById('nav-user-name');
     const navRole = document.getElementById('nav-user-role');
     if (navName && profile) navName.textContent = profile.name;
-    if (navRole && profile) navRole.textContent = profile.role;
+    if (navRole && profile) navRole.textContent = profile.adminLevel;
     return profile;
   }
 
@@ -311,7 +293,7 @@ const Auth = (() => {
     isAuthenticated,
     getProfile,
     getAccessToken,
-    setResolvedRoleFromUser,
+    setResolvedLevelFromUser,
     getAdminLevel,
     adminRank,
     clearSession,

@@ -4,26 +4,38 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Dashboard — Arkansas Serve</title>
+  <meta name="description" content="Track and manage community service hours for Arkansas schools, organizations, and volunteers.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
-<nav class="navbar">
-  <a class="navbar-brand" href="/">Arkansas Serve</a>
-  <ul class="navbar-links">
-    <li><a href="/dashboard.html">Dashboard</a></li>
-    <li><a href="/events.html">Find Events</a></li>
-    <li><span class="navbar-user" id="nav-user-name"></span></li>
-    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
-  </ul>
-</nav>
+<div id="app-header"></div>
 
 <div class="container">
   <div class="page-header">
     <h1 id="greeting">My Dashboard</h1>
     <p>Track your community service hours and upcoming events.</p>
     <div id="scope-bar" style="margin-top:.5rem;"></div>
-    <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;"></div>
+  </div>
+
+  <!-- Profile -->
+  <div class="card" id="profile-card" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+      <div style="display:flex;gap:1rem;align-items:center;">
+        <div id="profile-avatar" style="width:3rem;height:3rem;border-radius:50%;background:var(--green-pale);color:var(--green);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.2rem;flex-shrink:0;"></div>
+        <div>
+          <div id="profile-name" style="font-weight:600;font-size:1.1rem;"></div>
+          <div id="profile-email" style="font-size:.85rem;color:var(--gray-600);"></div>
+          <div id="profile-level" style="margin-top:.35rem;"></div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btn-edit-profile" style="display:none;">Edit profile</button>
+    </div>
+    <div id="profile-details" style="display:flex;gap:1.75rem;flex-wrap:wrap;margin-top:1rem;font-size:.9rem;"></div>
+    <div id="profile-orgs" style="margin-top:1rem;"></div>
   </div>
 
   <!-- Stats -->
@@ -40,12 +52,6 @@
       <div class="stat-number" id="stat-events">—</div>
       <div class="stat-label">Events Attended</div>
     </div>
-  </div>
-
-  <!-- Notifications -->
-  <div id="notifications-section" style="display:none;">
-    <h2 style="font-size:1.1rem;margin-bottom:.75rem;">Notifications</h2>
-    <div id="notifications-list"></div>
   </div>
 
   <!-- Service Log History -->
@@ -71,6 +77,21 @@
   </div>
 </div>
 
+<!-- Edit profile modal -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal">
+    <div class="modal-title">Edit profile</div>
+    <div class="form-group"><label for="edit-name">Name</label><input id="edit-name" type="text"></div>
+    <div class="form-group"><label for="edit-phone">Phone</label><input id="edit-phone" type="tel" placeholder="Optional"></div>
+    <div class="form-group"><label for="edit-grade">Grade</label><input id="edit-grade" type="text" placeholder="Optional"></div>
+    <div id="profile-modal-error" class="alert alert-error" style="display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="profile-cancel">Cancel</button>
+      <button class="btn btn-primary" id="profile-save">Save</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
@@ -91,29 +112,121 @@
     };
 
     function toAdminLevel(user) {
-      if (user?.adminLevel) return user.adminLevel;
-      if (profile.role === 'PlatformAdmin') return 'SuperAdmin';
-      if (profile.role === 'SchoolAdmin') return 'OrganizationAdmin';
-      if (profile.role === 'OrgStaff') return 'EventAdmin';
-      return 'Student';
+      return user?.adminLevel || profile.adminLevel || 'Student';
     }
+
+    // ── Profile card ─────────────────────────────────────────────────────────
+    let profileUser = null;
+    let profileMemberships = [];
+
+    const LEVEL_LABEL = {
+      Student: 'Volunteer', EventAdmin: 'Event Admin', GroupAdmin: 'Group Admin',
+      OrganizationAdmin: 'Org Admin', SuperAdmin: 'Super Admin',
+    };
+    const prettyLevel = (lvl) => LEVEL_LABEL[lvl] || lvl || 'Volunteer';
+
+    function renderProfile(user, memberships) {
+      const name = user.displayName || profile.name || user.email || '';
+      document.getElementById('profile-card').style.display = 'block';
+      document.getElementById('profile-name').textContent = name;
+      document.getElementById('profile-email').textContent = user.email || '';
+      document.getElementById('profile-avatar').textContent = (name || '?').trim().charAt(0).toUpperCase();
+
+      const levelWrap = document.getElementById('profile-level');
+      levelWrap.innerHTML = '';
+      const badge = document.createElement('span');
+      badge.className = 'event-badge';
+      badge.textContent = prettyLevel(user.adminLevel);
+      levelWrap.appendChild(badge);
+
+      // Progressive: only render fields that have a value.
+      const details = document.getElementById('profile-details');
+      details.innerHTML = '';
+      const rows = [];
+      if (user.phone) rows.push(['Phone', user.phone]);
+      if (user.grade) rows.push(['Grade', user.grade]);
+      rows.forEach(([label, val]) => {
+        const wrap = document.createElement('div');
+        const l = document.createElement('div');
+        l.style.cssText = 'color:var(--gray-600);font-size:.75rem;';
+        l.textContent = label;
+        const v = document.createElement('div');
+        v.textContent = val;
+        wrap.appendChild(l); wrap.appendChild(v);
+        details.appendChild(wrap);
+      });
+
+      const orgsWrap = document.getElementById('profile-orgs');
+      orgsWrap.innerHTML = '';
+      if (memberships && memberships.length) {
+        const h = document.createElement('div');
+        h.style.cssText = 'color:var(--gray-600);font-size:.75rem;margin-bottom:.4rem;';
+        h.textContent = memberships.length > 1 ? 'Organizations' : 'Organization';
+        orgsWrap.appendChild(h);
+        const list = document.createElement('div');
+        list.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;';
+        memberships.forEach(m => {
+          const chip = document.createElement('span');
+          chip.className = 'event-badge';
+          chip.textContent = `${m.organizationName || m.organizationId} · ${prettyLevel(m.adminLevel)}`;
+          list.appendChild(chip);
+        });
+        orgsWrap.appendChild(list);
+      }
+
+      // Editable if you're an org admin, or your org allows self-edit (backend
+      // enforces the real per-org rule; this is a UI hint).
+      const canEdit = rank[user.adminLevel] >= rank.OrganizationAdmin
+        || (memberships && memberships.length ? memberships.some(m => m.allowProfileSelfEdit !== false) : true);
+      document.getElementById('btn-edit-profile').style.display = canEdit ? 'inline-block' : 'none';
+    }
+
+    document.getElementById('btn-edit-profile').addEventListener('click', () => {
+      document.getElementById('edit-name').value  = profileUser?.displayName || '';
+      document.getElementById('edit-phone').value = profileUser?.phone || '';
+      document.getElementById('edit-grade').value = profileUser?.grade || '';
+      document.getElementById('profile-modal-error').style.display = 'none';
+      document.getElementById('profile-modal').classList.add('open');
+    });
+    document.getElementById('profile-cancel').addEventListener('click', () =>
+      document.getElementById('profile-modal').classList.remove('open'));
+    document.getElementById('profile-save').addEventListener('click', async () => {
+      const btn = document.getElementById('profile-save');
+      const err = document.getElementById('profile-modal-error');
+      const name = document.getElementById('edit-name').value.trim();
+      if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+      btn.disabled = true; btn.textContent = 'Saving…'; err.style.display = 'none';
+      try {
+        const updated = await Api.Users.updateMe({
+          displayName: name,
+          phone: document.getElementById('edit-phone').value.trim() || null,
+          grade: document.getElementById('edit-grade').value.trim() || null,
+        });
+        profileUser = updated;
+        Auth.setResolvedLevelFromUser(updated);
+        renderProfile(updated, profileMemberships);
+        document.getElementById('greeting').textContent = `Welcome, ${(updated.displayName || '').split(' ')[0] || 'back'}`;
+        document.getElementById('profile-modal').classList.remove('open');
+      } catch (e) {
+        err.textContent = e.message || 'Could not save your profile.';
+        err.style.display = 'block';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save';
+      }
+    });
 
     async function loadDashboard() {
       try {
         const currentUser = await Api.Users.getMe();
-        Auth.setResolvedRoleFromUser(currentUser);
-        loadNotifications();
+        Auth.setResolvedLevelFromUser(currentUser);
         const adminLevel = toAdminLevel(currentUser);
 
-        UI.renderConnectors(document.getElementById('role-actions'), adminLevel, '/dashboard.html');
-        if ((rank[adminLevel] || 0) > 0) {
-          try {
-            await Scope.init(currentUser);
-            UI.mountScopeBar(document.getElementById('scope-bar'));
-          } catch (err) {
-            console.error('[dashboard] scope init failed', err);
-          }
-        }
+        await UI.setupHeader('/dashboard.html', currentUser);
+
+        const memberships = await Api.Memberships.list().catch(() => []);
+        profileUser = currentUser;
+        profileMemberships = memberships;
+        renderProfile(currentUser, memberships);
 
         if (adminLevel !== 'Student') {
           document.getElementById('stat-total').textContent = '—';
@@ -181,51 +294,6 @@
       } catch (err) {
         document.getElementById('log-loading').innerHTML =
           `<div class="alert alert-error">Failed to load your service history. Please refresh.</div>`;
-      }
-    }
-
-    // Unread notifications (e.g. hours approved/rejected). Supplementary to the
-    // dashboard — a failure here must never break the main service-log view.
-    async function loadNotifications() {
-      const section = document.getElementById('notifications-section');
-      const list = document.getElementById('notifications-list');
-      try {
-        const notifications = await Api.Notifications.list();
-        if (!notifications || notifications.length === 0) {
-          section.style.display = 'none';
-          return;
-        }
-        list.innerHTML = '';
-        notifications.forEach(n => {
-          const item = document.createElement('div');
-          item.className = 'card';
-          item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.5rem;padding:.75rem 1rem;';
-
-          const msg = document.createElement('div');
-          msg.style.fontSize = '.9rem';
-          msg.textContent = n.message;
-          item.appendChild(msg);
-
-          const btn = document.createElement('button');
-          btn.className = 'btn btn-secondary btn-sm';
-          btn.textContent = 'Dismiss';
-          btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            try {
-              await Api.Notifications.markRead(n.id);
-              item.remove();
-              if (!list.children.length) section.style.display = 'none';
-            } catch {
-              btn.disabled = false;
-            }
-          });
-          item.appendChild(btn);
-
-          list.appendChild(item);
-        });
-        section.style.display = 'block';
-      } catch {
-        section.style.display = 'none';
       }
     }
 

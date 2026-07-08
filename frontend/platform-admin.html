@@ -4,20 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Platform Admin — Arkansas Serve</title>
+  <meta name="description" content="Platform administration for schools, organizations, roles, and approvals on Arkansas Serve.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
-<nav class="navbar">
-  <a class="navbar-brand" href="/">Arkansas Serve</a>
-  <ul class="navbar-links">
-    <li><a class="btn btn-secondary btn-sm" href="/dashboard.html">⌂ Dashboard</a></li>
-    <li><a href="/platform-admin.html">Admin</a></li>
-    <li><a href="/events.html">Events</a></li>
-    <li><span class="navbar-user" id="nav-user-name"></span></li>
-    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
-  </ul>
-</nav>
+<div id="app-header"></div>
 
 <div class="container">
   <div class="page-header">
@@ -93,9 +88,11 @@
       </div>
     </div>
 
-    <div style="margin-bottom:.75rem;">
-      <input type="search" id="matrix-search" placeholder="Filter by name, email, or organization…" style="width:100%;max-width:28rem;">
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;">
+      <select id="matrix-org" aria-label="Filter role matrix by organization" style="min-width:14rem;"><option value="">All organizations</option></select>
+      <input type="search" id="matrix-search" placeholder="Search by name or email…" aria-label="Search role matrix by name or email" style="flex:1;min-width:14rem;max-width:28rem;">
     </div>
+    <div id="matrix-error" class="alert alert-error" style="display:none;margin-bottom:.75rem;"></div>
     <div id="matrix-loading" class="loading-state" style="display:none;"><div class="spinner"></div></div>
     <div id="matrix-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No assignments yet.</div>
     <table class="table" id="matrix-table" style="display:none;">
@@ -110,6 +107,9 @@
       </thead>
       <tbody id="matrix-tbody"></tbody>
     </table>
+    <div id="matrix-loadmore-wrap" style="display:none;margin-top:.75rem;text-align:center;">
+      <button class="btn btn-secondary btn-sm" id="matrix-loadmore">Load more</button>
+    </div>
   </div>
 </div>
 
@@ -180,7 +180,7 @@
 <script src="/js/ui.js"></script>
 <script>
   Auth.init();
-  Auth.requireAuth('PlatformAdmin').then((profile) => {
+  Auth.requireAuth('SuperAdmin').then((profile) => {
     if (!profile) return;
     UI.setupHeader('/platform-admin.html');
     loadTenants();
@@ -357,32 +357,68 @@
   }
 
   // ── Role matrix ─────────────────────────────────────────────────────────
+  // Server-side filtered (org + name/email search) and paginated. Each row is
+  // one membership document; "Load more" follows the continuation token.
   const LEVELS = ['Student', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
-  let matrixData = [];
+  const MATRIX_PAGE_SIZE = 50;
+  let matrixItems = [];
+  let matrixToken = null;
+  let matrixLoading = false;
 
   async function loadMatrix() {
-    const loading = document.getElementById('matrix-loading');
-    const empty = document.getElementById('matrix-empty');
-    const table = document.getElementById('matrix-table');
-    loading.style.display = 'block'; empty.style.display = 'none'; table.style.display = 'none';
-
+    clearMatrixError();
+    // Populate the level + org selects once (assign form + filter dropdown).
+    const levelSel = document.getElementById('assign-level');
+    if (!levelSel.options.length) {
+      LEVELS.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; levelSel.appendChild(o); });
+    }
     try {
-      const levelSel = document.getElementById('assign-level');
-      if (!levelSel.options.length) {
-        LEVELS.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; levelSel.appendChild(o); });
-      }
       const tenants = await Api.Admin.getTenants();
       const orgSel = document.getElementById('assign-org');
       orgSel.innerHTML = '';
       tenants.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; orgSel.appendChild(o); });
 
-      matrixData = await Api.Matrix.list();
-      loading.style.display = 'none';
+      const filterSel = document.getElementById('matrix-org');
+      const current = filterSel.value; // preserve the active filter across reloads
+      filterSel.innerHTML = '<option value="">All organizations</option>';
+      tenants.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; filterSel.appendChild(o); });
+      filterSel.value = current;
+    } catch (err) {
+      console.error('[matrix] tenant load failed', err); // non-fatal
+    }
+
+    matrixItems = [];
+    matrixToken = null;
+    await fetchMatrixPage(true);
+  }
+
+  async function fetchMatrixPage(reset) {
+    if (matrixLoading) return;
+    matrixLoading = true;
+    const loading = document.getElementById('matrix-loading');
+    const moreBtn = document.getElementById('matrix-loadmore');
+    if (reset) loading.style.display = 'block';
+    moreBtn.disabled = true; moreBtn.textContent = 'Loading…';
+    try {
+      const res = await Api.Matrix.list({
+        organizationId: document.getElementById('matrix-org').value || undefined,
+        search: document.getElementById('matrix-search').value.trim() || undefined,
+        continuationToken: reset ? undefined : matrixToken,
+        pageSize: MATRIX_PAGE_SIZE,
+      });
+      matrixItems = reset ? (res.items || []) : matrixItems.concat(res.items || []);
+      matrixToken = res.continuationToken || null;
       renderMatrix();
     } catch (err) {
-      loading.style.display = 'none';
+      document.getElementById('matrix-table').style.display = 'none';
+      const empty = document.getElementById('matrix-empty');
       empty.style.display = 'block';
       empty.textContent = 'Could not load the role matrix.';
+      console.error('[matrix] load failed', err);
+    } finally {
+      loading.style.display = 'none';
+      moreBtn.disabled = false; moreBtn.textContent = 'Load more';
+      matrixLoading = false;
     }
   }
 
@@ -390,54 +426,48 @@
     const table = document.getElementById('matrix-table');
     const empty = document.getElementById('matrix-empty');
     const tbody = document.getElementById('matrix-tbody');
-    const q = (document.getElementById('matrix-search').value || '').toLowerCase();
+    const moreWrap = document.getElementById('matrix-loadmore-wrap');
     tbody.innerHTML = '';
-    let rows = 0;
 
-    matrixData.forEach(person => {
-      (person.memberships || []).forEach(m => {
-        const hay = `${person.displayName} ${person.email} ${m.organizationName} ${m.adminLevel}`.toLowerCase();
-        if (q && !hay.includes(q)) return;
-        rows++;
+    matrixItems.forEach(item => {
+      const tr = document.createElement('tr');
 
-        const tr = document.createElement('tr');
+      const tdP = document.createElement('td');
+      const strong = document.createElement('strong');
+      strong.textContent = item.displayName || item.email;
+      tdP.appendChild(strong);
+      const sub = document.createElement('div');
+      sub.style.cssText = 'font-size:.8rem;color:var(--gray-600);';
+      sub.textContent = item.email + (item.externalId ? '' : ' · managed');
+      tdP.appendChild(sub);
+      tr.appendChild(tdP);
 
-        const tdP = document.createElement('td');
-        const strong = document.createElement('strong');
-        strong.textContent = person.displayName || person.email;
-        tdP.appendChild(strong);
-        const sub = document.createElement('div');
-        sub.style.cssText = 'font-size:.8rem;color:var(--gray-600);';
-        sub.textContent = person.email + (person.externalId ? '' : ' · managed');
-        tdP.appendChild(sub);
-        tr.appendChild(tdP);
+      appendCell(tr, item.organizationName);
 
-        appendCell(tr, m.organizationName);
+      const tdL = document.createElement('td');
+      const sel = document.createElement('select');
+      sel.style.cssText = 'padding:.2rem .4rem;font-size:.85rem;';
+      LEVELS.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; if (l === item.adminLevel) o.selected = true; sel.appendChild(o); });
+      sel.addEventListener('change', () => changeLevel(item, sel));
+      tdL.appendChild(sel);
+      tr.appendChild(tdL);
 
-        const tdL = document.createElement('td');
-        const sel = document.createElement('select');
-        sel.style.cssText = 'padding:.2rem .4rem;font-size:.85rem;';
-        LEVELS.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; if (l === m.adminLevel) o.selected = true; sel.appendChild(o); });
-        sel.addEventListener('change', () => changeLevel(person, m, sel));
-        tdL.appendChild(sel);
-        tr.appendChild(tdL);
+      appendCell(tr, (item.groupIds || []).join(', '));
 
-        appendCell(tr, (m.groupIds || []).join(', '));
+      const tdA = document.createElement('td');
+      const rm = document.createElement('button');
+      rm.className = 'btn btn-danger btn-sm';
+      rm.textContent = 'Remove';
+      rm.addEventListener('click', () => removeMembership(item, rm));
+      tdA.appendChild(rm);
+      tr.appendChild(tdA);
 
-        const tdA = document.createElement('td');
-        const rm = document.createElement('button');
-        rm.className = 'btn btn-danger btn-sm';
-        rm.textContent = 'Remove';
-        rm.addEventListener('click', () => removeMembership(m, rm));
-        tdA.appendChild(rm);
-        tr.appendChild(tdA);
-
-        tbody.appendChild(tr);
-      });
+      tbody.appendChild(tr);
     });
 
-    if (rows === 0) { table.style.display = 'none'; empty.style.display = 'block'; empty.textContent = 'No matching assignments.'; }
+    if (matrixItems.length === 0) { table.style.display = 'none'; empty.style.display = 'block'; empty.textContent = 'No matching assignments.'; }
     else { table.style.display = 'table'; empty.style.display = 'none'; }
+    moreWrap.style.display = matrixToken ? 'block' : 'none';
   }
 
   function appendCell(tr, text) {
@@ -446,27 +476,45 @@
     tr.appendChild(td);
   }
 
-  async function changeLevel(person, m, sel) {
+  // Surface a matrix action failure inline (auto-hides). The API layer already
+  // extracts the server's error message, so err.message is user-meaningful.
+  let matrixErrorTimer = null;
+  function showMatrixError(msg) {
+    const el = document.getElementById('matrix-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    clearTimeout(matrixErrorTimer);
+    matrixErrorTimer = setTimeout(() => { el.style.display = 'none'; }, 6000);
+  }
+  function clearMatrixError() {
+    const el = document.getElementById('matrix-error');
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+
+  async function changeLevel(item, sel) {
     sel.disabled = true;
+    clearMatrixError();
     try {
-      await Api.Matrix.assign({ email: person.email, organizationId: m.organizationId, adminLevel: sel.value, externalId: person.externalId || null, groupIds: m.groupIds || [] });
-      m.adminLevel = sel.value;
+      await Api.Matrix.assign({ email: item.email, organizationId: item.organizationId, adminLevel: sel.value, externalId: item.externalId || null, groupIds: item.groupIds || [] });
+      item.adminLevel = sel.value;
     } catch (err) {
-      sel.value = m.adminLevel;
-      console.error('[matrix] assign failed', err);
+      sel.value = item.adminLevel; // revert the select to the last saved level
+      showMatrixError(`Couldn't change ${item.displayName || item.email}'s level: ${err.message || 'please try again.'}`);
     } finally {
       sel.disabled = false;
     }
   }
 
-  async function removeMembership(m, btn) {
+  async function removeMembership(item, btn) {
     btn.disabled = true;
+    clearMatrixError();
     try {
-      await Api.Matrix.unassign(m.userId, m.organizationId);
+      await Api.Matrix.unassign(item.userId, item.organizationId);
       await loadMatrix();
     } catch (err) {
       btn.disabled = false;
-      console.error('[matrix] remove failed', err);
+      showMatrixError(`Couldn't remove ${item.displayName || item.email} from ${item.organizationName}: ${err.message || 'please try again.'}`);
     }
   }
 
@@ -491,7 +539,14 @@
     }
   });
 
-  document.getElementById('matrix-search').addEventListener('input', renderMatrix);
+  // Server-side filters: reload the first page on org change or (debounced) search.
+  let matrixSearchTimer = null;
+  document.getElementById('matrix-search').addEventListener('input', () => {
+    clearTimeout(matrixSearchTimer);
+    matrixSearchTimer = setTimeout(loadMatrix, 300);
+  });
+  document.getElementById('matrix-org').addEventListener('change', loadMatrix);
+  document.getElementById('matrix-loadmore').addEventListener('click', () => fetchMatrixPage(false));
 </script>
 </body>
 </html>

@@ -67,13 +67,28 @@ public partial class CosmosService
         return await UpsertUserWithPartitionFallbackAsync(volunteer, cancellationToken);
     }
 
+    // Recently self-joined volunteers in an org (for the admin notification pane).
+    public async Task<List<User>> GetRecentSelfJoinsAsync(string tenantId, DateTime since, int max = 5, CancellationToken cancellationToken = default)
+    {
+        var query = Users.GetItemLinqQueryable<User>(requestOptions: new QueryRequestOptions
+            { PartitionKey = new PartitionKey(tenantId) })
+            .Where(u => u.SelfJoined && u.CreatedAt >= since)
+            .ToFeedIterator();
+
+        var results = new List<User>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+
+        return results.OrderByDescending(u => u.CreatedAt).Take(max).ToList();
+    }
+
     // The acting user's membership within a specific org — their role and groups
     // THERE (multi-org: a person may be an admin in one org and a student in
     // another). Platform admins may act in any org even without a membership doc;
     // everyone else only where they actually hold a membership (else null).
-    public async Task<User?> ResolveActorInOrgAsync(string externalId, string tokenRole, string orgId, CancellationToken cancellationToken = default)
+    public async Task<User?> ResolveActorInOrgAsync(string externalId, string tokenAdminLevel, string orgId, CancellationToken cancellationToken = default)
     {
-        var isSuper = string.Equals(tokenRole, "PlatformAdmin", StringComparison.OrdinalIgnoreCase);
+        var isSuper = string.Equals(tokenAdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
 
         var membership = await GetUserByExternalIdAsync(externalId, orgId, cancellationToken);
         if (membership != null)
@@ -90,7 +105,6 @@ public partial class CosmosService
                 ExternalId = externalId,
                 TenantId = orgId,
                 OrganizationId = orgId,
-                Role = "PlatformAdmin",
                 AdminLevel = "SuperAdmin",
                 Status = "active",
             };
@@ -109,6 +123,45 @@ public partial class CosmosService
         return results;
     }
 
+    // One page of membership documents for the role matrix, filtered server-side
+    // by org and/or a name/email search so the matrix scales past a full-container
+    // scan. When organizationId is set the query is scoped to that partition;
+    // otherwise it pages across partitions with a continuation token. Returns the
+    // page plus the token to fetch the next page (null when the last page).
+    public async Task<(List<User> Items, string? ContinuationToken)> QueryMembershipsPageAsync(
+        string? organizationId,
+        string? search,
+        int pageSize,
+        string? continuationToken,
+        CancellationToken cancellationToken = default)
+    {
+        var hasSearch = !string.IsNullOrWhiteSpace(search);
+
+        var queryText = "SELECT * FROM c";
+        if (hasSearch)
+            queryText += " WHERE CONTAINS(LOWER(c.displayName), @q) OR CONTAINS(LOWER(c.email), @q)";
+        queryText += " ORDER BY c.displayName";
+
+        var queryDef = new QueryDefinition(queryText);
+        if (hasSearch)
+            queryDef = queryDef.WithParameter("@q", search!.Trim().ToLowerInvariant());
+
+        var requestOptions = new QueryRequestOptions { MaxItemCount = pageSize };
+        if (!string.IsNullOrWhiteSpace(organizationId))
+            requestOptions.PartitionKey = new PartitionKey(organizationId);
+
+        using var iterator = Users.GetItemQueryIterator<User>(
+            queryDef,
+            continuationToken: string.IsNullOrWhiteSpace(continuationToken) ? null : continuationToken,
+            requestOptions: requestOptions);
+
+        if (!iterator.HasMoreResults)
+            return (new List<User>(), null);
+
+        var page = await iterator.ReadNextAsync(cancellationToken);
+        return (page.ToList(), page.ContinuationToken);
+    }
+
     // Removes a membership document, tolerating the /id-vs-/tenantId partition quirk.
     public async Task DeleteUserWithFallbackAsync(string userId, string tenantId, CancellationToken cancellationToken = default)
     {
@@ -122,10 +175,11 @@ public partial class CosmosService
         }
     }
 
-    // A person is a platform super if their token says so or any membership is SuperAdmin.
-    public async Task<bool> IsGlobalSuperAsync(string externalId, string tokenRole, CancellationToken cancellationToken = default)
+    // A person is a platform super if their token level is SuperAdmin (from the
+    // role claim or the email-domain bootstrap) or any membership is SuperAdmin.
+    public async Task<bool> IsGlobalSuperAsync(string externalId, string tokenAdminLevel, CancellationToken cancellationToken = default)
     {
-        if (string.Equals(tokenRole, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(tokenAdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)) return true;
         var memberships = await GetMembershipsByExternalIdAsync(externalId, cancellationToken);
         return memberships.Any(m => string.Equals(m.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
     }

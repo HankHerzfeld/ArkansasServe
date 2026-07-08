@@ -108,13 +108,21 @@ const Api = (() => {
 
   // ── Approvals ─────────────────────────────────────────────────────────────
   const Approvals = {
-    // schoolId is honored for PlatformAdmins; ignored (pinned to own school) otherwise.
+    // schoolId is honored for SuperAdmins; ignored (pinned to own school) otherwise.
     list: (schoolId) => request('GET', `/approvals${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`),
   };
 
   // ── Memberships (the orgs the current person belongs to) ──────────────────
   const Memberships = {
-    list: () => request('GET', '/manage/me/memberships'),
+    list:  ()      => request('GET',    '/manage/me/memberships'),
+    join:  (orgId) => request('POST',   '/manage/me/memberships', { organizationId: orgId }),
+    leave: (orgId) => request('DELETE', `/manage/me/memberships/${encodeURIComponent(orgId)}`),
+  };
+
+  // ── Organizations (public directory for volunteer self-service) ────────────
+  const Orgs = {
+    browse: ()   => request('GET', '/manage/orgs'),
+    get:    (id) => request('GET', `/manage/orgs/${encodeURIComponent(id)}`),
   };
 
   // ── Volunteers ────────────────────────────────────────────────────────────
@@ -131,8 +139,8 @@ const Api = (() => {
 
   // ── Reports ───────────────────────────────────────────────────────────────
   const Reports = {
-    // SchoolAdmin: schoolId is derived server-side from the token (ignored here).
-    // PlatformAdmin: pass { schoolId } to target a specific school.
+    // OrganizationAdmin: schoolId is derived server-side from the token (ignored here).
+    // SuperAdmin: pass { schoolId } to target a specific school.
     serviceHours: (params = {}) => {
       const qs = new URLSearchParams();
       if (params.schoolId) qs.set('schoolId', params.schoolId);
@@ -146,12 +154,22 @@ const Api = (() => {
   // ── Notifications ─────────────────────────────────────────────────────────
   const Notifications = {
     list:     ()   => request('GET',   '/notifications'),
+    pane:     ()   => request('GET',   '/notifications/pane'),
     markRead: (id) => request('PATCH', `/notifications/${encodeURIComponent(id)}`, { isRead: true }),
   };
 
   // ── Role matrix (SuperAdmin) ──────────────────────────────────────────────
   const Matrix = {
-    list:     ()                  => request('GET',    '/manage/matrix'),
+    // Server-side filtered + paginated: { items, continuationToken }.
+    list: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.organizationId)    qs.set('organizationId', params.organizationId);
+      if (params.search)            qs.set('search', params.search);
+      if (params.continuationToken) qs.set('continuationToken', params.continuationToken);
+      if (params.pageSize)          qs.set('pageSize', params.pageSize);
+      const q = qs.toString();
+      return request('GET', `/manage/matrix${q ? `?${q}` : ''}`);
+    },
     assign:   (data)              => request('POST',   '/manage/backend/memberships', data),
     unassign: (userId, tenantId)  => request('DELETE', `/manage/backend/memberships/${encodeURIComponent(userId)}?tenantId=${encodeURIComponent(tenantId)}`),
   };
@@ -215,4 +233,5 @@ const Api = (() => {
   };
 
   return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Volunteers, Matrix, Admin, AdminBackend, Db, Crawler };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Db };
 })();

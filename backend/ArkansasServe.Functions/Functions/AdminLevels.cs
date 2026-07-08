@@ -23,21 +23,15 @@ public static class AdminLevels
 
 	public static bool AtLeast(string? level, string required) => RankOf(level) >= RankOf(required);
 
-	// Floor mapping from the legacy role when a precise adminLevel isn't available.
+	// Boundary adapter for the Entra token's legacy `extension_Role`/`roles` claim,
+	// which still speaks the old 4-role vocabulary. This is the ONLY place the
+	// legacy role names survive — everything downstream uses adminLevel. Retire it
+	// once the CIAM user flow emits adminLevel directly.
 	public static string FromLegacyRole(string? role) => role switch
 	{
 		"PlatformAdmin" => SuperAdmin,
 		"SchoolAdmin" => OrganizationAdmin,
 		"OrgStaff" => EventAdmin,
 		_ => Student,
-	};
-
-	public static string ToLegacyRole(string? adminLevel) => adminLevel switch
-	{
-		SuperAdmin => "PlatformAdmin",
-		OrganizationAdmin => "SchoolAdmin",
-		GroupAdmin => "OrgStaff",
-		EventAdmin => "OrgStaff",
-		_ => "Student",
 	};
 }

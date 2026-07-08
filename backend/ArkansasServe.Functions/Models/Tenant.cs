@@ -28,6 +28,16 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("logoUrl")]
 	public string? LogoUrl { get; set; }
 
+	// ── Public profile (rendered only when present) ─────────────────────────────
+	[JsonPropertyName("description")]
+	public string? Description { get; set; }
+
+	[JsonPropertyName("mission")]
+	public string? Mission { get; set; }
+
+	[JsonPropertyName("website")]
+	public string? Website { get; set; }
+
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "active";
 
@@ -38,6 +48,11 @@ public class Tenant : CosmosDocument
 	// not just within their own groups.
 	[JsonPropertyName("allowGroupAdminAddVolunteers")]
 	public bool AllowGroupAdminAddVolunteers { get; set; } = true;
+
+	// When true (default), members may edit their own profile. Set false to lock
+	// profiles so only org admins can change them; admins can always self-edit.
+	[JsonPropertyName("allowProfileSelfEdit")]
+	public bool AllowProfileSelfEdit { get; set; } = true;
 
 	[JsonPropertyName("groups")]
 	public List<TenantGroup> Groups { get; set; } = [];

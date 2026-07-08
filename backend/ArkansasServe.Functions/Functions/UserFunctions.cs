@@ -24,8 +24,8 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		var tenantId = ResolveTenantId(ctx);
 
 		logger.LogInformation(
-			"GetOrCreateCurrentUser invoked. Role={Role}; HasTenant={HasTenant}",
-			ctx.Role,
+			"GetOrCreateCurrentUser invoked. AdminLevel={AdminLevel}; HasTenant={HasTenant}",
+			ctx.AdminLevel,
 			!string.IsNullOrWhiteSpace(ctx.TenantId));
 
 		try
@@ -46,6 +46,7 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 						managed.ManagedByUserId = null;
 						if (string.IsNullOrWhiteSpace(managed.DisplayName)) managed.DisplayName = ctx.DisplayName;
 						var adopted = await cosmos.UpsertUserWithPartitionFallbackAsync(managed);
+						await TryMigrateAdoptedLogsAsync(adopted.Id, ctx.UserId);
 						logger.LogInformation("Adopted managed volunteer record on first sign-in for tenant {TenantId}.", tenantId);
 						return await HttpHelper.OkJson(req, adopted);
 					}
@@ -53,15 +54,13 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 					logger.LogInformation("No user profile found for current principal; starting bootstrap create.");
 
 				var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
-				var role = isArkansasServeAdmin ? "PlatformAdmin" : ctx.Role;
-				var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : MapLegacyRoleToAdminLevel(role);
+				var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : ctx.AdminLevel;
 
 				user = new User
 				{
 					ExternalId = ctx.UserId,
 					TenantId = tenantId,
 					OrganizationId = tenantId,
-					Role = role,
 					AdminLevel = adminLevel,
 					DisplayName = ctx.DisplayName,
 					Email = ctx.Email
@@ -74,11 +73,9 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 					user.TenantId);
 			}
 			else if (ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
-				&& (!string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase)
-					|| !string.Equals(user.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)))
+				&& !string.Equals(user.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
 			{
 				user.AdminLevel = "SuperAdmin";
-				user.Role = "PlatformAdmin";
 				user.OrganizationId ??= user.TenantId;
 				user = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
 
@@ -116,6 +113,13 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
 			if (user == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
 
+			// Per-org: self-editing can be locked. Org admins can always self-edit.
+			var tenant = await cosmos.GetTenantAsync(tenantId);
+			if (tenant is { AllowProfileSelfEdit: false }
+				&& !AdminLevels.AtLeast(ctx.AdminLevel, AdminLevels.OrganizationAdmin)
+				&& !AdminLevels.AtLeast(user.AdminLevel, AdminLevels.OrganizationAdmin))
+				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Profile editing is disabled for your organization");
+
 			user.DisplayName = body.DisplayName;
 			user.Phone = body.Phone;
 			user.Grade = body.Grade;
@@ -135,19 +139,26 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		}
 	}
 
+	// Move an adopted managed volunteer's service logs from the old studentId
+	// (their doc Id) into the externalId partition. Best-effort: a failure here
+	// must never break sign-in — the logs can be migrated on a later adoption.
+	private async Task TryMigrateAdoptedLogsAsync(string oldStudentId, string externalId)
+	{
+		try
+		{
+			await cosmos.MigrateServiceLogsStudentIdAsync(oldStudentId, externalId);
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Failed to migrate service logs from {Old} to {New} on adoption", oldStudentId, externalId);
+		}
+	}
+
 	private static string ResolveTenantId(UserContext ctx)
 	{
 		if (!string.IsNullOrWhiteSpace(ctx.TenantId)) return ctx.TenantId;
 		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
 			? "arkansas-serve-root"
 			: "unknown-tenant";
-	}
-
-	private static string MapLegacyRoleToAdminLevel(string role)
-	{
-		if (string.Equals(role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase)) return "SuperAdmin";
-		if (string.Equals(role, "SchoolAdmin", StringComparison.OrdinalIgnoreCase)) return "OrganizationAdmin";
-		if (string.Equals(role, "OrgStaff", StringComparison.OrdinalIgnoreCase)) return "EventAdmin";
-		return "Student";
 	}
 }

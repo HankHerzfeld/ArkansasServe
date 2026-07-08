@@ -20,7 +20,7 @@ public class ApprovalFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 		var schoolId = query["schoolId"];
 
 		// A platform admin with no school selected sees every school's queue.
-		if (string.Equals(ctx.Role, "PlatformAdmin", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(schoolId))
+		if (ctx.IsSuperAdmin && string.IsNullOrEmpty(schoolId))
 		{
 			var approvals = await cosmos.GetAllPendingApprovalsAsync();
 			return await HttpHelper.OkJson(req, approvals);
@@ -28,7 +28,7 @@ public class ApprovalFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 
 		// Per-org: the caller must be an OrganizationAdmin+ in the target school.
 		var orgId = string.IsNullOrWhiteSpace(schoolId) ? ctx.TenantId : schoolId;
-		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.Role, orgId);
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You do not have approval access in this organization");
 

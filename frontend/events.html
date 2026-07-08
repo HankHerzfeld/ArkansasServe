@@ -4,19 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Find Events — Arkansas Serve</title>
+  <meta name="description" content="Find and sign up for volunteer events in your community on Arkansas Serve.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
-<nav class="navbar">
-  <a class="navbar-brand" href="/">Arkansas Serve</a>
-  <ul class="navbar-links">
-    <li><a class="btn btn-secondary btn-sm" href="/dashboard.html">⌂ Dashboard</a></li>
-    <li><a href="/events.html">Events</a></li>
-    <li><span class="navbar-user" id="nav-user-name"></span></li>
-    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
-  </ul>
-</nav>
+<div id="app-header"></div>
 
 <div class="container">
   <div class="page-header">
@@ -27,9 +23,9 @@
 
   <!-- Filter bar -->
   <div class="card" style="padding:.75rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-    <input type="search" id="filter-search" placeholder="Search by name or organization…"
+    <input type="search" id="filter-search" placeholder="Search by name or organization…" aria-label="Search events by name or organization"
       style="flex:1;min-width:200px;padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
-    <select id="filter-category" style="padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+    <select id="filter-category" aria-label="Filter events by category" style="padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
       <option value="">All categories</option>
       <option>Environmental</option>
       <option>Food Bank</option>
@@ -119,9 +115,11 @@
       badge.textContent = evt.category || 'Volunteer';
       card.appendChild(badge);
 
-      const title = document.createElement('div');
+      const title = document.createElement('a');
       title.className = 'card-title';
+      title.href = `/event.html?id=${encodeURIComponent(evt.id)}&organizationId=${encodeURIComponent(evt.organizationId)}`;
       title.textContent = evt.title;
+      title.style.cssText = 'display:block;color:var(--green);text-decoration:none;';
       card.appendChild(title);
 
       const meta = document.createElement('div');
@@ -141,7 +139,7 @@
       card.appendChild(status);
       card.appendChild(document.createElement('br'));
 
-      if (profile.role === 'Student' && evt.status === 'Open') {
+      if (profile.adminLevel === 'Student' && evt.status === 'Open') {
         const btn = document.createElement('button');
         btn.className = 'btn btn-primary btn-sm';
         btn.textContent = 'Sign Up';

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
+using ArkansasServe.Functions.Functions;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -43,7 +44,7 @@ public static class AuthMiddleware
         HttpRequestData req,
         AuthConfig config,
         ILogger logger,
-        params string[] requiredRoles)
+        string? minAdminLevel = null)
     {
         // ── Extract Bearer token ────────────────────────────────────────────
         if (!req.Headers.TryGetValues("Authorization", out var authHeaders))
@@ -96,7 +97,9 @@ public static class AuthMiddleware
             {
                 UserId      = Claim("oid") ?? Claim("sub") ?? string.Empty,
                 TenantId    = Claim("extension_OrganizationId") ?? Claim("extension_SchoolId") ?? Claim("extension_TenantId") ?? Claim("tid") ?? string.Empty,
-                Role        = Claim("extension_Role") ?? roleFromRolesClaim ?? "Student",
+                // The token still carries the legacy 4-role claim; translate it once,
+                // here, into the 5-level adminLevel used everywhere downstream.
+                AdminLevel  = AdminLevels.FromLegacyRole(Claim("extension_Role") ?? roleFromRolesClaim),
                 Email       = Claim("email") ?? Claim("preferred_username") ?? string.Empty,
                 DisplayName = Claim("name") ?? string.Empty
             };
@@ -109,7 +112,7 @@ public static class AuthMiddleware
             if (!string.IsNullOrWhiteSpace(config.PlatformAdminEmailDomain)
                 && userContext.Email.EndsWith($"@{config.PlatformAdminEmailDomain.TrimStart('@')}", StringComparison.OrdinalIgnoreCase))
             {
-                userContext.Role = "PlatformAdmin";
+                userContext.AdminLevel = AdminLevels.SuperAdmin;
                 if (string.IsNullOrWhiteSpace(userContext.TenantId))
                     userContext.TenantId = "arkansas-serve-root";
             }
@@ -125,10 +128,10 @@ public static class AuthMiddleware
             if (string.IsNullOrWhiteSpace(userContext.UserId))
                 return (null, await WriteUnauthorized(req, "Invalid token"));
 
-            // Role check — 403 so callers can distinguish "not authenticated"
-            // (401) from "authenticated but wrong role" (403).
-            if (requiredRoles.Length > 0 &&
-                !requiredRoles.Contains(userContext.Role, StringComparer.OrdinalIgnoreCase))
+            // Minimum-level check — 403 so callers can distinguish "not
+            // authenticated" (401) from "authenticated but under-ranked" (403).
+            if (minAdminLevel != null &&
+                !AdminLevels.AtLeast(userContext.AdminLevel, minAdminLevel))
                 return (null, await WriteForbidden(req, "Forbidden"));
 
             return (userContext, null);
@@ -196,13 +199,13 @@ public class UserContext
 {
     public string UserId      { get; set; } = string.Empty;
     public string TenantId    { get; set; } = string.Empty;
-    public string Role        { get; set; } = string.Empty;
+    // The caller's level as claimed by the token (already translated from the
+    // legacy role claim). Per-org authorization still resolves the actual
+    // membership level via CosmosService.ResolveActorInOrgAsync.
+    public string AdminLevel  { get; set; } = AdminLevels.Student;
     public string Email       { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
 
-    public bool IsStudent      => Role == "Student";
-    public bool IsOrgStaff     => Role == "OrgStaff";
-    public bool IsSchoolAdmin  => Role == "SchoolAdmin";
-    public bool IsPlatformAdmin => Role == "PlatformAdmin";
-    public bool IsAdminOrAbove => IsSchoolAdmin || IsPlatformAdmin;
+    public bool IsSuperAdmin   => string.Equals(AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase);
+    public bool IsStudentLevel => AdminLevels.RankOf(AdminLevel) == 0;
 }

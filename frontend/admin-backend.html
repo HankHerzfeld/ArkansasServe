@@ -4,18 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Backend — Arkansas Serve</title>
+  <meta name="description" content="Scoped organization administration and user management on Arkansas Serve.">
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
-<nav class="navbar">
-  <a class="navbar-brand" href="/">Arkansas Serve</a>
-  <ul class="navbar-links">
-    <li><a class="btn btn-secondary btn-sm" href="/dashboard.html">⌂ Dashboard</a></li>
-    <li><span class="navbar-user" id="nav-user-name"></span></li>
-    <li><button class="btn btn-secondary btn-sm" id="btn-logout">Sign Out</button></li>
-  </ul>
-</nav>
+<div id="app-header"></div>
 
 <div class="container">
   <div class="page-header">
@@ -46,6 +43,11 @@
     <div class="form-group">
       <label>
         <input id="tenant-allow-groupadmin-volunteers" type="checkbox" /> Allow group admins to add volunteers organization-wide
+      </label>
+    </div>
+    <div class="form-group">
+      <label>
+        <input id="tenant-allow-profile-self-edit" type="checkbox" /> Allow members to edit their own profile
       </label>
     </div>
     <div style="display:flex;gap:.5rem;">
@@ -432,6 +434,7 @@
     document.getElementById('tenant-rbac').checked = !!tenant.rbacEnabled;
     // Defaults to allowed when the field is absent.
     document.getElementById('tenant-allow-groupadmin-volunteers').checked = tenant.allowGroupAdminAddVolunteers !== false;
+    document.getElementById('tenant-allow-profile-self-edit').checked = tenant.allowProfileSelfEdit !== false;
   }
 
   function populateVolGroupSelect(groups) {
@@ -627,6 +630,7 @@
         status: document.getElementById('tenant-status').value,
         rbacEnabled: document.getElementById('tenant-rbac').checked,
         allowGroupAdminAddVolunteers: document.getElementById('tenant-allow-groupadmin-volunteers').checked,
+        allowProfileSelfEdit: document.getElementById('tenant-allow-profile-self-edit').checked,
       });
       const org = Scope.activeOrg();
       if (org && updated) {
