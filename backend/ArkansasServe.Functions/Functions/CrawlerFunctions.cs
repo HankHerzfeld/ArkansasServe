@@ -54,10 +54,8 @@ public class CrawlerFunctions(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/events/crawl")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
-        if (ctx == null) return authError!;
         if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.Role))
-            return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "PlatformAdmin required");
+            return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "SuperAdmin required");
 
         var body = await HttpHelper.ReadBody<CrawlRequest>(req);
         var isDryRun = body?.DryRun ?? false;
@@ -114,7 +112,7 @@ public class CrawlerFunctions(
             catch (Exception ex)
             {
                 logger.LogError(ex, "[Crawler] Failed to persist event {SourceId}", crawled.SourceId);
-                errors.Add($"{crawled.SourceId}: {ex.Message}");
+                errors.Add($"{crawled.SourceId}: persist failed");
             }
         }
 
@@ -203,9 +201,10 @@ public class CrawlerFunctions(
     // ── DELETE /api/admin/events/crawl/{id} ───────────────────────────────────
 
     /// <summary>
-    /// Dismisses (permanently deletes) a crawled Draft event.  The crawler will not
-    /// re-import it on subsequent runs because <c>CrawledEventExistsAsync</c> checks
-    /// all statuses.  If the event was already published or deleted, returns 200 OK.
+    /// Dismisses a crawled Draft event from the review queue.
+    /// Implementation note: this should *not* hard-delete the document if you want dismissals
+    /// to remain permanent across crawl runs (dedup relies on the stored crawlerSourceId).
+    /// If the event was already published or missing, returns 200 OK.
     /// </summary>
     [Function("DismissCrawledEvent")]
     public async Task<HttpResponseData> Dismiss(

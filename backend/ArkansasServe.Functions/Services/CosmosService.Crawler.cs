@@ -59,20 +59,19 @@ public partial class CosmosService
     }
 
     /// <summary>
-    /// Dismisses a crawled draft — hard-deletes the document so it is permanently
-    /// removed from the review queue and will not re-appear on the next crawl
-    /// (dedup logic prevents re-import of the same source ID).
+    /// Dismisses a crawled draft by marking it as "Dismissed" (instead of deleting it),
+    /// so the crawler can continue to deduplicate on <c>crawlerSourceId</c> across runs.
+    /// If the event is already published (not Draft) or missing, this is a no-op.
     /// </summary>
     public async Task DismissCrawledEventAsync(string eventId, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            await Events.DeleteItemAsync<Event>(eventId, new PartitionKey(CrawlerOrgId), cancellationToken: cancellationToken);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            // Already gone — treat as success.
-        }
+        var evt = await GetEventAsync(eventId, CrawlerOrgId, cancellationToken);
+        if (evt is null) return;
+
+        if (!string.Equals(evt.Status, "Draft", StringComparison.OrdinalIgnoreCase)) return;
+
+        evt.Status = "Dismissed";
+        await UpdateEventAsync(evt, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -102,7 +101,7 @@ public partial class CosmosService
         catch (CosmosException ex)
         {
             _logger.LogError(ex, "Failed to check existence for crawlerSourceId {SourceId}", crawlerSourceId);
-            return false;
+            throw;
         }
     }
 

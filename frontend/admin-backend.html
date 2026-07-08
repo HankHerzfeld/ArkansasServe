@@ -984,7 +984,7 @@
         span.style.display = 'block';
         contactTd.appendChild(span);
       }
-      if (evt.contactUrl) {
+      if (evt.contactUrl && /^https?:\/\//i.test(evt.contactUrl)) {
         const a = document.createElement('a');
         a.href = evt.contactUrl;
         a.target = '_blank';
@@ -1003,9 +1003,7 @@
       const attrSpan = document.createElement('span');
       attrSpan.style.cssText = 'font-size:.8rem;color:var(--gray-600);display:block;';
       attrSpan.textContent = 'Added from ';
-      const attrLink = document.createElement('a');
-      attrLink.href = evt.crawlerSourceUrl || '#';
-      attrLink.target = '_blank';
+      attrLink.href = /^https?:\/\//i.test(evt.crawlerSourceUrl || '') ? evt.crawlerSourceUrl : '#';
       attrLink.rel = 'noopener noreferrer';
       attrLink.textContent = evt.crawlerSourceName || 'external source';
       attrSpan.appendChild(attrLink);

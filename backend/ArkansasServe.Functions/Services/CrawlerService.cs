@@ -134,7 +134,8 @@ public sealed class CrawlerService(
                 if (item is null) continue;
                 try
                 {
-                    var id       = item["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                    var id = item["id"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(id)) continue;
                     var title    = item["title"]?.ToString() ?? item["name"]?.ToString() ?? "(Untitled)";
                     var desc     = item["description"]?.ToString() ?? item["summary"]?.ToString();
                     var location = FormatLocation(

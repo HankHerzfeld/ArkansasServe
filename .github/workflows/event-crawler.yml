@@ -86,7 +86,7 @@ jobs:
             --max-time 600 \
             --write-out "\n%{http_code}" \
             -X POST \
-            -H "Authorization: ****** ${CRAWLER_TOKEN}" \
+            -H "Authorization: Bearer ${CRAWLER_TOKEN}" \
             -H "Content-Type: application/json" \
             -d '${{ steps.body.outputs.body }}' \
             "${BASE_URL}/admin/events/crawl")
