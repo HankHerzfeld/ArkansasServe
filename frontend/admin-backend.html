@@ -35,6 +35,38 @@
         <option value="inactive">inactive</option>
       </select>
     </div>
+    <div style="border-top:1px solid var(--gray-200);margin:.5rem 0;padding-top:.75rem;font-size:.8rem;color:var(--gray-600);text-transform:uppercase;letter-spacing:.04em;">Public profile</div>
+    <div class="form-group">
+      <label for="tenant-description">Description</label>
+      <textarea id="tenant-description" placeholder="What your organization does."></textarea>
+    </div>
+    <div class="form-group">
+      <label for="tenant-mission">Mission</label>
+      <textarea id="tenant-mission" placeholder="Your mission statement."></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+      <div class="form-group">
+        <label for="tenant-website">Website</label>
+        <input id="tenant-website" type="url" placeholder="https://…" />
+      </div>
+      <div class="form-group">
+        <label for="tenant-logo">Logo URL</label>
+        <input id="tenant-logo" type="url" placeholder="https://…" />
+      </div>
+      <div class="form-group">
+        <label for="tenant-contact-email">Contact email</label>
+        <input id="tenant-contact-email" type="email" />
+      </div>
+      <div class="form-group">
+        <label for="tenant-contact-phone">Contact phone</label>
+        <input id="tenant-contact-phone" type="tel" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="tenant-address">Address</label>
+      <input id="tenant-address" type="text" />
+    </div>
+    <div style="border-top:1px solid var(--gray-200);margin:.5rem 0;padding-top:.75rem;font-size:.8rem;color:var(--gray-600);text-transform:uppercase;letter-spacing:.04em;">Permissions</div>
     <div class="form-group">
       <label>
         <input id="tenant-rbac" type="checkbox" /> Enable RBAC
@@ -296,6 +328,7 @@
     }
 
     state.currentUser = context.user;
+    state.contextTenant = context.tenant; // full tenant for the active org
     const level = context.user.adminLevel || 'Student';
     if (userRank(level) === 0) {
       window.location.href = '/dashboard.html';
@@ -332,7 +365,10 @@
     summary.textContent = state.isSuperAdmin
       ? `Managing ${org.name}.`
       : `Signed in as ${state.currentUser?.adminLevel || 'Admin'} for ${org.name}.`;
-    if (org.raw) populateTenantForm(org.raw);
+    // Prefer the full tenant from context (has the profile fields); scope.raw is
+    // minimal for non-supers.
+    const full = (state.contextTenant && state.contextTenant.id === org.id) ? state.contextTenant : org.raw;
+    if (full) populateTenantForm(full);
     safe(loadGroups);
     safe(loadUsers);
 
@@ -365,6 +401,13 @@
     // Defaults to allowed when the field is absent.
     document.getElementById('tenant-allow-groupadmin-volunteers').checked = tenant.allowGroupAdminAddVolunteers !== false;
     document.getElementById('tenant-allow-profile-self-edit').checked = tenant.allowProfileSelfEdit !== false;
+    document.getElementById('tenant-description').value   = tenant.description || '';
+    document.getElementById('tenant-mission').value       = tenant.mission || '';
+    document.getElementById('tenant-website').value       = tenant.website || '';
+    document.getElementById('tenant-logo').value          = tenant.logoUrl || '';
+    document.getElementById('tenant-contact-email').value = tenant.contactEmail || '';
+    document.getElementById('tenant-contact-phone').value = tenant.contactPhone || '';
+    document.getElementById('tenant-address').value       = tenant.address || '';
   }
 
   function populateVolGroupSelect(groups) {
@@ -561,10 +604,18 @@
         rbacEnabled: document.getElementById('tenant-rbac').checked,
         allowGroupAdminAddVolunteers: document.getElementById('tenant-allow-groupadmin-volunteers').checked,
         allowProfileSelfEdit: document.getElementById('tenant-allow-profile-self-edit').checked,
+        description:  document.getElementById('tenant-description').value.trim(),
+        mission:      document.getElementById('tenant-mission').value.trim(),
+        website:      document.getElementById('tenant-website').value.trim(),
+        logoUrl:      document.getElementById('tenant-logo').value.trim(),
+        contactEmail: document.getElementById('tenant-contact-email').value.trim(),
+        contactPhone: document.getElementById('tenant-contact-phone').value.trim(),
+        address:      document.getElementById('tenant-address').value.trim(),
       });
       const org = Scope.activeOrg();
       if (org && updated) {
         org.raw = updated;
+        state.contextTenant = updated;
         if (updated.name) org.name = updated.name;
       }
       status.textContent = 'Saved';

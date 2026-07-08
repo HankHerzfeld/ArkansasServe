@@ -197,6 +197,14 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (body.RbacEnabled.HasValue) tenant.RbacEnabled = body.RbacEnabled.Value;
 		if (body.AllowGroupAdminAddVolunteers.HasValue) tenant.AllowGroupAdminAddVolunteers = body.AllowGroupAdminAddVolunteers.Value;
 		if (body.AllowProfileSelfEdit.HasValue) tenant.AllowProfileSelfEdit = body.AllowProfileSelfEdit.Value;
+		// Public profile fields — non-null means "set" (empty string clears).
+		if (body.Description != null) tenant.Description = body.Description;
+		if (body.Mission != null) tenant.Mission = body.Mission;
+		if (body.Website != null) tenant.Website = body.Website;
+		if (body.ContactEmail != null) tenant.ContactEmail = body.ContactEmail;
+		if (body.ContactPhone != null) tenant.ContactPhone = body.ContactPhone;
+		if (body.Address != null) tenant.Address = body.Address;
+		if (body.LogoUrl != null) tenant.LogoUrl = body.LogoUrl;
 
 		var updated = await cosmos.UpdateTenantAsync(tenant);
 		return await HttpHelper.OkJson(req, updated);
@@ -353,5 +361,8 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	private sealed record DbQueryRequest(string Container, string Query, int? MaxItems);
 
-	private sealed record UpdateTenantRequest(string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers, bool? AllowProfileSelfEdit);
+	private sealed record UpdateTenantRequest(
+		string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers, bool? AllowProfileSelfEdit,
+		string? Description, string? Mission, string? Website,
+		string? ContactEmail, string? ContactPhone, string? Address, string? LogoUrl);
 }
