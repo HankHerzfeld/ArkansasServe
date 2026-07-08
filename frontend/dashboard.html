@@ -54,12 +54,6 @@
     </div>
   </div>
 
-  <!-- Notifications -->
-  <div id="notifications-section" style="display:none;">
-    <h2 style="font-size:1.1rem;margin-bottom:.75rem;">Notifications</h2>
-    <div id="notifications-list"></div>
-  </div>
-
   <!-- Service Log History -->
   <div class="card">
     <div class="card-title">Service Hour History</div>
@@ -225,7 +219,6 @@
       try {
         const currentUser = await Api.Users.getMe();
         Auth.setResolvedLevelFromUser(currentUser);
-        loadNotifications();
         const adminLevel = toAdminLevel(currentUser);
 
         await UI.setupHeader('/dashboard.html', currentUser);
@@ -301,51 +294,6 @@
       } catch (err) {
         document.getElementById('log-loading').innerHTML =
           `<div class="alert alert-error">Failed to load your service history. Please refresh.</div>`;
-      }
-    }
-
-    // Unread notifications (e.g. hours approved/rejected). Supplementary to the
-    // dashboard — a failure here must never break the main service-log view.
-    async function loadNotifications() {
-      const section = document.getElementById('notifications-section');
-      const list = document.getElementById('notifications-list');
-      try {
-        const notifications = await Api.Notifications.list();
-        if (!notifications || notifications.length === 0) {
-          section.style.display = 'none';
-          return;
-        }
-        list.innerHTML = '';
-        notifications.forEach(n => {
-          const item = document.createElement('div');
-          item.className = 'card';
-          item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.5rem;padding:.75rem 1rem;';
-
-          const msg = document.createElement('div');
-          msg.style.fontSize = '.9rem';
-          msg.textContent = n.message;
-          item.appendChild(msg);
-
-          const btn = document.createElement('button');
-          btn.className = 'btn btn-secondary btn-sm';
-          btn.textContent = 'Dismiss';
-          btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            try {
-              await Api.Notifications.markRead(n.id);
-              item.remove();
-              if (!list.children.length) section.style.display = 'none';
-            } catch {
-              btn.disabled = false;
-            }
-          });
-          item.appendChild(btn);
-
-          list.appendChild(item);
-        });
-        section.style.display = 'block';
-      } catch {
-        section.style.display = 'none';
       }
     }
 

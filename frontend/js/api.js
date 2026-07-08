@@ -153,6 +153,7 @@ const Api = (() => {
   // ── Notifications ─────────────────────────────────────────────────────────
   const Notifications = {
     list:     ()   => request('GET',   '/notifications'),
+    pane:     ()   => request('GET',   '/notifications/pane'),
     markRead: (id) => request('PATCH', `/notifications/${encodeURIComponent(id)}`, { isRead: true }),
   };
 

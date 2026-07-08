@@ -41,9 +41,9 @@ const UI = (() => {
   }
 
   // ── Notification bell + pane ────────────────────────────────────────────────
-  // Phase A shows the viewer's own notifications; role-scoped feeds and actions
-  // are layered on later.
-  const bell = { open: false, items: [] };
+  // The pane shows the viewer's own notifications plus role-scoped admin items
+  // (pending approvals, recent self-joins) each with a place to jump and act.
+  const bell = { open: false, personal: [], admin: [], unread: 0, actionCount: 0 };
 
   function buildBell() {
     const wrap = el('div', { class: 'notif' });
@@ -66,14 +66,21 @@ const UI = (() => {
     if (bell.open) renderPane();
   }
 
-  async function loadNotifications() {
-    try { bell.items = (await Api.Notifications.list()) || []; }
-    catch { bell.items = []; }
-    const unread = bell.items.filter(n => !n.isRead).length;
+  async function loadPane() {
+    try {
+      const data = await Api.Notifications.pane();
+      bell.personal = data.personal || [];
+      bell.admin = data.admin || [];
+      bell.unread = data.unread || 0;
+      bell.actionCount = data.actionCount || 0;
+    } catch {
+      bell.personal = []; bell.admin = []; bell.unread = 0; bell.actionCount = 0;
+    }
+    const total = bell.unread + bell.actionCount;
     const badge = document.getElementById('notif-badge');
     if (badge) {
-      badge.textContent = unread > 9 ? '9+' : String(unread);
-      badge.style.display = unread ? 'inline-flex' : 'none';
+      badge.textContent = total > 9 ? '9+' : String(total);
+      badge.style.display = total ? 'inline-flex' : 'none';
     }
     if (bell.open) renderPane();
   }
@@ -83,25 +90,42 @@ const UI = (() => {
     if (!pane) return;
     pane.innerHTML = '';
     pane.appendChild(el('div', { class: 'notif-head', text: 'Notifications' }));
-    if (!bell.items.length) {
-      pane.appendChild(el('div', { class: 'notif-empty', text: 'You have no notifications.' }));
+
+    if (!bell.admin.length && !bell.personal.length) {
+      pane.appendChild(el('div', { class: 'notif-empty', text: 'You’re all caught up.' }));
       return;
     }
-    bell.items.forEach(n => {
-      const item = el('div', { class: 'notif-item' + (n.isRead ? '' : ' unread') });
-      item.appendChild(el('div', { class: 'notif-msg', text: n.message }));
-      if (!n.isRead) {
-        item.appendChild(el('button', {
-          class: 'notif-dismiss', text: 'Mark read',
-          onClick: async (e) => {
-            const b = e.currentTarget; b.disabled = true;
-            try { await Api.Notifications.markRead(n.id); n.isRead = true; await loadNotifications(); renderPane(); }
-            catch { b.disabled = false; }
-          },
-        }));
-      }
-      pane.appendChild(item);
-    });
+
+    // Role-scoped admin items first — each links to where you act on it.
+    if (bell.admin.length) {
+      pane.appendChild(el('div', { class: 'notif-section', text: 'Needs attention' }));
+      bell.admin.forEach(a => {
+        const item = el('div', { class: 'notif-item action' });
+        item.appendChild(el('div', { class: 'notif-msg', text: a.message }));
+        if (a.href) item.appendChild(el('a', { class: 'notif-dismiss', href: a.href, text: a.kind === 'approvals' ? 'Review' : 'View' }));
+        pane.appendChild(item);
+      });
+    }
+
+    // The viewer's own notifications.
+    if (bell.personal.length) {
+      if (bell.admin.length) pane.appendChild(el('div', { class: 'notif-section', text: 'For you' }));
+      bell.personal.forEach(n => {
+        const item = el('div', { class: 'notif-item' + (n.isRead ? '' : ' unread') });
+        item.appendChild(el('div', { class: 'notif-msg', text: n.message }));
+        if (!n.isRead) {
+          item.appendChild(el('button', {
+            class: 'notif-dismiss', text: 'Mark read',
+            onClick: async (e) => {
+              const b = e.currentTarget; b.disabled = true;
+              try { await Api.Notifications.markRead(n.id); n.isRead = true; await loadPane(); renderPane(); }
+              catch { b.disabled = false; }
+            },
+          }));
+        }
+        pane.appendChild(item);
+      });
+    }
   }
 
   // Close the pane on an outside click.
@@ -148,7 +172,7 @@ const UI = (() => {
     if (host) {
       host.innerHTML = '';
       host.appendChild(buildNav(current, profile));
-      loadNotifications();
+      loadPane();
     }
 
     const scopeBar = document.getElementById('scope-bar');

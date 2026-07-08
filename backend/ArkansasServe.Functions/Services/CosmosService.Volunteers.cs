@@ -67,6 +67,21 @@ public partial class CosmosService
         return await UpsertUserWithPartitionFallbackAsync(volunteer, cancellationToken);
     }
 
+    // Recently self-joined volunteers in an org (for the admin notification pane).
+    public async Task<List<User>> GetRecentSelfJoinsAsync(string tenantId, DateTime since, int max = 5, CancellationToken cancellationToken = default)
+    {
+        var query = Users.GetItemLinqQueryable<User>(requestOptions: new QueryRequestOptions
+            { PartitionKey = new PartitionKey(tenantId) })
+            .Where(u => u.SelfJoined && u.CreatedAt >= since)
+            .ToFeedIterator();
+
+        var results = new List<User>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+
+        return results.OrderByDescending(u => u.CreatedAt).Take(max).ToList();
+    }
+
     // The acting user's membership within a specific org — their role and groups
     // THERE (multi-org: a person may be an admin in one org and a student in
     // another). Platform admins may act in any org even without a membership doc;
