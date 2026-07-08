@@ -62,7 +62,10 @@ body {
 .notif-badge { position: absolute; top: -.35rem; right: -.45rem; background: var(--red); color: #fff; font-size: .65rem; min-width: 1.05rem; height: 1.05rem; border-radius: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; font-weight: 600; }
 .notif-pane { position: absolute; right: 0; top: 150%; width: 320px; max-width: 90vw; max-height: 24rem; overflow-y: auto; background: #fff; color: var(--gray-800); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 200; }
 .notif-head { font-weight: 600; padding: .75rem 1rem; border-bottom: 1px solid var(--gray-200); font-size: .9rem; }
+.notif-section { padding: .5rem 1rem .25rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gray-600); background: var(--gray-100); }
 .notif-empty { padding: 1rem; color: var(--gray-600); font-size: .85rem; }
+.notif-item.action { background: var(--amber-pale); }
+.notif-item.action .notif-dismiss { color: var(--amber); font-weight: 600; }
 .notif-item { padding: .7rem 1rem; border-bottom: 1px solid var(--gray-100); font-size: .85rem; display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
 .notif-item:last-child { border-bottom: none; }
 .notif-item.unread { background: var(--green-pale); }
