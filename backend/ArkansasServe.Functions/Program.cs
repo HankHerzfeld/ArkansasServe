@@ -32,6 +32,7 @@ var host = new HostBuilder()
 
         services.AddSingleton<CosmosService>();
         services.AddSingleton<BlobService>();
+        services.AddSingleton<CrawlerService>();
 
         services.AddSingleton(_ => new AuthConfig
         {

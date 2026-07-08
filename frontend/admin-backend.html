@@ -197,6 +197,75 @@
     <div id="demo-users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No demo users found.</div>
   </div>
 
+  <div class="card" id="crawler-card" style="display:none;">
+    <div class="card-title">Event Crawler (SuperAdmin Only)</div>
+    <p style="color:var(--gray-600);font-size:.9rem;">
+      Pulls Arkansas volunteer events from external sources (GivePulse, Eventbrite, VolunteerMatch,
+      JustServe, All for Good). Imported events land in the review queue as <strong>Drafts</strong>
+      — they are not visible to students until a SuperAdmin publishes them. Every published event
+      credits its source and links back to the original listing.
+    </p>
+
+    <div style="margin-bottom:1rem;">
+      <div class="card-title" style="font-size:.95rem;margin-bottom:.5rem;">Sources</div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:.35rem;">
+          <input type="checkbox" class="crawler-source" value="GivePulse" checked> GivePulse
+        </label>
+        <label style="display:flex;align-items:center;gap:.35rem;">
+          <input type="checkbox" class="crawler-source" value="Eventbrite" checked> Eventbrite
+        </label>
+        <label style="display:flex;align-items:center;gap:.35rem;">
+          <input type="checkbox" class="crawler-source" value="VolunteerMatch" checked> VolunteerMatch
+        </label>
+        <label style="display:flex;align-items:center;gap:.35rem;">
+          <input type="checkbox" class="crawler-source" value="JustServe" checked> JustServe
+        </label>
+        <label style="display:flex;align-items:center;gap:.35rem;">
+          <input type="checkbox" class="crawler-source" value="AllForGood" checked> All for Good
+        </label>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem;">
+      <button class="btn btn-primary" id="btn-run-crawl">Run Crawl</button>
+      <button class="btn btn-secondary" id="btn-dry-run">Dry Run (preview only)</button>
+      <button class="btn btn-secondary btn-sm" id="btn-refresh-queue">Refresh Queue</button>
+      <span id="crawl-status" style="font-size:.85rem;color:var(--gray-600);"></span>
+    </div>
+
+    <div id="crawl-summary" style="display:none;padding:.6rem .9rem;border-radius:var(--radius);background:var(--gray-100);font-size:.9rem;margin-bottom:.75rem;"></div>
+
+    <div id="crawler-queue-section">
+      <div class="card-title" style="font-size:.95rem;margin-bottom:.5rem;">
+        Draft Events Awaiting Review
+        <span id="queue-count" style="font-size:.85rem;font-weight:normal;color:var(--gray-600);"></span>
+      </div>
+      <p style="color:var(--gray-600);font-size:.85rem;margin-bottom:.5rem;">
+        Review each event imported from an external source. Published events are visible to students
+        and always display an attribution credit linking back to where they came from.
+      </p>
+      <table class="table" id="crawler-queue-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Source</th>
+            <th>Date</th>
+            <th>Location</th>
+            <th>Organization</th>
+            <th>Contact</th>
+            <th>Attribution</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="crawler-queue-tbody"></tbody>
+      </table>
+      <div id="crawler-queue-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">
+        No draft events in queue. Run a crawl or all events have already been reviewed.
+      </div>
+    </div>
+  </div>
+
   <div class="card" id="db-console-card" style="display:none;">
     <div class="card-title">Database Console (SuperAdmin Only)</div>
     <p style="color:var(--gray-600);font-size:.9rem;">
@@ -307,6 +376,7 @@
       document.getElementById('demo-users-card').style.display = 'block';
       await safe(loadDemoUsers);
       await safe(initDbConsole);
+      await safe(initCrawler);
     }
 
     // The shared scope switcher chooses which org's settings/groups/users to
@@ -833,6 +903,208 @@
     out.push(cur);
     return out;
   }
+
+  // ── Event Crawler (SuperAdmin) ────────────────────────────────────────────
+
+  async function initCrawler() {
+    // Only SuperAdmins see the crawler card.
+    if (!state.isSuperAdmin) return;
+    document.getElementById('crawler-card').style.display = 'block';
+    await safe(loadCrawlerQueue);
+  }
+
+  async function loadCrawlerQueue() {
+    const table = document.getElementById('crawler-queue-table');
+    const empty = document.getElementById('crawler-queue-empty');
+    const tbody = document.getElementById('crawler-queue-tbody');
+    const count = document.getElementById('queue-count');
+    clearChildren(tbody);
+
+    let drafts;
+    try {
+      drafts = await Api.Crawler.queue();
+    } catch (err) {
+      empty.textContent = err.message || 'Failed to load queue.';
+      empty.style.display = 'block';
+      table.style.display = 'none';
+      return;
+    }
+
+    count.textContent = drafts.length ? `(${drafts.length})` : '';
+
+    if (!drafts.length) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    table.style.display = 'table';
+    empty.style.display = 'none';
+
+    drafts.forEach(evt => {
+      const tr = document.createElement('tr');
+
+      // Title
+      tr.appendChild(createTextCell(evt.title || '(Untitled)'));
+
+      // Source badge
+      const sourceTd = document.createElement('td');
+      const badge = document.createElement('span');
+      badge.style.cssText =
+        'display:inline-block;padding:.15rem .45rem;border-radius:var(--radius);' +
+        'font-size:.75rem;font-weight:600;background:var(--gray-200);color:var(--gray-700);';
+      badge.textContent = evt.crawlerSourceName || 'External';
+      sourceTd.appendChild(badge);
+      tr.appendChild(sourceTd);
+
+      // Date
+      const date = evt.startDateTime
+        ? new Date(evt.startDateTime).toLocaleDateString(undefined, { dateStyle: 'medium' })
+        : '—';
+      tr.appendChild(createTextCell(date));
+
+      // Location
+      tr.appendChild(createTextCell(evt.location || '—'));
+
+      // Organization name
+      tr.appendChild(createTextCell(evt.organizationName || '—'));
+
+      // Contact info
+      const contactTd = document.createElement('td');
+      if (evt.contactEmail) {
+        const a = document.createElement('a');
+        a.href = `mailto:${evt.contactEmail}`;
+        a.textContent = evt.contactEmail;
+        a.style.display = 'block';
+        contactTd.appendChild(a);
+      }
+      if (evt.contactPhone) {
+        const span = document.createElement('span');
+        span.textContent = evt.contactPhone;
+        span.style.display = 'block';
+        contactTd.appendChild(span);
+      }
+      if (evt.contactUrl) {
+        const a = document.createElement('a');
+        a.href = evt.contactUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = 'Org website';
+        a.style.display = 'block';
+        contactTd.appendChild(a);
+      }
+      if (!evt.contactEmail && !evt.contactPhone && !evt.contactUrl) {
+        contactTd.textContent = '—';
+      }
+      tr.appendChild(contactTd);
+
+      // Attribution / source link
+      const attrTd = document.createElement('td');
+      const attrSpan = document.createElement('span');
+      attrSpan.style.cssText = 'font-size:.8rem;color:var(--gray-600);display:block;';
+      attrSpan.textContent = 'Added from ';
+      const attrLink = document.createElement('a');
+      attrLink.href = evt.crawlerSourceUrl || '#';
+      attrLink.target = '_blank';
+      attrLink.rel = 'noopener noreferrer';
+      attrLink.textContent = evt.crawlerSourceName || 'external source';
+      attrSpan.appendChild(attrLink);
+      attrTd.appendChild(attrSpan);
+      tr.appendChild(attrTd);
+
+      // Actions
+      const actionTd = document.createElement('td');
+      actionTd.style.whiteSpace = 'nowrap';
+
+      const publishBtn = document.createElement('button');
+      publishBtn.className = 'btn btn-primary btn-sm';
+      publishBtn.textContent = 'Publish';
+      publishBtn.style.marginRight = '.35rem';
+      publishBtn.addEventListener('click', async () => {
+        publishBtn.disabled = true;
+        dismissBtn.disabled = true;
+        try {
+          await Api.Crawler.publish(evt.id);
+          tr.remove();
+          const remaining = document.getElementById('crawler-queue-tbody').querySelectorAll('tr').length;
+          document.getElementById('queue-count').textContent = remaining ? `(${remaining})` : '';
+          if (!remaining) {
+            table.style.display = 'none';
+            empty.style.display = 'block';
+          }
+        } catch (err) {
+          publishBtn.disabled = false;
+          dismissBtn.disabled = false;
+          publishBtn.textContent = 'Error';
+          setTimeout(() => { publishBtn.textContent = 'Publish'; }, 1500);
+        }
+      });
+
+      const dismissBtn = document.createElement('button');
+      dismissBtn.className = 'btn btn-secondary btn-sm';
+      dismissBtn.textContent = 'Dismiss';
+      dismissBtn.addEventListener('click', async () => {
+        dismissBtn.disabled = true;
+        publishBtn.disabled = true;
+        try {
+          await Api.Crawler.dismiss(evt.id);
+          tr.remove();
+          const remaining = document.getElementById('crawler-queue-tbody').querySelectorAll('tr').length;
+          document.getElementById('queue-count').textContent = remaining ? `(${remaining})` : '';
+          if (!remaining) {
+            table.style.display = 'none';
+            empty.style.display = 'block';
+          }
+        } catch {
+          dismissBtn.disabled = false;
+          publishBtn.disabled = false;
+        }
+      });
+
+      actionTd.appendChild(publishBtn);
+      actionTd.appendChild(dismissBtn);
+      tr.appendChild(actionTd);
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function runCrawl(isDryRun) {
+    const status = document.getElementById('crawl-status');
+    const summary = document.getElementById('crawl-summary');
+    const sources = Array.from(document.querySelectorAll('.crawler-source:checked')).map(c => c.value);
+    if (!sources.length) { status.textContent = 'Select at least one source.'; return; }
+
+    const runBtn = document.getElementById('btn-run-crawl');
+    const dryBtn = document.getElementById('btn-dry-run');
+    runBtn.disabled = true;
+    dryBtn.disabled = true;
+    status.textContent = isDryRun ? 'Previewing...' : 'Crawling — this may take a minute...';
+    summary.style.display = 'none';
+
+    try {
+      const res = await Api.Crawler.run(sources, isDryRun);
+      if (isDryRun) {
+        summary.textContent = `Dry run: would fetch ${res.fetched ?? 0} event(s) from selected sources (nothing was saved).`;
+      } else {
+        summary.textContent = `Imported ${res.imported} new event(s), skipped ${res.skipped} duplicate(s).` +
+          (res.errors?.length ? ` ${res.errors.length} error(s) — see browser console.` : '');
+        if (res.errors?.length) console.error('[Crawler] errors:', res.errors);
+        if (res.imported > 0) await safe(loadCrawlerQueue);
+      }
+      summary.style.display = 'block';
+      status.textContent = '';
+    } catch (err) {
+      status.textContent = err.message || 'Crawl failed';
+    } finally {
+      runBtn.disabled = false;
+      dryBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('btn-run-crawl').addEventListener('click', () => runCrawl(false));
+  document.getElementById('btn-dry-run').addEventListener('click',  () => runCrawl(true));
+  document.getElementById('btn-refresh-queue').addEventListener('click', () => safe(loadCrawlerQueue));
 
   loadContext();
 </script>
