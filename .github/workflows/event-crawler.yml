@@ -1,0 +1,126 @@
+name: Daily Event Crawler
+
+# Pulls Arkansas volunteer events from external sources daily at 11:00 UTC
+# and once a week on Sunday at 12:00 UTC for a fuller pull.
+# (GitHub Actions cron uses UTC and does not adjust for daylight saving time.)
+#
+# Because Azure Static Web Apps Free tier only supports HTTP triggers, the
+# scheduled crawl is driven by this workflow calling the crawler's HTTP endpoint
+# rather than a timer-triggered Azure Function.
+#
+# Prerequisites (set in GitHub repo Settings → Secrets and variables → Actions):
+#   CRAWLER_ENDPOINT_URL  — e.g. https://your-swa.azurestaticapps.net/api
+#   CRAWLER_SERVICE_TOKEN — ****** for a PlatformAdmin/SuperAdmin account
+
+on:
+  schedule:
+    # Daily at 11:00 UTC (6 AM CT)
+    - cron: '0 11 * * *'
+    # Extra full-pull on Sundays at 12:00 UTC (7 AM CT)
+    - cron: '0 12 * * 0'
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: 'Comma-separated source list (leave blank for all)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run — fetch but do not persist'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  crawl:
+    name: Crawl external event sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No repository permissions needed — this job only calls an external HTTP endpoint.
+    permissions: {}
+
+    steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.CRAWLER_ENDPOINT_URL }}" ]; then
+            echo "::error::CRAWLER_ENDPOINT_URL secret is not set. Skipping crawl."
+            exit 1
+          fi
+          if [ -z "${{ secrets.CRAWLER_SERVICE_TOKEN }}" ]; then
+            echo "::error::CRAWLER_SERVICE_TOKEN secret is not set. Skipping crawl."
+            exit 1
+          fi
+
+      - name: Build request body
+        id: body
+        run: |
+          # Determine sources array from input (workflow_dispatch) or run all.
+          SOURCES_INPUT="${{ github.event.inputs.sources }}"
+          DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+
+          if [ -n "$SOURCES_INPUT" ]; then
+            # Convert comma-separated string to JSON array
+            SOURCES_JSON=$(echo "$SOURCES_INPUT" | python3 -c "
+          import sys, json
+          raw = sys.stdin.read().strip()
+          parts = [s.strip() for s in raw.split(',') if s.strip()]
+          print(json.dumps(parts))
+          ")
+            BODY=$(printf '{"sources":%s,"dryRun":%s}' "$SOURCES_JSON" "$DRY_RUN")
+          else
+            BODY=$(printf '{"sources":null,"dryRun":%s}' "$DRY_RUN")
+          fi
+
+          echo "body=$BODY" >> "$GITHUB_OUTPUT"
+          echo "Payload: $BODY"
+
+      - name: Trigger crawl
+        id: crawl
+        env:
+          CRAWLER_TOKEN: ${{ secrets.CRAWLER_SERVICE_TOKEN }}
+        run: |
+          BASE_URL="${{ secrets.CRAWLER_ENDPOINT_URL }}"
+          # Trim trailing slash
+          BASE_URL="${BASE_URL%/}"
+
+          HTTP_RESPONSE=$(curl --silent --show-error --fail-with-body \
+            --max-time 600 \
+            --write-out "\n%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${CRAWLER_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '${{ steps.body.outputs.body }}' \
+            "${BASE_URL}/manage/events/crawl")
+
+          HTTP_BODY=$(echo "$HTTP_RESPONSE" | head -n -1)
+          HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n 1)
+
+          echo "HTTP status: $HTTP_STATUS"
+          echo "Response: $HTTP_BODY"
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "::error::Crawl request failed with status $HTTP_STATUS"
+            exit 1
+          fi
+
+          # Parse and summarise results
+          IMPORTED=$(echo "$HTTP_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('imported',0))" 2>/dev/null || echo "?")
+          SKIPPED=$(echo "$HTTP_BODY"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('skipped',0))"  2>/dev/null || echo "?")
+          ERRORS=$(echo "$HTTP_BODY"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('errors',[])))" 2>/dev/null || echo "?")
+
+          echo "::notice::Crawl complete — imported: $IMPORTED, skipped: $SKIPPED, errors: $ERRORS"
+          echo "imported=$IMPORTED" >> "$GITHUB_OUTPUT"
+          echo "skipped=$SKIPPED"   >> "$GITHUB_OUTPUT"
+          echo "errors=$ERRORS"     >> "$GITHUB_OUTPUT"
+
+      - name: Report summary
+        if: always()
+        run: |
+          echo "## 🕷️ Event Crawler Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Imported | ${{ steps.crawl.outputs.imported || 'n/a' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Skipped (duplicates) | ${{ steps.crawl.outputs.skipped || 'n/a' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Errors | ${{ steps.crawl.outputs.errors || 'n/a' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Newly imported events are in **Draft** status and must be reviewed by a SuperAdmin in the Admin Backend → Event Crawler queue before they become visible to students." >> "$GITHUB_STEP_SUMMARY"
