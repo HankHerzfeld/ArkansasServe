@@ -476,7 +476,11 @@ Test each flow with the correct user type:
 
 - ~~`frontend/js/ui.js` empty stub~~ — implemented (shared header/nav/notification helpers).
 - ~~`frontend/components/*.html` stubs~~ — removed; they were unused 0-byte files.
-- Student self-registration flow (account creation in Entra for new students)
+- ~~Student self-registration flow~~ — **implemented.** Landing-page Create Account →
+  `Auth.signUp()` (Entra `prompt=create`); a membership-less student is onboarded on the
+  dashboard and routed to the org directory; `JoinOrg` creates a self-joined Student membership
+  (or adopts a managed volunteer). Requires the Entra SUSI user flow to allow self-service
+  sign-up — see setup-guide.md "Step 12". (Follow-up: capture grade at first login.)
 - ~~Report exports~~ — **implemented.** Service-Hour Report in admin-portal: date-range
   filters, roster table, CSV summary + detail export, and Print / Save-as-PDF.
 - ~~Email notifications~~ — **implemented (inert until configured).** Approve/reject emails

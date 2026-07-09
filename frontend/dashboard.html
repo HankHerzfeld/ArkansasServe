@@ -21,6 +21,16 @@
     <div id="scope-bar" style="margin-top:.5rem;"></div>
   </div>
 
+  <!-- First-login onboarding: shown to a self-registered student not yet in any organization -->
+  <div class="card" id="onboarding-card" style="display:none;border-left:4px solid var(--green);">
+    <div class="card-title">Welcome to Arkansas Serve 👋</div>
+    <p style="color:var(--gray-600);margin-bottom:1rem;">
+      You're signed in, but you haven't joined an organization yet. Join your school or a
+      volunteer organization to browse events and start logging service hours.
+    </p>
+    <a class="btn btn-primary" href="/organizations.html">Browse organizations to join</a>
+  </div>
+
   <!-- Profile -->
   <div class="card" id="profile-card" style="display:none;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
@@ -55,7 +65,7 @@
   </div>
 
   <!-- Service Log History -->
-  <div class="card">
+  <div class="card" id="log-card">
     <div class="card-title">Service Hour History</div>
     <div id="log-loading" class="loading-state"><div class="spinner"></div></div>
     <div id="log-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
