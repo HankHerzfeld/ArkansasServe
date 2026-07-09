@@ -189,6 +189,7 @@ const Api = (() => {
     tenantGroups:     (tenantId)                => request('GET',  `/manage/backend/tenants/${encodeURIComponent(tenantId)}/groups`),
     createTenantGroup:(tenantId, data)          => request('POST', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/groups`, data),
     updateTenant:     (tenantId, data)          => request('PATCH', `/manage/backend/tenants/${encodeURIComponent(tenantId)}`, data),
+    logoUploadToken:  (tenantId, fileName)      => request('POST', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/logo-upload-token`, { fileName }),
     demoUsers:        ()                        => request('GET',  '/manage/backend/demo-users'),
     resetDemoUsers:   ()                        => request('POST', '/manage/backend/demo-users/reset'),
   };

@@ -63,6 +63,7 @@
 
     state.currentUser = context.user;
     state.contextTenant = context.tenant; // full tenant for the active org
+    state.logoDisplayUrl = context.logoDisplayUrl || null; // signed preview for the current logo
     const level = context.user.adminLevel || 'Student';
     if (userRank(level) === 0) {
       window.location.href = '/dashboard.html';
@@ -140,6 +141,13 @@
     document.getElementById('tenant-mission').value       = tenant.mission || '';
     document.getElementById('tenant-website').value       = tenant.website || '';
     document.getElementById('tenant-logo').value          = tenant.logoUrl || '';
+    document.getElementById('tenant-logo-blob').value     = tenant.logoBlobName || '';
+    // Preview the current logo using the signed display URL (org-logos is private).
+    const logoPreview = document.getElementById('tenant-logo-preview');
+    const logoShown = state.logoDisplayUrl || tenant.logoUrl || '';
+    if (logoShown) { logoPreview.src = logoShown; logoPreview.style.display = 'block'; }
+    else { logoPreview.removeAttribute('src'); logoPreview.style.display = 'none'; }
+    document.getElementById('tenant-logo-progress').style.display = 'none';
     document.getElementById('tenant-contact-email').value = tenant.contactEmail || '';
     document.getElementById('tenant-contact-phone').value = tenant.contactPhone || '';
     document.getElementById('tenant-address').value       = tenant.address || '';
@@ -325,6 +333,27 @@
     });
   }
 
+  // SAS-gated logo upload: fetch a short-lived write token, PUT straight to Blob Storage,
+  // then keep the returned blob name (the API signs it into a display URL on read).
+  document.getElementById('tenant-logo-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const prog = document.getElementById('tenant-logo-progress');
+    if (!state.tenantId) { prog.style.display = 'block'; prog.textContent = 'Select a tenant first.'; return; }
+    prog.style.display = 'block'; prog.textContent = 'Uploading…';
+    try {
+      const { sasUrl, blobName } = await Api.AdminBackend.logoUploadToken(state.tenantId, file.name);
+      await fetch(sasUrl, { method: 'PUT', headers: { 'x-ms-blob-type': 'BlockBlob', 'Content-Type': file.type }, body: file });
+      document.getElementById('tenant-logo-blob').value = blobName;
+      document.getElementById('tenant-logo').value = ''; // an uploaded logo supersedes an external URL
+      // No inline object-URL preview (keeps CSP img-src free of blob:); the signed logo
+      // renders on the next load. The org directory/profile show it immediately.
+      prog.textContent = '✅ Uploaded — click Save to apply';
+    } catch (err) {
+      prog.textContent = '❌ Upload failed';
+    }
+  });
+
   document.getElementById('btn-save-tenant').addEventListener('click', async () => {
     const status = document.getElementById('tenant-save-status');
     if (!state.tenantId) {
@@ -343,6 +372,7 @@
         mission:      document.getElementById('tenant-mission').value.trim(),
         website:      document.getElementById('tenant-website').value.trim(),
         logoUrl:      document.getElementById('tenant-logo').value.trim(),
+        logoBlobName: document.getElementById('tenant-logo-blob').value,
         contactEmail: document.getElementById('tenant-contact-email').value.trim(),
         contactPhone: document.getElementById('tenant-contact-phone').value.trim(),
         address:      document.getElementById('tenant-address').value.trim(),

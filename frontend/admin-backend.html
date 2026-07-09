@@ -50,8 +50,12 @@
         <input id="tenant-website" type="url" placeholder="https://…" />
       </div>
       <div class="form-group">
-        <label for="tenant-logo">Logo URL</label>
-        <input id="tenant-logo" type="url" placeholder="https://…" />
+        <label for="tenant-logo">Logo</label>
+        <input id="tenant-logo" type="url" placeholder="Paste a URL, or upload below" />
+        <input id="tenant-logo-file" type="file" accept="image/*" style="margin-top:.4rem;" />
+        <div id="tenant-logo-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.3rem;"></div>
+        <img id="tenant-logo-preview" alt="Logo preview" style="display:none;max-height:56px;margin-top:.4rem;border-radius:var(--radius);border:1px solid var(--gray-200);" />
+        <input type="hidden" id="tenant-logo-blob" />
       </div>
       <div class="form-group">
         <label for="tenant-contact-email">Contact email</label>

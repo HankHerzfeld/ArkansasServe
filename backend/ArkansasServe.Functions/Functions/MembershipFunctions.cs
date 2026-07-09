@@ -9,7 +9,7 @@ using User = ArkansasServe.Functions.Models.User;
 
 namespace ArkansasServe.Functions.Functions;
 
-public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<MembershipFunctions> logger)
+public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthConfig authConfig, ILogger<MembershipFunctions> logger)
 {
 	// The platform/root tenant is never a joinable organization.
 	private const string RootTenantId = "arkansas-serve-root";
@@ -72,7 +72,7 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 				id = t.Id,
 				name = t.Name,
 				type = t.Type,
-				logoUrl = t.LogoUrl,
+				logoUrl = blob.ResolveDisplayUrl("org-logos", t.LogoBlobName, t.LogoUrl),
 				alreadyMember = memberOrgIds.Contains(t.Id),
 			})
 			.ToList();
@@ -127,7 +127,7 @@ public class MembershipFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 			description = tenant.Description,
 			mission = tenant.Mission,
 			website = tenant.Website,
-			logoUrl = tenant.LogoUrl,
+			logoUrl = blob.ResolveDisplayUrl("org-logos", tenant.LogoBlobName, tenant.LogoUrl),
 			contactEmail = tenant.ContactEmail,
 			contactPhone = tenant.ContactPhone,
 			address = tenant.Address,
