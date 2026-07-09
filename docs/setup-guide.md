@@ -266,6 +266,33 @@ mirror the same settings there as well.
 
 ---
 
+## Step 11 — Email notifications (optional)
+
+Approve/reject **email** is off by default — the app sends only in-app notifications until
+Azure Communication Services (ACS) is configured. The code path is already wired
+(`EmailService` → `ServiceLogFunctions`); enabling it is purely an Azure + settings step:
+
+1. Create an **Azure Communication Services** resource and an **Email Communication Service**.
+2. Add a domain — the free **Azure-managed domain** works immediately (gives a sender like
+   `DoNotReply@<guid>.azurecomm.net`); a custom domain needs DNS verification.
+3. Connect the email domain to the ACS resource, then copy the ACS **connection string**.
+4. Set two app settings on the backend (SWA-managed API or the linked Function App):
+
+```bash
+az functionapp config appsettings set \
+  --resource-group rg-arkansas-serve \
+  --name func-arkansas-serve-arksrv \
+  --settings \
+    "Communication__ConnectionString=endpoint=https://<acs>.communication.azure.com/;accesskey=YOUR_KEY" \
+    "Communication__SenderAddress=DoNotReply@<your-domain>"
+```
+
+These keys are also declared in `infra/main.bicep` (empty by default), so set them there too
+(or pass the `communicationConnectionString` / `communicationSenderAddress` parameters) to keep
+them from being wiped by a future infra deploy. Leave them empty to keep email disabled.
+
+---
+
 ## What to do next (in order)
 
 1. Complete the Entra External ID setup (see resource-guide-and-domain-setup.md)
