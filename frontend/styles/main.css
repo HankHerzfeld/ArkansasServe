@@ -254,3 +254,32 @@ body {
   .stats-row { flex-direction: column; }
   .event-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Print (Service-Hour Report → Save as PDF) ──────────────────────────────
+   Elements marked .no-print are hidden and .print-only elements are shown, so a
+   print/PDF contains only a clean report (header + summary line + roster table). */
+.print-only { display: none; }
+
+@media print {
+  /* Chrome to hide: site nav, and anything the page marked no-print. */
+  #app-header, .no-print { display: none !important; }
+  .print-only { display: block !important; }
+
+  /* Let the report use the full page and drop screen-only card chrome. */
+  .container { max-width: none; margin: 0; padding: 0; }
+  .card { box-shadow: none; border: 0; margin: 0; padding: 0; }
+
+  /* Report header block. */
+  #report-print-header { margin-bottom: 1rem; }
+  #report-print-header h2 { margin: 0 0 .15rem; font-size: 1.4rem; }
+  .print-subtitle { font-size: 1rem; font-weight: 600; }
+  .print-meta { font-size: .85rem; color: #333; }
+
+  /* Legible table: no hover fills, white header, repeat header across pages,
+     and never split a student row across a page break. */
+  .table th { background: #fff !important; border-bottom: 2px solid #333; }
+  .table td { border-bottom: 1px solid #999; }
+  .table tr:hover td { background: transparent !important; }
+  #report-table thead { display: table-header-group; }
+  #report-table tr { break-inside: avoid; }
+}

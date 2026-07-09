@@ -252,3 +252,17 @@
       rows.push([l.studentName, l.eventTitle, l.organizationName, new Date(l.serviceDate).toLocaleDateString(), l.hoursLogged]));
     downloadCsv(`service-hours-detail-${stamp()}.csv`, toCsv(rows));
   });
+
+  // Print / Save as PDF: fill the print-only header (org, range, generated date) so the saved
+  // document is self-describing, then let the @media print rules render a clean roster.
+  document.getElementById('report-print').addEventListener('click', () => {
+    if (!lastReport) return;
+    const org = Scope.activeOrg && Scope.activeOrg();
+    document.getElementById('print-org-name').textContent = (org && org.name) || 'Organization';
+    const from = lastReport.from ? new Date(lastReport.from).toLocaleDateString() : null;
+    const to   = lastReport.to   ? new Date(lastReport.to).toLocaleDateString()   : null;
+    document.getElementById('print-range').textContent =
+      'Date range: ' + ((from || to) ? `${from || '—'} → ${to || '—'}` : 'All dates');
+    document.getElementById('print-generated').textContent = 'Generated: ' + new Date().toLocaleString();
+    window.print();
+  });

@@ -103,8 +103,8 @@ Zero implementation. New students are admin-created managed volunteers, adopted 
 ### #13 — Email notifications
 Only in-app `Notification` docs today. **Recommendation:** use **Azure Communication Services Email** (native to the existing Azure stack) rather than SendGrid. Hook into the same points as `TryReviewSideEffectsAsync` (approve/reject) — and pairs naturally with the #11 durability work.
 
-### #14 — Report export UI
-Backend `GET /manage/reports/service-hours` is fully implemented (`ReportFunctions.cs`) but has **no UI**. Add an admin reports page that calls it, renders a table, and offers CSV export (client-side CSV is sufficient; PDF optional later).
+### #14 — Report export UI — **done**
+_Correction:_ the "no UI" premise was **false**. `admin-portal` already had the full Service-Hour Report — date-range filters, roster table, summary line, and CSV **summary + detail** export (`Api.Reports.serviceHours` → `ReportFunctions.cs`). The only missing piece was PDF. Added a **Print / Save-as-PDF** view: a print-only header (org name, date range, generated timestamp) plus `@media print` rules that hide the app chrome and render a clean roster. No dependencies, CSP-safe. Report remains in `admin-portal` for OrganizationAdmin+.
 
 ---
 

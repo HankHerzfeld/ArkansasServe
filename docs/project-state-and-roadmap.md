@@ -474,11 +474,11 @@ Test each flow with the correct user type:
 
 #### ⑫ Pending Implementation (not yet built)
 
-- `frontend/js/ui.js` — empty stub; shared UI helpers not yet implemented
-- `frontend/components/event-card.html` — empty stub
-- `frontend/components/navbar.html` — empty stub
+- ~~`frontend/js/ui.js` empty stub~~ — implemented (shared header/nav/notification helpers).
+- ~~`frontend/components/*.html` stubs~~ — removed; they were unused 0-byte files.
 - Student self-registration flow (account creation in Entra for new students)
-- Report exports (hours by student, school, org)
+- ~~Report exports~~ — **implemented.** Service-Hour Report in admin-portal: date-range
+  filters, roster table, CSV summary + detail export, and Print / Save-as-PDF.
 - Email notifications (currently only in-app)
 - ~~Cosmos DB Change Feed triggers~~ — **not used.** Service-log side effects run inline in
   `ServiceLogFunctions` (retry + reconciliation on read), not via a change-feed processor.

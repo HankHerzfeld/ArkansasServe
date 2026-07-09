@@ -15,7 +15,7 @@
 <div id="app-header"></div>
 
 <div class="container">
-  <div class="page-header">
+  <div class="page-header no-print">
     <h1>School Admin Portal</h1>
     <p>Review and approve service hours submitted for your students.</p>
     <div id="scope-bar" style="margin-top:.35rem;"></div>
@@ -23,7 +23,7 @@
   </div>
 
   <!-- Stats -->
-  <div class="stats-row">
+  <div class="stats-row no-print">
     <div class="stat-card">
       <div class="stat-number" id="stat-pending">—</div>
       <div class="stat-label">Pending Approvals</div>
@@ -35,7 +35,7 @@
   </div>
 
   <!-- Pending approvals table -->
-  <div class="card">
+  <div class="card no-print">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
       <div class="card-title" style="margin:0;">Pending Approvals</div>
       <button class="btn btn-secondary btn-sm" id="btn-refresh-approvals">↻ Refresh</button>
@@ -61,7 +61,7 @@
 
   <!-- Service-hour report -->
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem;">
+    <div class="no-print" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem;">
       <div class="card-title" style="margin:0;">Service-Hour Report</div>
       <div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;">
         <div class="form-group" style="margin:0;">
@@ -83,11 +83,19 @@
     </div>
 
     <div id="report-content" style="display:none;">
+      <!-- Print-only header: makes the saved PDF self-describing for compliance/court use. -->
+      <div id="report-print-header" class="print-only">
+        <h2 id="print-org-name"></h2>
+        <div class="print-subtitle">Service-Hour Report</div>
+        <div id="print-range" class="print-meta"></div>
+        <div id="print-generated" class="print-meta"></div>
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem;">
         <div id="report-summary-line" style="font-size:.85rem;color:var(--gray-600);"></div>
-        <div style="display:flex;gap:.5rem;">
+        <div class="no-print" style="display:flex;gap:.5rem;">
           <button class="btn btn-secondary btn-sm" id="export-summary">Export summary (CSV)</button>
           <button class="btn btn-secondary btn-sm" id="export-detail">Export detail (CSV)</button>
+          <button class="btn btn-primary btn-sm" id="report-print">Print / Save as PDF</button>
         </div>
       </div>
       <table class="table" id="report-table">
