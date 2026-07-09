@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "swa-frontend",
+      "runtimeExecutable": "swa",
+      "runtimeArgs": ["start", "./frontend"],
+      "port": 4280
+    }
+  ]
+}
