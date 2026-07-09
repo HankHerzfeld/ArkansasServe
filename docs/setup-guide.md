@@ -293,6 +293,37 @@ them from being wiped by a future infra deploy. Leave them empty to keep email d
 
 ---
 
+## Step 12 — Student self-registration (Entra sign-up)
+
+New students create their own account and join an organization — no admin pre-creation
+required. The app pieces are already built in:
+
+- Landing-page **Create Account** buttons call `Auth.signUp()`, which deep-links into Entra
+  account creation (`prompt=create`).
+- After sign-up, a student who isn't in any organization lands on a dashboard **onboarding
+  card** and is routed to the **organization directory** (`/organizations.html`).
+- Joining calls `POST /manage/me/memberships` (`JoinOrg`), which creates a self-joined Student
+  membership — or adopts a matching admin-created managed volunteer by email, migrating any
+  hours already logged against the managed record.
+
+The one Azure prerequisite is that the Entra External ID **sign-up/sign-in (SUSI) user flow**
+permits self-service sign-up:
+
+1. In the External ID tenant, open the user flow this app uses (behind `<tenant>.ciamlogin.com`).
+2. Ensure it is **"Sign up and sign in"** (not sign-in only), with Email + password and/or the
+   social/SSO identity providers you want.
+3. Collect at least **email** and **display name** as user attributes.
+4. To restrict who may self-register (e.g. approved email domains), use an Entra sign-up
+   attribute/API connector — the app does not gate who may sign up.
+
+No code change is needed to enable this; it is governed entirely by the user flow.
+
+> **Follow-up:** self-joined students have no **grade** set (reports show it blank) until they
+> edit their profile or an admin sets it. A first-login profile step (grade/school) is a small
+> future enhancement.
+
+---
+
 ## What to do next (in order)
 
 1. Complete the Entra External ID setup (see resource-guide-and-domain-setup.md)

@@ -129,6 +129,15 @@
         profileMemberships = memberships;
         renderProfile(currentUser, memberships);
 
+        // First-login onboarding: a self-registered student not yet in any organization is
+        // guided to join one. Skip the (necessarily empty) stats + log history.
+        if (adminLevel === 'Student' && (!memberships || memberships.length === 0)) {
+          document.getElementById('onboarding-card').style.display = 'block';
+          document.getElementById('stats-row').style.display = 'none';
+          document.getElementById('log-card').style.display = 'none';
+          return;
+        }
+
         if (adminLevel !== 'Student') {
           document.getElementById('stat-total').textContent = '—';
           document.getElementById('stat-pending').textContent = '—';
