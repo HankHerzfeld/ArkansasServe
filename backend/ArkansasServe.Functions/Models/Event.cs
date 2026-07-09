@@ -49,6 +49,13 @@ public class Event : CosmosDocument
 	[JsonPropertyName("eligibleSchoolIds")]
 	public List<string> EligibleSchoolIds { get; set; } = [];
 
+	// For internally-uploaded photos we persist the stable blob NAME, not a URL. Read
+	// paths sign it into a short-lived SAS `photoUrl` at response time (the event-photos
+	// container is private). Crawled events instead carry an external absolute `photoUrl`
+	// and leave this null — those are served as-is, never signed.
+	[JsonPropertyName("photoBlobName")]
+	public string? PhotoBlobName { get; set; }
+
 	[JsonPropertyName("photoUrl")]
 	public string? PhotoUrl { get; set; }
 

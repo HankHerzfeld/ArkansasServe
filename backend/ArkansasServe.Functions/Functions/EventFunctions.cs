@@ -26,6 +26,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		try
 		{
 			var events = await cosmos.GetUpcomingEventsCompatAsync(effectiveSchoolId);
+			foreach (var e in events) SignEventPhoto(e);
 			return await HttpHelper.OkJson(req, events);
 		}
 		catch (CosmosException ex)
@@ -52,6 +53,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var orgId = query["organizationId"] ?? string.Empty;
 		var evt = await cosmos.GetEventAsync(id, orgId);
 		if (evt == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
+		SignEventPhoto(evt);
 		return await HttpHelper.OkJson(req, evt);
 	}
 
@@ -101,6 +103,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		existing.MaxSlots = body.MaxSlots;
 		existing.HoursValue = body.HoursValue;
 		existing.EligibleSchoolIds = body.EligibleSchoolIds;
+		existing.PhotoBlobName = body.PhotoBlobName;
 		existing.PhotoUrl = body.PhotoUrl;
 		existing.Category = body.Category;
 		existing.Tags = body.Tags ?? [];
@@ -149,9 +152,10 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 
 		var blobName = BlobService.GenerateBlobName("events", body.FileName);
 		var sasUrl = blob.GenerateUploadSasToken("event-photos", blobName);
-		var finalUrl = blob.GetPublicBlobUrl("event-photos", blobName);
 
-		return await HttpHelper.OkJson(req, new { sasUrl, finalUrl, blobName });
+		// Return the stable blob NAME to persist on the event (not a URL). event-photos is
+		// a private container, so the readable URL is a short-lived SAS minted at read time.
+		return await HttpHelper.OkJson(req, new { sasUrl, blobName });
 	}
 
 	[Function("GetOrgEvents")]
@@ -198,7 +202,33 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 			events = events.Where(e => e.GroupId == requestedGroup).ToList();
 		}
 
+		foreach (var e in events) SignEventPhoto(e);
 		return await HttpHelper.OkJson(req, events);
+	}
+
+	// Replaces an internally-stored event photo with a short-lived read SAS URL, since the
+	// event-photos container is private. Uses PhotoBlobName when set; otherwise falls back to
+	// deriving the blob name from a legacy bare PhotoUrl that points at our own container (so
+	// pre-existing events don't need a data migration). External URLs (crawled events) and any
+	// signing failure leave the stored PhotoUrl untouched — a missing photo must never break
+	// event loading.
+	private void SignEventPhoto(Event evt)
+	{
+		try
+		{
+			var blobName = !string.IsNullOrWhiteSpace(evt.PhotoBlobName)
+				? evt.PhotoBlobName
+				: blob.TryGetOwnedBlobName("event-photos", evt.PhotoUrl);
+
+			if (string.IsNullOrWhiteSpace(blobName)) return;
+
+			evt.PhotoBlobName = blobName;
+			evt.PhotoUrl = blob.GenerateReadSasToken("event-photos", blobName);
+		}
+		catch (Exception ex)
+		{
+			logger.LogWarning(ex, "Could not sign photo for event {EventId}; returning stored PhotoUrl.", evt.Id);
+		}
 	}
 
 	private sealed record UploadTokenRequest(string FileName);

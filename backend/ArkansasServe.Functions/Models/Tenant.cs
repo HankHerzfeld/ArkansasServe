@@ -25,8 +25,14 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("address")]
 	public string? Address { get; set; }
 
+	// External logo URL (pasted by an admin) — served as-is.
 	[JsonPropertyName("logoUrl")]
 	public string? LogoUrl { get; set; }
+
+	// Blob name for a logo uploaded into the private org-logos container. When set, read
+	// paths sign it into a short-lived display URL (preferred over an external LogoUrl).
+	[JsonPropertyName("logoBlobName")]
+	public string? LogoBlobName { get; set; }
 
 	// ── Public profile (rendered only when present) ─────────────────────────────
 	[JsonPropertyName("description")]

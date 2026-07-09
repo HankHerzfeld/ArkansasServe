@@ -184,14 +184,25 @@ Student opens their Dashboard
 
 ---
 
-## Automatic Processes (Change Feed)
+## Service-log side effects (inline, not Change Feed)
 
-The ChangeFeedFunction runs silently in the background watching ServiceLogs.
-You do not call it — it triggers itself whenever a ServiceLog document changes.
+> **Implementation note (corrected).** This project does **not** run a `ChangeFeedFunction`.
+> An earlier design proposed a Cosmos DB change-feed trigger, but that was dropped for a
+> simpler synchronous model — **not** because of the Static Web App tier (the SWA is
+> **Standard**, and a change-feed processor is a property of the Functions host, not the SWA).
+> The processor was avoided to keep the Consumption Function App free of an always-on
+> lease-based background worker. The `leases` container remains provisioned but unused.
+>
+> Instead, `ServiceLogFunctions` performs these side effects **inline** when a log is
+> submitted/reviewed, via `TryCreatePendingApprovalAsync` / `TryReviewSideEffectsAsync`.
+> Those calls are wrapped in a transient retry (`CosmosRetry`) and are **recoverable**: the
+> pending-approval queue is reconciled against the Pending service logs on every admin read
+> (`CosmosService.GetPendingApprovalsBySchoolReconciledAsync`), so a dropped create/delete
+> self-heals rather than being lost.
 
-| Trigger condition              | What happens automatically                        |
+| Event                          | Side effect (inline, synchronous)                 |
 |-------------------------------|---------------------------------------------------|
-| New ServiceLog, status=Pending | PendingApproval record created for school admin   |
+| New ServiceLog, status=Pending | PendingApproval pointer created for school admin  |
 | ServiceLog status → Approved  | PendingApproval deleted, Notification created     |
 | ServiceLog status → Rejected  | PendingApproval deleted, Notification created     |
 

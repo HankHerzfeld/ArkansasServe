@@ -10,7 +10,7 @@ using User = ArkansasServe.Functions.Models.User;
 
 namespace ArkansasServe.Functions.Functions;
 
-public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<AdminFunctions> logger)
+public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig authConfig, ILogger<AdminFunctions> logger)
 {
 	private const string RootTenantId = "arkansas-serve-root";
 
@@ -35,6 +35,24 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 			.Where(t => orgIds.Contains(t.Id))
 			.ToList();
 		return await HttpHelper.OkJson(req, tenants);
+	}
+
+	[Function("GetTenant")]
+	public async Task<HttpResponseData> GetTenant(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/tenants/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		// A global super may read any tenant; otherwise the caller must hold an
+		// OrganizationAdmin+ membership in it (same visibility rule as the tenant list).
+		if (!await IsGlobalSuperAsync(ctx) && !await CanManageTenantAsync(ctx, id))
+			return await Forbid(req);
+
+		var tenant = await cosmos.GetTenantAsync(id);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+		return await HttpHelper.OkJson(req, tenant);
 	}
 
 	[Function("CreateTenant")]
@@ -71,6 +89,9 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 			user = actor,
 			canManageDemoUsers = await IsGlobalSuperAsync(ctx),
 			tenant,
+			// Signed display URL for the current logo (org-logos is private) so the edit form
+			// can preview an uploaded logo. Null when there is no logo.
+			logoDisplayUrl = tenant == null ? null : blob.ResolveDisplayUrl("org-logos", tenant.LogoBlobName, tenant.LogoUrl),
 		});
 	}
 
@@ -177,6 +198,26 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		return await HttpHelper.OkJson(req, updated.Groups);
 	}
 
+	[Function("GetOrgLogoUploadToken")]
+	public async Task<HttpResponseData> GetOrgLogoUploadToken(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/tenants/{tenantId}/logo-upload-token")] HttpRequestData req,
+		string tenantId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
+
+		var body = await HttpHelper.ReadBody<LogoUploadTokenRequest>(req);
+		if (body == null || string.IsNullOrWhiteSpace(body.FileName))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "fileName is required");
+
+		// Store under the org's id so logos are grouped per tenant. org-logos is private;
+		// the readable URL is a short-lived SAS minted at display time (see ResolveDisplayUrl).
+		var blobName = BlobService.GenerateBlobName($"logos/{tenantId}", body.FileName);
+		var sasUrl = blob.GenerateUploadSasToken("org-logos", blobName);
+		return await HttpHelper.OkJson(req, new { sasUrl, blobName });
+	}
+
 	[Function("UpdateTenantSettings")]
 	public async Task<HttpResponseData> UpdateTenantSettings(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "manage/backend/tenants/{tenantId}")] HttpRequestData req,
@@ -205,6 +246,7 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		if (body.ContactPhone != null) tenant.ContactPhone = body.ContactPhone;
 		if (body.Address != null) tenant.Address = body.Address;
 		if (body.LogoUrl != null) tenant.LogoUrl = body.LogoUrl;
+		if (body.LogoBlobName != null) tenant.LogoBlobName = body.LogoBlobName.Length == 0 ? null : body.LogoBlobName;
 
 		var updated = await cosmos.UpdateTenantAsync(tenant);
 		return await HttpHelper.OkJson(req, updated);
@@ -361,8 +403,10 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 
 	private sealed record DbQueryRequest(string Container, string Query, int? MaxItems);
 
+	private sealed record LogoUploadTokenRequest(string FileName);
+
 	private sealed record UpdateTenantRequest(
 		string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers, bool? AllowProfileSelfEdit,
 		string? Description, string? Mission, string? Website,
-		string? ContactEmail, string? ContactPhone, string? Address, string? LogoUrl);
+		string? ContactEmail, string? ContactPhone, string? Address, string? LogoUrl, string? LogoBlobName);
 }

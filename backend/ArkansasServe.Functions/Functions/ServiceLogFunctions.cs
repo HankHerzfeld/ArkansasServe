@@ -81,57 +81,90 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		return await HttpHelper.OkJson(req, new { logs, totalApprovedHours = total });
 	}
 
+	[Function("GetServiceLog")]
+	public async Task<HttpResponseData> GetLog(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "servicelogs/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		// studentId is the ServiceLogs partition key. A student fetching their own log can omit
+		// it (defaults to the caller); an admin passes ?studentId= (as the review flow does).
+		var studentId = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["studentId"];
+		if (string.IsNullOrWhiteSpace(studentId)) studentId = ctx.UserId;
+
+		var log = await cosmos.GetServiceLogAsync(id, studentId);
+		if (log == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Service log not found");
+
+		// The owning student may read their own log; anyone else must be an OrganizationAdmin+
+		// in the log's school (same rule as the review flow).
+		if (!string.Equals(log.StudentId, ctx.UserId, StringComparison.Ordinal))
+		{
+			var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, log.SchoolId);
+			if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
+				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot view logs for this school");
+		}
+
+		return await HttpHelper.OkJson(req, log);
+	}
+
+	// Create the pending-approval pointer for a freshly-submitted log. Uses a deterministic
+	// pointer id so this is idempotent, and retries transient faults. A terminal failure is
+	// recoverable: the admin queue self-heals via reconciliation on read (see CosmosService.Reconciliation).
 	private async Task TryCreatePendingApprovalAsync(ServiceLog log)
 	{
 		try
 		{
-			await cosmos.CreatePendingApprovalAsync(new PendingApproval
-			{
-				SchoolId = log.SchoolId,
-				ServiceLogId = log.Id,
-				StudentId = log.StudentId,
-				StudentName = log.StudentName,
-				OrganizationName = log.OrganizationName,
-				EventTitle = log.EventTitle,
-				HoursLogged = log.HoursLogged,
-				ServiceDate = log.ServiceDate
-			});
+			await CosmosRetry.ExecuteAsync(
+				() => cosmos.CreatePendingApprovalAsync(CosmosService.PendingApprovalFromLog(log)),
+				logger, "CreatePendingApproval");
 		}
-		catch (CosmosException ex)
+		catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
 		{
-			logger.LogError(ex, "Cosmos DB error while creating pending approval for service log {ServiceLogId}", log.Id);
+			// Pointer already exists (deterministic id) — submit is idempotent.
 		}
 		catch (Exception ex)
 		{
-			logger.LogError(ex, "Unexpected error while creating pending approval for service log {ServiceLogId}", log.Id);
+			logger.LogError(ex, "Failed to create pending approval for service log {ServiceLogId}; will be reconciled on queue load", log.Id);
 		}
 	}
 
+	// Review side effects run independently so one failing does not skip the other. Both are
+	// recoverable: a lost pending-pointer delete is reconciled on the admin queue read; the
+	// student always sees the final status in their own log list even if the notification is lost.
 	private async Task TryReviewSideEffectsAsync(ServiceLog log)
 	{
 		try
 		{
-			await cosmos.DeletePendingApprovalByLogIdAsync(log.Id, log.SchoolId);
+			await CosmosRetry.ExecuteAsync(
+				() => cosmos.DeletePendingApprovalByLogIdAsync(log.Id, log.SchoolId),
+				logger, "DeletePendingApproval");
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Failed to remove pending approval for service log {ServiceLogId}; will be reconciled on queue load", log.Id);
+		}
 
+		try
+		{
 			var message = log.Status == "Approved"
 				? $"Your {log.HoursLogged}h of service at {log.OrganizationName} ({log.EventTitle}) have been approved."
 				: $"Your service log for {log.EventTitle} was not approved. Note: {log.ReviewNote ?? "No note provided."}";
 
-			await cosmos.CreateNotificationAsync(new Notification
-			{
-				UserId = log.StudentId,
-				Type = log.Status == "Approved" ? "HoursApproved" : "HoursRejected",
-				Message = message,
-				RelatedId = log.Id
-			});
-		}
-		catch (CosmosException ex)
-		{
-			logger.LogError(ex, "Cosmos DB error while processing review side effects for service log {ServiceLogId}", log.Id);
+			await CosmosRetry.ExecuteAsync(
+				() => cosmos.CreateNotificationAsync(new Notification
+				{
+					UserId = log.StudentId,
+					Type = log.Status == "Approved" ? "HoursApproved" : "HoursRejected",
+					Message = message,
+					RelatedId = log.Id
+				}),
+				logger, "CreateNotification");
 		}
 		catch (Exception ex)
 		{
-			logger.LogError(ex, "Unexpected error while processing review side effects for service log {ServiceLogId}", log.Id);
+			logger.LogError(ex, "Failed to create review notification for service log {ServiceLogId}", log.Id);
 		}
 	}
 
