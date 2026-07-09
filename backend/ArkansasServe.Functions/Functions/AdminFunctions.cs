@@ -37,6 +37,24 @@ public class AdminFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger
 		return await HttpHelper.OkJson(req, tenants);
 	}
 
+	[Function("GetTenant")]
+	public async Task<HttpResponseData> GetTenant(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/tenants/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		// A global super may read any tenant; otherwise the caller must hold an
+		// OrganizationAdmin+ membership in it (same visibility rule as the tenant list).
+		if (!await IsGlobalSuperAsync(ctx) && !await CanManageTenantAsync(ctx, id))
+			return await Forbid(req);
+
+		var tenant = await cosmos.GetTenantAsync(id);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+		return await HttpHelper.OkJson(req, tenant);
+	}
+
 	[Function("CreateTenant")]
 	public async Task<HttpResponseData> CreateTenant(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/tenants")] HttpRequestData req)

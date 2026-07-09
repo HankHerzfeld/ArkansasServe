@@ -480,7 +480,10 @@ Test each flow with the correct user type:
 - Student self-registration flow (account creation in Entra for new students)
 - Report exports (hours by student, school, org)
 - Email notifications (currently only in-app)
-- Cosmos DB Change Feed triggers (designed but not wired as Azure Function triggers)
+- ~~Cosmos DB Change Feed triggers~~ — **not used.** Service-log side effects run inline in
+  `ServiceLogFunctions` (retry + reconciliation on read), not via a change-feed processor.
+  Dropped to avoid an always-on background worker on the Consumption plan — *not* an SWA-tier
+  limitation (the SWA is Standard). The `leases` container is provisioned but unused.
 
 ---
 

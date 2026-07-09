@@ -32,7 +32,9 @@ public class ApprovalFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You do not have approval access in this organization");
 
-		var result = await cosmos.GetPendingApprovalsBySchoolAsync(orgId);
+		// Reconcile against the source of truth (Pending service logs) so a lost inline
+		// side effect can't leave the queue missing or holding stale items.
+		var result = await cosmos.GetPendingApprovalsBySchoolReconciledAsync(orgId);
 		return await HttpHelper.OkJson(req, result);
 	}
 }

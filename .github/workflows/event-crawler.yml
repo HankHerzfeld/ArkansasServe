@@ -4,9 +4,11 @@ name: Daily Event Crawler
 # and once a week on Sunday at 12:00 UTC for a fuller pull.
 # (GitHub Actions cron uses UTC and does not adjust for daylight saving time.)
 #
-# Because Azure Static Web Apps Free tier only supports HTTP triggers, the
-# scheduled crawl is driven by this workflow calling the crawler's HTTP endpoint
-# rather than a timer-triggered Azure Function.
+# The scheduled crawl is driven by this workflow calling the crawler's HTTP endpoint
+# rather than a timer-triggered Azure Function. This keeps the Consumption Function App
+# free of an always-on timer/scheduler and puts the schedule in one visible place.
+# (Note: this is a Functions-host/cost choice, not a Static Web App tier limitation —
+# the SWA is Standard.)
 #
 # Prerequisites (set in GitHub repo Settings → Secrets and variables → Actions):
 #   CRAWLER_ENDPOINT_URL  — e.g. https://your-swa.azurestaticapps.net/api
