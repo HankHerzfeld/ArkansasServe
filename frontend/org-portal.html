@@ -128,7 +128,7 @@
       <input type="file" id="evt-photo" accept="image/*">
       <div id="upload-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.4rem;">Uploading…</div>
     </div>
-    <input type="hidden" id="evt-photo-url">
+    <input type="hidden" id="evt-photo-blob">
     <div id="event-form-error" class="alert alert-error" style="display:none;"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="event-modal-cancel">Cancel</button>
@@ -333,7 +333,7 @@
     document.getElementById('evt-contact-name').value  = evt?.contactName || '';
     document.getElementById('evt-contact-email').value = evt?.contactEmail || '';
     document.getElementById('evt-contact-phone').value = evt?.contactPhone || '';
-    document.getElementById('evt-photo-url').value   = evt?.photoUrl || '';
+    document.getElementById('evt-photo-blob').value  = evt?.photoBlobName || '';
 
     const groupSel = document.getElementById('evt-group');
     groupSel.innerHTML = '';
@@ -372,9 +372,10 @@
     if (!file) return;
     document.getElementById('upload-progress').style.display = 'block';
     try {
-      const { sasUrl, finalUrl } = await Api.Events.uploadToken(file.name);
+      const { sasUrl, blobName } = await Api.Events.uploadToken(file.name);
       await fetch(sasUrl, { method: 'PUT', headers: { 'x-ms-blob-type': 'BlockBlob', 'Content-Type': file.type }, body: file });
-      document.getElementById('evt-photo-url').value = finalUrl;
+      // Persist the stable blob name; the API signs it into a read SAS at display time.
+      document.getElementById('evt-photo-blob').value = blobName;
       document.getElementById('upload-progress').textContent = '✅ Photo uploaded';
     } catch (err) {
       document.getElementById('upload-progress').textContent = '❌ Upload failed';
@@ -408,7 +409,7 @@
       contactEmail:  document.getElementById('evt-contact-email').value.trim() || null,
       contactPhone:  document.getElementById('evt-contact-phone').value.trim() || null,
       groupId:       document.getElementById('evt-group').value || null,
-      photoUrl:      document.getElementById('evt-photo-url').value,
+      photoBlobName: document.getElementById('evt-photo-blob').value || null,
       shifts:          readShifts(),
       signupQuestions: readQuestions(),
     };

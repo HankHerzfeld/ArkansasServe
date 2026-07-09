@@ -127,15 +127,24 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
   parent: storage
 }
 
-// P1: private container; reads go through short-lived SAS (BlobService.GenerateReadSasToken).
-// Live container is already publicAccess 'off' — this just makes the source match.
-resource eventPhotosContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
-  name: 'event-photos'
+// All three containers are PRIVATE. The account sets allowBlobPublicAccess:false
+// (above), so anonymous/public-read is impossible account-wide regardless of this
+// per-container flag — every read must go through a short-lived SAS
+// (BlobService.GenerateReadSasToken). Declaring the containers here so uploads to
+// them succeed (a SAS write to a non-existent container 404s ContainerNotFound).
+var blobContainerNames = [
+  'event-photos'      // event card/detail photos
+  'verification-docs' // org verification documents (private; admin read-SAS only)
+  'org-logos'         // organization branding logos
+]
+
+resource blobContainers 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [for name in blobContainerNames: {
+  name: name
   parent: blobService
   properties: {
     publicAccess: 'None'
   }
-}
+}]
 
 // =============================================================================
 // Cosmos DB  (provisioned, database-level shared throughput — NOT serverless)
