@@ -315,10 +315,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 // so it lists every existing setting plus the new CosmosDb__Containers__* mappings
 // that make the code target the real PascalCase containers.
 //
-// ⚠ FULL REPLACEMENT HAZARD: any setting added out-of-band (portal, or functions-action
-// flipping WEBSITE_RUN_FROM_PACKAGE to a package URL) is wiped by the next infra deploy.
-// Order of operations: deploy infra BEFORE the Functions workflow, or re-run the Functions
-// deploy after any infra deploy. Keep this list in sync with what the deploy pipeline sets.
+// ⚠ FULL REPLACEMENT HAZARD: any setting added out-of-band (e.g. via the portal) that is not
+// listed here is wiped by the next infra deploy. The run-from-package settings the Functions
+// workflow relies on are now declared below (matching live), so an infra deploy no longer
+// breaks the running backend — but still keep this list in sync with the deploy pipeline, and
+// prefer deploying infra BEFORE the Functions workflow (or re-running Functions afterward).
 resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   name: 'appsettings'
   parent: functionApp
@@ -328,7 +329,12 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     AzureWebJobsSecretStorageType: 'Files'
     FUNCTIONS_EXTENSION_VERSION: '~4'
     FUNCTIONS_WORKER_RUNTIME: 'dotnet-isolated'
-    WEBSITE_RUN_FROM_PACKAGE: '0'
+    // The Functions GitHub Actions deploy publishes as a run-from-package zip, so the LIVE
+    // values are WEBSITE_RUN_FROM_PACKAGE=1 and WEBSITE_ENABLE_SYNC_UPDATE_SITE=true. These
+    // are declared here (matching live) so the full-replacement app-settings write does NOT
+    // flip the app off run-from-package or drop the sync flag and break the running backend.
+    WEBSITE_RUN_FROM_PACKAGE: '1'
+    WEBSITE_ENABLE_SYNC_UPDATE_SITE: 'true'
     // --- telemetry (existing) ---
     APPINSIGHTS_INSTRUMENTATIONKEY: appInsights.properties.InstrumentationKey
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
