@@ -208,16 +208,42 @@ Student opens their Dashboard
 
 ---
 
+## Crawled events (external sources)
+
+The event crawler imports volunteer events from external platforms (GivePulse,
+Eventbrite, VolunteerMatch, JustServe, All for Good, …) into the **Events**
+container under a single system partition: `organizationId = "ark-serve-crawler"`
+(`CosmosService.Crawler.CrawlerOrgId`). Imported events start as **Draft** and must
+be reviewed by a SuperAdmin (Admin Backend → Event Crawler) before students see
+them. The crawl is driven by the daily GitHub Actions workflow
+(`.github/workflows/event-crawler.yml`) calling `POST /manage/events/crawl`
+(SuperAdmin) — not a timer-triggered Function (same reasoning as the change-feed
+note above: keep scheduling in one visible place, off the Consumption host).
+
+**Partitioning tradeoff (by design).** Crawled events stay in the
+`ark-serve-crawler` partition even after they are published (Draft → Open); they
+are **not** re-homed to the owning org's partition. So they surface in normal
+org/student listings only via **cross-partition** queries. This is an accepted
+tradeoff for a low-frequency admin tool at current volume (acknowledged inline in
+`CosmosService.Crawler.cs`). If crawled-event volume grows, the follow-up is to
+re-home an event to its owning organization's partition on publish (or move
+crawled drafts into their own container).
+
+---
+
 ## File Storage Rules
 
-All files go to Blob Storage. The database never stores the file itself —
-only a URL string pointing to it.
+All files go to Blob Storage. For uploaded assets the database stores the **blob
+name** (not a public URL); read paths mint a short-lived read SAS at response time
+(every container is private — the storage account sets `allowBlobPublicAccess:false`).
+Externally-hosted images (e.g. a crawled event's photo, a pasted logo URL) are
+stored as absolute URLs and served as-is.
 
-| File type          | Blob container       | Who uploads      | Access method         |
-|--------------------|----------------------|------------------|-----------------------|
-| Event photos       | event-photos/        | Org staff        | Public read SAS URL   |
-| Verification docs  | verification-docs/   | Org staff        | Private SAS token     |
-| Org logos          | org-logos/           | Org staff/Admin  | Public read SAS URL   |
+| File type          | Blob container       | Who uploads      | Access method            |
+|--------------------|----------------------|------------------|--------------------------|
+| Event photos       | event-photos/        | Org staff        | Private; read SAS URL    |
+| Verification docs  | verification-docs/   | Org staff        | Private; read SAS URL    |
+| Org logos          | org-logos/           | Org staff/Admin  | Private; read SAS URL    |
 
 ---
 

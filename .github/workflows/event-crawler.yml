@@ -59,17 +59,13 @@ jobs:
           SOURCES_INPUT="${{ github.event.inputs.sources }}"
           DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
 
+          # Build the JSON body with jq (preinstalled on ubuntu-latest). For the sources list,
+          # split the comma-separated input, trim whitespace, and drop empty entries.
           if [ -n "$SOURCES_INPUT" ]; then
-            # Convert comma-separated string to JSON array
-            SOURCES_JSON=$(echo "$SOURCES_INPUT" | python3 -c "
-          import sys, json
-          raw = sys.stdin.read().strip()
-          parts = [s.strip() for s in raw.split(',') if s.strip()]
-          print(json.dumps(parts))
-          ")
-            BODY=$(printf '{"sources":%s,"dryRun":%s}' "$SOURCES_JSON" "$DRY_RUN")
+            BODY=$(jq -cn --arg s "$SOURCES_INPUT" --argjson dry "$DRY_RUN" \
+              '{sources: ($s | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))), dryRun: $dry}')
           else
-            BODY=$(printf '{"sources":null,"dryRun":%s}' "$DRY_RUN")
+            BODY=$(jq -cn --argjson dry "$DRY_RUN" '{sources: null, dryRun: $dry}')
           fi
 
           echo "body=$BODY" >> "$GITHUB_OUTPUT"
@@ -104,10 +100,10 @@ jobs:
             exit 1
           fi
 
-          # Parse and summarise results
-          IMPORTED=$(echo "$HTTP_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('imported',0))" 2>/dev/null || echo "?")
-          SKIPPED=$(echo "$HTTP_BODY"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('skipped',0))"  2>/dev/null || echo "?")
-          ERRORS=$(echo "$HTTP_BODY"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('errors',[])))" 2>/dev/null || echo "?")
+          # Parse and summarise results with jq (fall back to "?" if the body isn't valid JSON).
+          IMPORTED=$(echo "$HTTP_BODY" | jq -r '.imported // 0'          2>/dev/null || echo "?")
+          SKIPPED=$(echo "$HTTP_BODY"  | jq -r '.skipped // 0'           2>/dev/null || echo "?")
+          ERRORS=$(echo "$HTTP_BODY"   | jq -r '(.errors // []) | length' 2>/dev/null || echo "?")
 
           echo "::notice::Crawl complete — imported: $IMPORTED, skipped: $SKIPPED, errors: $ERRORS"
           echo "imported=$IMPORTED" >> "$GITHUB_OUTPUT"
