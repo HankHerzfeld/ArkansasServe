@@ -479,7 +479,11 @@ Test each flow with the correct user type:
 - Student self-registration flow (account creation in Entra for new students)
 - ~~Report exports~~ — **implemented.** Service-Hour Report in admin-portal: date-range
   filters, roster table, CSV summary + detail export, and Print / Save-as-PDF.
-- Email notifications (currently only in-app)
+- ~~Email notifications~~ — **implemented (inert until configured).** Approve/reject emails
+  send via Azure Communication Services (`EmailService`, wired into
+  `ServiceLogFunctions.TryReviewSideEffectsAsync` alongside the in-app notification). Disabled
+  until an ACS resource is provisioned and `Communication__ConnectionString` +
+  `Communication__SenderAddress` are set — see setup-guide.md "Email notifications".
 - ~~Cosmos DB Change Feed triggers~~ — **not used.** Service-log side effects run inline in
   `ServiceLogFunctions` (retry + reconciliation on read), not via a change-feed processor.
   Dropped to avoid an always-on background worker on the Consumption plan — *not* an SWA-tier

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace ArkansasServe.Functions.Functions;
 
-public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<ServiceLogFunctions> logger)
+public class ServiceLogFunctions(CosmosService cosmos, EmailService email, AuthConfig authConfig, ILogger<ServiceLogFunctions> logger)
 {
 	[Function("CreateServiceLog")]
 	public async Task<HttpResponseData> CreateLog(
@@ -165,6 +165,30 @@ public class ServiceLogFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 		catch (Exception ex)
 		{
 			logger.LogError(ex, "Failed to create review notification for service log {ServiceLogId}", log.Id);
+		}
+
+		// Email the student the same outcome. Best-effort and independent of the above; the
+		// recipient lookup is skipped entirely unless ACS email is configured, so this adds no
+		// cost when email is off.
+		if (email.IsConfigured)
+		{
+			try
+			{
+				var student = await cosmos.GetUserByExternalIdAsync(log.StudentId, log.SchoolId);
+				if (student != null && !string.IsNullOrWhiteSpace(student.Email))
+				{
+					var approved = log.Status == "Approved";
+					var subject = approved ? "Your service hours were approved" : "Your service hours were not approved";
+					var body = approved
+						? $"Hi {student.DisplayName},\n\nYour {log.HoursLogged}h of service at {log.OrganizationName} ({log.EventTitle}) have been approved.\n\n— Arkansas Serve"
+						: $"Hi {student.DisplayName},\n\nYour service log for {log.EventTitle} was not approved.\nNote: {log.ReviewNote ?? "No note provided."}\n\n— Arkansas Serve";
+					await email.SendAsync(student.Email, subject, body);
+				}
+			}
+			catch (Exception ex)
+			{
+				logger.LogError(ex, "Failed to send review email for service log {ServiceLogId}", log.Id);
+			}
 		}
 	}
 

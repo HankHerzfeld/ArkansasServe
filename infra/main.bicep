@@ -70,6 +70,13 @@ param entraAudience string
 @description('Optional bootstrap: emails on this domain are elevated to PlatformAdmin. Leave empty to disable (recommended after seeding the first admin).')
 param platformAdminEmailDomain string = ''
 
+@description('Azure Communication Services connection string for email notifications. Empty leaves email disabled (in-app notifications only).')
+@secure()
+param communicationConnectionString string = ''
+
+@description('Verified ACS sender address for email, e.g. DoNotReply@<your-domain>. Empty leaves email disabled.')
+param communicationSenderAddress string = ''
+
 // Tags present on the originally Bicep-deployed resources; preserved to avoid stripping them.
 var commonTags = {
   environment: 'prod'
@@ -347,6 +354,9 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Entra__ClientId: entraClientId
     Entra__Audience: entraAudience
     Entra__PlatformAdminEmailDomain: platformAdminEmailDomain
+    // --- email (Azure Communication Services; empty until an ACS resource is provisioned) ---
+    Communication__ConnectionString: communicationConnectionString
+    Communication__SenderAddress: communicationSenderAddress
     // --- NEW: map code logical names -> real container names (fixes 404/500s) ---
     CosmosDb__Containers__Tenants: 'Tenants'
     CosmosDb__Containers__Users: 'Users'
