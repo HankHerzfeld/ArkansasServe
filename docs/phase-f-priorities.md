@@ -140,7 +140,9 @@ _Original plan (server-side variant) below, superseded by the client-side decisi
 - Server-side query params: search by **name** (uses #24 first/last), filter by `personType`, `adminLevel`, org/school, `status`, `isDemoUser`.
 - Table UX: a search box + facet filters + sortable columns + pagination for large tenants.
 
-### #26 — SuperAdmin remote access (impersonation), incl. demo users
+### #26 — SuperAdmin remote access (impersonation), incl. demo users — **design drafted 2026-07-09**
+**Design doc:** [remote-access-impersonation-design.md](remote-access-impersonation-design.md) — full threat model, chosen mechanism (opaque server-side session + per-request lookup, no new token-signing), data model, API, `AuthMiddleware` effective-vs-real context, guardrails, audit/compliance, and a phased rollout (demo-users-only MVP → real users read-only → read-write). **Awaiting decisions** on launch scope, read-only vs read-write, notification policy, session length, and the audit container (coordinate with P2 Bicep-drift). No code until those are signed off.
+
 **Today:** SuperAdmin can *manage* demo users (`AdminFunctions` `GetDemoUsers`/`ResetDemoUsers`, `:255-286`) but cannot **act as** an arbitrary user. No impersonation path exists.
 
 **Plan:**
