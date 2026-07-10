@@ -109,8 +109,10 @@ _Original analysis:_ there is **no username field today** — identity keys are 
 
 **Acceptance:** no username field or generated handle anywhere; all user references render as a person's name with context for disambiguation.
 
-### #20 — Approval process clarity
-**Symptom:** the approve/reject flow is confusing.
+### #20 — Approval process clarity — **landed 2026-07-09**
+**Done:** the `admin-portal` queue is now self-explanatory. Added an explainer line (with an inline `Pending` badge) stating the state machine and what approve/reject each do; new **Status** and **Submitted** columns (backed by a new `PendingApproval.submittedAt` = source log's `createdAt`), and "Organization" relabeled "Logged by" / "Date" → "Service date". Each row now has explicit **Approve** (green) and **Reject** (red) buttons instead of a generic "Review". The modal is intent-driven: title, consequence sentence ("Approving credits {student}… / Rejecting returns these {h} to {org}…"), reason label ("Reason for rejection (required)" vs "Note (optional)"), and a single colored confirm button all flip with intent, plus an "Approve/Reject instead" switch link. Reject still requires a reason; after a decision an inline success banner confirms the outcome ("✓ Approved — 3h credited to {student}, who was notified"). Backend builds clean; JS parses; both intent states + the queue verified in-browser (screenshot).
+
+_Original symptom:_ the approve/reject flow is confusing.
 
 **Where:** `admin-portal` queue → `GET /api/approvals` → `PATCH /servicelogs/{id}` (`ServiceLogFunctions.cs`). Pairs with #19 since both concern the hours lifecycle.
 

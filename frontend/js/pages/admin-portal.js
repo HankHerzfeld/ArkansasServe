@@ -58,18 +58,37 @@
         tdDate.textContent = new Date(a.serviceDate).toLocaleDateString();
         tr.appendChild(tdDate);
 
+        const tdSubmitted = document.createElement('td');
+        tdSubmitted.style.cssText = 'font-size:.85rem;color:var(--gray-600);';
+        tdSubmitted.textContent = a.submittedAt ? new Date(a.submittedAt).toLocaleDateString() : '—';
+        tr.appendChild(tdSubmitted);
+
         const tdHours = document.createElement('td');
         const strong2 = document.createElement('strong');
         strong2.textContent = `${a.hoursLogged}h`;
         tdHours.appendChild(strong2);
         tr.appendChild(tdHours);
 
+        const tdStatus = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = 'status status-pending';
+        badge.textContent = 'Pending';
+        tdStatus.appendChild(badge);
+        tr.appendChild(tdStatus);
+
         const tdBtn = document.createElement('td');
-        const btn = document.createElement('button');
-        btn.className = 'btn btn-primary btn-sm';
-        btn.textContent = 'Review';
-        btn.addEventListener('click', () => openReview(a));
-        tdBtn.appendChild(btn);
+        tdBtn.style.whiteSpace = 'nowrap';
+        const approveBtn = document.createElement('button');
+        approveBtn.className = 'btn btn-primary btn-sm';
+        approveBtn.textContent = 'Approve';
+        approveBtn.addEventListener('click', () => openReview(a, 'Approved'));
+        const rejectBtn = document.createElement('button');
+        rejectBtn.className = 'btn btn-danger btn-sm';
+        rejectBtn.style.marginLeft = '.4rem';
+        rejectBtn.textContent = 'Reject';
+        rejectBtn.addEventListener('click', () => openReview(a, 'Rejected'));
+        tdBtn.appendChild(approveBtn);
+        tdBtn.appendChild(rejectBtn);
         tr.appendChild(tdBtn);
 
         tbody.appendChild(tr);
@@ -80,18 +99,39 @@
     }
   }
 
-  function openReview(approval) {
+  let activeIntent = 'Approved';
+
+  // Drive every intent-dependent piece of the modal from one place so the
+  // Approve/Reject "switch" link stays consistent with the confirm button.
+  function setIntent(intent) {
+    activeIntent = intent;
+    const a = activeApproval;
+    const rejecting = intent === 'Rejected';
+    document.getElementById('review-modal-title').textContent =
+      rejecting ? 'Reject service hours' : 'Approve service hours';
+    document.getElementById('review-consequence').textContent = rejecting
+      ? `Rejecting returns these ${a.hoursLogged}h to ${a.organizationName}. ${a.studentName} is notified with your reason.`
+      : `Approving credits ${a.studentName} with ${a.hoursLogged}h and notifies them.`;
+    document.getElementById('review-note-label').textContent =
+      rejecting ? 'Reason for rejection (required)' : 'Note (optional)';
+    const confirm = document.getElementById('review-confirm');
+    confirm.textContent = rejecting ? 'Reject hours' : 'Approve hours';
+    confirm.className = rejecting ? 'btn btn-danger' : 'btn btn-primary';
+    document.getElementById('review-switch').textContent =
+      rejecting ? '← Approve instead' : 'Reject instead →';
+  }
+
+  function openReview(approval, intent) {
     activeApproval = approval;
-    document.getElementById('review-modal-title').textContent = `Review: ${approval.eventTitle}`;
     const details = document.getElementById('review-details');
     details.innerHTML = '';
-
     const fields = [
       ['Student', approval.studentName],
-      ['Organization', approval.organizationName],
+      ['Logged by', approval.organizationName],
       ['Event', approval.eventTitle],
-      ['Date', new Date(approval.serviceDate).toLocaleDateString()],
-      ['Hours submitted', String(approval.hoursLogged)]
+      ['Service date', new Date(approval.serviceDate).toLocaleDateString()],
+      ['Submitted', approval.submittedAt ? new Date(approval.submittedAt).toLocaleDateString() : '—'],
+      ['Hours', `${approval.hoursLogged}h`]
     ];
     fields.forEach(([label, value]) => {
       const strong = document.createElement('strong');
@@ -103,41 +143,57 @@
 
     document.getElementById('review-note').value = '';
     document.getElementById('review-error').style.display = 'none';
+    setIntent(intent);
     document.getElementById('review-modal').classList.add('open');
   }
 
   document.getElementById('review-cancel').addEventListener('click', () =>
     document.getElementById('review-modal').classList.remove('open'));
+  document.getElementById('review-switch').addEventListener('click', () =>
+    setIntent(activeIntent === 'Rejected' ? 'Approved' : 'Rejected'));
 
-  async function submitReview(status) {
+  function showBanner(text) {
+    const b = document.getElementById('review-banner');
+    b.textContent = text;
+    b.style.display = 'block';
+    setTimeout(() => { b.style.display = 'none'; }, 5000);
+  }
+
+  async function submitReview() {
+    const status = activeIntent;
     const errEl = document.getElementById('review-error');
     const note  = document.getElementById('review-note').value.trim();
     if (status === 'Rejected' && !note) {
-      errEl.textContent = 'A note is required when rejecting hours.';
+      errEl.textContent = 'A reason is required when rejecting hours.';
       errEl.style.display = 'block';
       return;
     }
     errEl.style.display = 'none';
 
-    const approveBtn = document.getElementById('review-approve');
-    const rejectBtn  = document.getElementById('review-reject');
-    approveBtn.disabled = rejectBtn.disabled = true;
+    const confirmBtn = document.getElementById('review-confirm');
+    const original = confirmBtn.textContent;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = status === 'Rejected' ? 'Rejecting…' : 'Approving…';
 
     try {
-      await Api.ServiceLogs.review(activeApproval.serviceLogId, activeApproval.studentId, status, note);
+      const a = activeApproval;
+      await Api.ServiceLogs.review(a.serviceLogId, a.studentId, status, note);
       if (status === 'Approved') approvedTodayCount++;
       document.getElementById('review-modal').classList.remove('open');
+      showBanner(status === 'Approved'
+        ? `✓ Approved — ${a.hoursLogged}h credited to ${a.studentName}, who was notified.`
+        : `Rejected — ${a.studentName} was notified with your reason.`);
       loadApprovals();
     } catch (err) {
       errEl.textContent = err.message || 'Review failed. Please try again.';
       errEl.style.display = 'block';
     } finally {
-      approveBtn.disabled = rejectBtn.disabled = false;
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = original;
     }
   }
 
-  document.getElementById('review-approve').addEventListener('click', () => submitReview('Approved'));
-  document.getElementById('review-reject').addEventListener('click',  () => submitReview('Rejected'));
+  document.getElementById('review-confirm').addEventListener('click', submitReview);
 
   // ── Service-hour report ───────────────────────────────────────────────────
   let lastReport = null;
