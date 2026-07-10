@@ -125,15 +125,18 @@ _Original analysis:_ there is **no username field today** — identity keys are 
 
 ## F2 — Admin UX
 
-### #25 — Filterable / searchable user tables
-**Today:** user tables in `platform-admin.js` and `admin-backend.js` render lists without robust search/filter.
+### #25 — Filterable / searchable user tables — **landed 2026-07-09**
+**Done:** both user tables in `admin-backend` (User Access Management + Volunteers) now have a filter toolbar — free-text search over name/email, a `personType` facet, plus `adminLevel` (users) / status (volunteers) facets, with a live "N of M" count. This also completes the **#24 table rendering**: `createNameCell` renders the person's name with a context sub-line (type · grade) and email-on-hover (`title`) as the tiebreaker; the volunteers table gained a **Type** column. Verified in-browser against sample data (type + search filtering, two same-named people disambiguated by last-name search + context + hover).
 
-**Plan:**
+**Design decision:** filtering is **client-side** over the already-loaded, per-tenant (bounded) lists — no new backend query params. Simpler and instant; revisit with server-side pagination only if a single tenant's user count grows large.
+
+**Remaining (deferred):** sortable column headers; server-side pagination for very large tenants; extending the same toolbar to `platform-admin`'s tenant/matrix tables (those are tenant/assignment tables, not user tables, so lower priority); and the admin UI for the **background-check** fields carried over from #23.
+
+**Acceptance:** an admin can find any user by typing part of their name and narrow by type/role/status quickly. ✅
+
+_Original plan (server-side variant) below, superseded by the client-side decision:_
 - Server-side query params: search by **name** (uses #24 first/last), filter by `personType`, `adminLevel`, org/school, `status`, `isDemoUser`.
 - Table UX: a search box + facet filters + sortable columns + pagination for large tenants.
-- Reuse the same list endpoint shape across platform-admin and admin-backend.
-
-**Acceptance:** an admin can find any user by typing part of their name and narrow by type/role/org quickly.
 
 ### #26 — SuperAdmin remote access (impersonation), incl. demo users
 **Today:** SuperAdmin can *manage* demo users (`AdminFunctions` `GetDemoUsers`/`ResetDemoUsers`, `:255-286`) but cannot **act as** an arbitrary user. No impersonation path exists.

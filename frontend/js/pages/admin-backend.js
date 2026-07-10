@@ -7,11 +7,15 @@
     tenantId: '',
     currentUser: null,
     users: [],
+    vols: [],
     groups: [],
     isSuperAdmin: false,
   };
 
   const adminLevels = ['Student', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
+
+  const PERSON_TYPE_LABEL = { Student: 'Student', AdultVolunteer: 'Adult volunteer', Staff: 'Staff' };
+  const personTypeLabel = (t) => PERSON_TYPE_LABEL[t] || '';
 
   function splitCsv(text) {
     return text
@@ -39,6 +43,33 @@
     const td = document.createElement('td');
     td.textContent = text;
     return td;
+  }
+
+  // #24: reference people by name with a context sub-line; email is the hover
+  // tiebreaker (title) so two same-named people are still distinguishable.
+  function createNameCell(user) {
+    const td = document.createElement('td');
+    const name = document.createElement('div');
+    name.style.fontWeight = '600';
+    name.textContent = user.displayName || user.email || '(no name)';
+    td.appendChild(name);
+
+    const bits = [personTypeLabel(user.personType), user.grade ? `Grade ${user.grade}` : ''].filter(Boolean);
+    if (bits.length) {
+      const ctx = document.createElement('div');
+      ctx.style.cssText = 'font-size:.75rem;color:var(--gray-600);';
+      ctx.textContent = bits.join(' · ');
+      td.appendChild(ctx);
+    }
+    if (user.email) td.title = user.email; // email-on-hover tiebreaker
+    return td;
+  }
+
+  // Shared name/email substring match used by both table filters.
+  function matchesQuery(user, q) {
+    if (!q) return true;
+    const hay = `${user.displayName || ''} ${user.firstName || ''} ${user.lastName || ''} ${user.email || ''}`.toLowerCase();
+    return hay.includes(q);
   }
 
   function showAdminSections() {
@@ -169,23 +200,50 @@
   }
 
   async function loadVolunteers() {
+    state.vols = await Api.Volunteers.list({ organizationId: state.tenantId });
+    renderVolunteers();
+  }
+
+  function renderVolunteers() {
     const table = document.getElementById('volunteers-table');
     const empty = document.getElementById('volunteers-empty');
     const tbody = document.getElementById('volunteers-tbody');
+    const panel = document.getElementById('log-service-panel');
+    const count = document.getElementById('volf-count');
     clearChildren(tbody);
 
-    const panel = document.getElementById('log-service-panel');
-    const vols = await Api.Volunteers.list({ organizationId: state.tenantId });
-    if (!vols.length) {
+    const all = state.vols || [];
+    if (!all.length) {
       table.style.display = 'none';
       empty.style.display = 'block';
+      empty.textContent = 'No volunteers yet.';
       panel.style.display = 'none';
+      count.textContent = '';
+      return;
+    }
+    panel.style.display = 'block';
+
+    const q = (document.getElementById('volf-search').value || '').trim().toLowerCase();
+    const type = document.getElementById('volf-type').value;
+    const status = document.getElementById('volf-status').value;
+    const rows = all.filter(v => {
+      if (type && (v.personType || '') !== type) return false;
+      if (status === 'managed' && !v.isManaged) return false;
+      if (status === 'active' && v.isManaged) return false;
+      return matchesQuery(v, q);
+    });
+
+    count.textContent = `${rows.length} of ${all.length}`;
+    if (!rows.length) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      empty.textContent = 'No volunteers match your filters.';
       return;
     }
     table.style.display = 'table';
     empty.style.display = 'none';
-    panel.style.display = 'block';
-    vols.forEach(v => {
+
+    rows.forEach(v => {
       const tr = document.createElement('tr');
       const tdChk = document.createElement('td');
       const chk = document.createElement('input');
@@ -194,7 +252,8 @@
       chk.value = v.id;
       tdChk.appendChild(chk);
       tr.appendChild(tdChk);
-      tr.appendChild(createTextCell(v.displayName || ''));
+      tr.appendChild(createNameCell(v));
+      tr.appendChild(createTextCell(personTypeLabel(v.personType) || '—'));
       tr.appendChild(createTextCell(v.email || ''));
       tr.appendChild(createTextCell((v.groupIds || []).join(', ')));
       tr.appendChild(createTextCell(v.isManaged ? 'managed (no login yet)' : 'active'));
@@ -230,26 +289,49 @@
   }
 
   async function loadUsers() {
-    const users = await Api.AdminBackend.users(state.tenantId);
-    state.users = users;
+    state.users = await Api.AdminBackend.users(state.tenantId);
+    renderUsers();
+  }
 
+  function renderUsers() {
     const table = document.getElementById('users-table');
     const empty = document.getElementById('users-empty');
     const tbody = document.getElementById('users-tbody');
+    const count = document.getElementById('users-count');
     clearChildren(tbody);
 
-    if (!users.length) {
+    const all = state.users || [];
+    if (!all.length) {
       table.style.display = 'none';
       empty.style.display = 'block';
+      empty.textContent = 'No users in scope.';
+      count.textContent = '';
+      return;
+    }
+
+    const q = (document.getElementById('users-search').value || '').trim().toLowerCase();
+    const type = document.getElementById('users-filter-type').value;
+    const level = document.getElementById('users-filter-level').value;
+    const rows = all.filter(u => {
+      if (type && (u.personType || '') !== type) return false;
+      if (level && (u.adminLevel || 'Student') !== level) return false;
+      return matchesQuery(u, q);
+    });
+
+    count.textContent = `${rows.length} of ${all.length}`;
+    if (!rows.length) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      empty.textContent = 'No users match your filters.';
       return;
     }
 
     table.style.display = 'table';
     empty.style.display = 'none';
 
-    users.forEach(user => {
+    rows.forEach(user => {
       const tr = document.createElement('tr');
-      tr.appendChild(createTextCell(user.displayName || ''));
+      tr.appendChild(createNameCell(user));
       tr.appendChild(createTextCell(user.email || ''));
 
       const levelTd = document.createElement('td');
@@ -307,6 +389,21 @@
       tbody.appendChild(tr);
     });
   }
+
+  // Populate the level filter once and wire both table toolbars to re-render.
+  (function wireTableFilters() {
+    const levelSel = document.getElementById('users-filter-level');
+    adminLevels.forEach(level => {
+      const opt = document.createElement('option');
+      opt.value = level;
+      opt.textContent = level;
+      levelSel.appendChild(opt);
+    });
+    ['users-search', 'users-filter-type', 'users-filter-level'].forEach(id =>
+      document.getElementById(id).addEventListener('input', renderUsers));
+    ['volf-search', 'volf-type', 'volf-status'].forEach(id =>
+      document.getElementById(id).addEventListener('input', renderVolunteers));
+  })();
 
   async function loadDemoUsers() {
     const users = await Api.AdminBackend.demoUsers();
