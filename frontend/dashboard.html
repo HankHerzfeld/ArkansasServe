@@ -87,6 +87,59 @@
   </div>
 </div>
 
+<!-- First-login intake modal (#22–#24): shown when the profile is incomplete -->
+<div class="modal-overlay" id="intake-modal">
+  <div class="modal">
+    <div class="modal-title">Complete your profile</div>
+    <p style="color:var(--gray-600);margin-bottom:1rem;font-size:.9rem;">
+      Tell us a bit about yourself so schools and organizations can verify your service.
+    </p>
+
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+      <div class="form-group" style="flex:1;min-width:8rem;"><label for="intake-first">First name</label><input id="intake-first" type="text" autocomplete="given-name"></div>
+      <div class="form-group" style="flex:1;min-width:8rem;"><label for="intake-last">Last name</label><input id="intake-last" type="text" autocomplete="family-name"></div>
+    </div>
+
+    <div class="form-group">
+      <label for="intake-type">I am a…</label>
+      <select id="intake-type">
+        <option value="">Select…</option>
+        <option value="Student">Student</option>
+        <option value="AdultVolunteer">Adult volunteer</option>
+      </select>
+    </div>
+
+    <!-- Student intake -->
+    <div id="intake-student" style="display:none;">
+      <div class="form-group"><label for="intake-grade">Grade</label><input id="intake-grade" type="text" placeholder="e.g. 10"></div>
+      <div class="form-group"><label for="intake-guardian-name">Parent / guardian name</label><input id="intake-guardian-name" type="text"></div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <div class="form-group" style="flex:1;min-width:9rem;"><label for="intake-guardian-email">Guardian email</label><input id="intake-guardian-email" type="email" placeholder="Email or phone"></div>
+        <div class="form-group" style="flex:1;min-width:9rem;"><label for="intake-guardian-phone">Guardian phone</label><input id="intake-guardian-phone" type="tel" placeholder="Email or phone"></div>
+      </div>
+      <label style="display:flex;gap:.5rem;align-items:flex-start;font-size:.9rem;">
+        <input id="intake-consent" type="checkbox" style="margin-top:.2rem;">
+        <span>My parent or guardian consents to my participation in service activities.</span>
+      </label>
+    </div>
+
+    <!-- Adult-volunteer intake -->
+    <div id="intake-adult" style="display:none;">
+      <div class="form-group"><label for="intake-affiliation">Affiliation / employer <span style="color:var(--gray-500);">(optional)</span></label><input id="intake-affiliation" type="text"></div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <div class="form-group" style="flex:1;min-width:9rem;"><label for="intake-emergency-name">Emergency contact name</label><input id="intake-emergency-name" type="text"></div>
+        <div class="form-group" style="flex:1;min-width:9rem;"><label for="intake-emergency-phone">Emergency contact phone</label><input id="intake-emergency-phone" type="tel"></div>
+      </div>
+    </div>
+
+    <div id="intake-error" class="alert alert-error" style="display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="intake-later">Skip for now</button>
+      <button class="btn btn-primary" id="intake-save">Save &amp; continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit profile modal -->
 <div class="modal-overlay" id="profile-modal">
   <div class="modal">

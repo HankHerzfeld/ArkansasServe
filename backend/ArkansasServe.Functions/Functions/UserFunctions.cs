@@ -56,15 +56,22 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 				var isArkansasServeAdmin = ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase);
 				var adminLevel = isArkansasServeAdmin ? "SuperAdmin" : ctx.AdminLevel;
 
+				// Seed the structured name from token claims (falling back to a split
+				// of the single "name" claim). PersonType stays null so the first-login
+				// wizard asks the person which they are, then completes intake (#22-#24).
+				var (seedFirst, seedLast) = SplitName(ctx.GivenName, ctx.FamilyName, ctx.DisplayName);
 				user = new User
 				{
 					ExternalId = ctx.UserId,
 					TenantId = tenantId,
 					OrganizationId = tenantId,
 					AdminLevel = adminLevel,
-					DisplayName = ctx.DisplayName,
+					FirstName = seedFirst,
+					LastName = seedLast,
+					DisplayName = User.ComposeName(seedFirst, seedLast, ctx.DisplayName),
 					Email = ctx.Email
 				};
+				user.ProfileComplete = IntakeValidation.IsComplete(user);
 				user = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
 
 				logger.LogInformation(
@@ -114,15 +121,45 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 			if (user == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
 
 			// Per-org: self-editing can be locked. Org admins can always self-edit.
+			// EXCEPTION: a person may always complete their own required intake on
+			// first login (a locked, still-incomplete profile can't be a dead end).
 			var tenant = await cosmos.GetTenantAsync(tenantId);
 			if (tenant is { AllowProfileSelfEdit: false }
+				&& user.ProfileComplete
 				&& !AdminLevels.AtLeast(ctx.AdminLevel, AdminLevels.OrganizationAdmin)
 				&& !AdminLevels.AtLeast(user.AdminLevel, AdminLevels.OrganizationAdmin))
 				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Profile editing is disabled for your organization");
 
-			user.DisplayName = body.DisplayName;
+			// Structured name (#24). Accept First/Last when provided; keep DisplayName
+			// in sync. Fall back to a raw DisplayName edit for legacy callers.
+			if (body.FirstName != null || body.LastName != null)
+			{
+				user.FirstName = body.FirstName?.Trim();
+				user.LastName = body.LastName?.Trim();
+				user.DisplayName = User.ComposeName(user.FirstName, user.LastName, body.DisplayName);
+			}
+			else if (!string.IsNullOrWhiteSpace(body.DisplayName))
+			{
+				user.DisplayName = body.DisplayName.Trim();
+			}
+
+			if (PersonTypes.IsValid(body.PersonType)) user.PersonType = body.PersonType;
+
 			user.Phone = body.Phone;
 			user.Grade = body.Grade;
+
+			// Type-specific intake fields (#23). Background-check fields are
+			// admin-managed and intentionally NOT accepted from self-service here.
+			user.DateOfBirth = body.DateOfBirth;
+			user.GuardianName = body.GuardianName;
+			user.GuardianEmail = body.GuardianEmail;
+			user.GuardianPhone = body.GuardianPhone;
+			user.GuardianConsent = body.GuardianConsent;
+			user.Affiliation = body.Affiliation;
+			user.EmergencyContactName = body.EmergencyContactName;
+			user.EmergencyContactPhone = body.EmergencyContactPhone;
+
+			user.ProfileComplete = IntakeValidation.IsComplete(user);
 
 			var updated = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
 			return await HttpHelper.OkJson(req, updated);
@@ -160,5 +197,21 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
 			? "arkansas-serve-root"
 			: "unknown-tenant";
+	}
+
+	// Best-effort structured name from token claims: prefer given_name/family_name,
+	// else split the single "name" claim on the last space (first-token = first name).
+	private static (string? First, string? Last) SplitName(string? given, string? family, string? full)
+	{
+		if (!string.IsNullOrWhiteSpace(given) || !string.IsNullOrWhiteSpace(family))
+			return (given?.Trim(), family?.Trim());
+
+		var name = full?.Trim();
+		if (string.IsNullOrWhiteSpace(name)) return (null, null);
+
+		var idx = name.LastIndexOf(' ');
+		return idx <= 0
+			? (name, null)
+			: (name[..idx].Trim(), name[(idx + 1)..].Trim());
 	}
 }

@@ -459,11 +459,13 @@
 
   document.getElementById('btn-add-volunteer').addEventListener('click', async () => {
     const status = document.getElementById('vol-status');
-    const name = document.getElementById('vol-name').value.trim();
+    const first = document.getElementById('vol-first').value.trim();
+    const last = document.getElementById('vol-last').value.trim();
+    const personType = document.getElementById('vol-type').value;
     const email = document.getElementById('vol-email').value.trim();
     const groupId = document.getElementById('vol-group').value;
-    if (!name || !email) {
-      status.textContent = 'Name and email are required.';
+    if (!first || !last || !email) {
+      status.textContent = 'First name, last name, and email are required.';
       return;
     }
     if (!state.tenantId) return;
@@ -472,12 +474,15 @@
     status.textContent = 'Adding...';
     try {
       await Api.Volunteers.create({
-        displayName: name,
+        firstName: first,
+        lastName: last,
+        personType,
         email,
         organizationId: state.tenantId,
         groupIds: groupId ? [groupId] : [],
       });
-      document.getElementById('vol-name').value = '';
+      document.getElementById('vol-first').value = '';
+      document.getElementById('vol-last').value = '';
       document.getElementById('vol-email').value = '';
       document.getElementById('vol-group').value = '';
       status.textContent = 'Added';

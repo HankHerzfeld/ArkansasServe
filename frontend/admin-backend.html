@@ -138,13 +138,24 @@
       Add volunteers to monitor their service. If a volunteer later signs in with the same email, their account links automatically.
     </p>
     <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.5rem;">
+      <div class="form-group" style="margin:0;min-width:8rem;">
+        <label for="vol-first">First name</label>
+        <input id="vol-first" type="text" autocomplete="given-name" />
+      </div>
+      <div class="form-group" style="margin:0;min-width:8rem;">
+        <label for="vol-last">Last name</label>
+        <input id="vol-last" type="text" autocomplete="family-name" />
+      </div>
       <div class="form-group" style="margin:0;min-width:11rem;">
-        <label for="vol-name">Name</label>
-        <input id="vol-name" type="text" />
+        <label for="vol-type">Type</label>
+        <select id="vol-type">
+          <option value="Student">Student</option>
+          <option value="AdultVolunteer">Adult volunteer</option>
+        </select>
       </div>
       <div class="form-group" style="margin:0;min-width:13rem;">
         <label for="vol-email">Email</label>
-        <input id="vol-email" type="email" />
+        <input id="vol-email" type="email" autocomplete="email" />
       </div>
       <div class="form-group" style="margin:0;min-width:11rem;">
         <label for="vol-group">Group (optional)</label>

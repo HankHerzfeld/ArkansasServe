@@ -101,7 +101,9 @@ public static class AuthMiddleware
                 // here, into the 5-level adminLevel used everywhere downstream.
                 AdminLevel  = AdminLevels.FromLegacyRole(Claim("extension_Role") ?? roleFromRolesClaim),
                 Email       = Claim("email") ?? Claim("preferred_username") ?? string.Empty,
-                DisplayName = Claim("name") ?? string.Empty
+                DisplayName = Claim("name") ?? string.Empty,
+                GivenName   = Claim("given_name") ?? string.Empty,
+                FamilyName  = Claim("family_name") ?? string.Empty
             };
 
             // ── Bootstrap elevation (config-gated; empty setting = disabled) ─
@@ -205,6 +207,8 @@ public class UserContext
     public string AdminLevel  { get; set; } = AdminLevels.Student;
     public string Email       { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string GivenName   { get; set; } = string.Empty;
+    public string FamilyName  { get; set; } = string.Empty;
 
     public bool IsSuperAdmin   => string.Equals(AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase);
     public bool IsStudentLevel => AdminLevels.RankOf(AdminLevel) == 0;

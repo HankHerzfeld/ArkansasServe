@@ -47,8 +47,13 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<CreateVolunteerRequest>(req);
-		if (body == null || string.IsNullOrWhiteSpace(body.DisplayName) || string.IsNullOrWhiteSpace(body.Email))
-			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "displayName and email are required");
+		if (body == null || string.IsNullOrWhiteSpace(body.Email))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "email is required");
+
+		// Accept structured first/last (preferred) or a legacy single displayName.
+		var displayName = User.ComposeName(body.FirstName, body.LastName, body.DisplayName);
+		if (string.IsNullOrWhiteSpace(displayName))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "a name (first/last or displayName) is required");
 
 		var orgId = string.IsNullOrWhiteSpace(body.OrganizationId) ? ctx.TenantId : body.OrganizationId!;
 
@@ -87,17 +92,25 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 			TenantId = orgId,
 			OrganizationId = orgId,
 			Email = email,
-			DisplayName = body.DisplayName.Trim(),
+			FirstName = body.FirstName?.Trim(),
+			LastName = body.LastName?.Trim(),
+			DisplayName = displayName,
+			// PersonType is a starting hint from the admin; the person confirms and
+			// completes their own intake on first login (see IntakeValidation).
+			PersonType = PersonTypes.IsValid(body.PersonType) ? body.PersonType : null,
 			AdminLevel = AdminLevels.Student,
 			GroupIds = groupIds,
 			Status = "active",
 			IsManaged = true,
 			ManagedByUserId = ctx.UserId,
 		};
+		volunteer.ProfileComplete = IntakeValidation.IsComplete(volunteer);
 
 		var created = await cosmos.CreateManagedVolunteerAsync(volunteer);
 		return await HttpHelper.CreatedJson(req, created);
 	}
 
-	private sealed record CreateVolunteerRequest(string DisplayName, string Email, string? OrganizationId, List<string>? GroupIds);
+	private sealed record CreateVolunteerRequest(
+		string? DisplayName, string? FirstName, string? LastName, string? PersonType,
+		string Email, string? OrganizationId, List<string>? GroupIds);
 }

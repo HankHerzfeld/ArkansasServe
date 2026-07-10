@@ -68,7 +68,10 @@
 
 ## F1 — Identity & intake data model
 
-### #22 — Separate students from adult volunteers (person type)
+> **Status — core landed 2026-07-09 (#22, #23, #24).** Data model + validation + API + first-login intake + admin add-user form are in. What remains is downstream *rendering/consumption*, tracked with #25: name-with-context + email-on-hover across all user **tables** (only the profile card and forms use the new fields so far), a `personType`/name column in the volunteers/users tables, admin UI for the **admin-managed** background-check fields, and (optional) a one-time backfill splitting legacy `displayName` into `firstName`/`lastName`. Enforcement is **soft** (first-login prompt with "Skip for now"), not a hard lockout — revisit if intake completion needs to be mandatory. Details per-item below.
+
+### #22 — Separate students from adult volunteers (person type) — **landed**
+**Done:** new `PersonTypes` constants (`Student | AdultVolunteer | Staff`); `User.personType` (orthogonal to `AdminLevel`); set via first-login wizard and admin add-user; `PersonTypes.IsMinorType` gates student guardian-consent intake. Default is an **explicit choice**, not inference (person picks at first login; admin picks when adding).
 **Today:** there is no student/adult distinction on a person. `AdminLevel` (`User.cs:13-14`, values `Student | EventAdmin | GroupAdmin | OrganizationAdmin | SuperAdmin`) is a **permission tier**, not a description of who the human is. "Student" being a role conflates the two.
 
 **Plan — add an orthogonal `personType` dimension:**
@@ -79,8 +82,10 @@
 
 **Acceptance:** every user has a `personType`; admin lists and reports can filter by it; intake branches on it.
 
-### #23 — Structured user data collection at create/add
-**Today:** profile creation is thin get-or-create (`UserFunctions` `/users/me`) plus admin-created managed volunteers; fields are sparse (`displayName`, `email`, `phone`, `grade`, `schoolId`).
+### #23 — Structured user data collection at create/add — **landed**
+**Done:** intake schema on `User` (student: `grade`, `dateOfBirth`, `guardian{Name,Email,Phone}`, `guardianConsent`; adult: `affiliation`, `emergencyContact{Name,Phone}`; admin-only: `backgroundCheck{Status,CompletedAt}`). Single required-field policy in `IntakeValidation` (keyed by `personType`; background-check excluded — it's admin-managed, not self-reported). Two entry points share it: the first-login **wizard** (`dashboard.html` intake modal + `dashboard.js`) and the admin **add-user form** (`admin-backend`). `PUT /users/me` persists intake and recomputes `profileComplete`; the self-edit lock is exempted while a profile is still incomplete so first-login can't dead-end. Validation runs both client- and server-side. **Remaining:** admin UI to set the background-check fields; DOB is captured but not yet used for age-banding.
+
+_Original analysis:_ profile creation is thin get-or-create (`UserFunctions` `/users/me`) plus admin-created managed volunteers; fields are sparse (`displayName`, `email`, `phone`, `grade`, `schoolId`).
 
 **Plan:**
 - Define an **intake schema** keyed by `personType`:
@@ -91,8 +96,10 @@
 
 **Acceptance:** a new user cannot reach the app past onboarding without the required fields for their `personType`; admin add-user captures the same.
 
-### #24 — Name-only identity (no separate usernames)
-**Good news:** there is **no username field today** — identity keys are the Entra `externalId` and `email` (`User.cs:10-11,31-32`); humans are shown via `displayName`. So "no usernames" is mostly about discipline, plus one data-model improvement.
+### #24 — Name-only identity (no separate usernames) — **core landed**
+**Done:** `User.firstName`/`lastName` added; `User.ComposeName` is the single rule that keeps `displayName` in sync (falls back to legacy `displayName`, then email). Names seed from token `given_name`/`family_name` (or a split of the `name` claim) on bootstrap; the intake wizard and admin form both collect structured first/last. No username field exists or was introduced. **Remaining (folds into #25):** apply the decided disambiguation — context line **+** email-on-hover — across all user tables (currently only the profile card renders the name); sort/search by last name.
+
+_Original analysis:_ there is **no username field today** — identity keys are the Entra `externalId` and `email` (`User.cs:10-11,31-32`); humans are shown via `displayName`. So "no usernames" is mostly about discipline, plus one data-model improvement.
 
 **Plan:**
 - Split `displayName` into `firstName` + `lastName` (keep a computed `displayName` for rendering). Enables reliable sort, "Last, First" display, and name search (#25).
