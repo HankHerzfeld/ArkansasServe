@@ -13,8 +13,7 @@ public static class PersonTypes
 	public static bool IsValid(string? value) =>
 		value is Student or AdultVolunteer or Staff;
 
-	// Minors are handled as Students (guardian consent, tighter exposure). Staff
-	// and AdultVolunteers are adults.
-	public static bool IsMinorType(string? value) =>
-		string.Equals(value, Student, StringComparison.OrdinalIgnoreCase);
+	// NOTE: minor status is NOT derived from person type — it is computed from date of
+	// birth in IntakeValidation.IsMinor, so a minor can't skip guardian consent by
+	// choosing "AdultVolunteer".
 }

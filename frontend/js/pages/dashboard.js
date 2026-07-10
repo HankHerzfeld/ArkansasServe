@@ -118,16 +118,38 @@
 
     // ── First-login intake (#22–#24) ─────────────────────────────────────────
     const intakeType = document.getElementById('intake-type');
+    const intakeDob  = document.getElementById('intake-dob');
+
+    // Whole-year age from a yyyy-MM-dd string, or null if missing/invalid/future.
+    // Mirrors the server's IntakeValidation.TryComputeAge so the wizard shows exactly
+    // the fields the backend will require.
+    function ageFromDob(dob) {
+      if (!dob) return null;
+      const d = new Date(dob + 'T00:00:00');
+      if (isNaN(d)) return null;
+      const now = new Date();
+      let age = now.getFullYear() - d.getFullYear();
+      const m = now.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+      return age < 0 ? null : age;
+    }
+    const isMinorDob = (dob) => { const a = ageFromDob(dob); return a !== null && a < 18; };
+
     function syncIntakeSections() {
       const t = intakeType.value;
       document.getElementById('intake-student').style.display = t === 'Student' ? 'block' : 'none';
       document.getElementById('intake-adult').style.display   = t === 'AdultVolunteer' ? 'block' : 'none';
+      // Guardian consent is gated on age (DOB), independent of the chosen type.
+      document.getElementById('intake-guardian').style.display = isMinorDob(intakeDob.value) ? 'block' : 'none';
     }
     intakeType.addEventListener('change', syncIntakeSections);
+    intakeDob.addEventListener('input', syncIntakeSections);
 
     function openIntake(user) {
       document.getElementById('intake-first').value = user.firstName || '';
       document.getElementById('intake-last').value  = user.lastName || '';
+      intakeDob.max = new Date().toISOString().slice(0, 10); // no future birth dates
+      intakeDob.value = user.dateOfBirth ? String(user.dateOfBirth).slice(0, 10) : '';
       intakeType.value = user.personType || '';
       document.getElementById('intake-grade').value = user.grade || '';
       syncIntakeSections();
@@ -142,16 +164,21 @@
       const err = document.getElementById('intake-error');
       const val = (id) => document.getElementById(id).value.trim();
       const first = val('intake-first'), last = val('intake-last'), personType = intakeType.value;
+      const dob = intakeDob.value;
+      const minor = isMinorDob(dob);
 
       const missing = [];
       if (!first) missing.push('first name');
       if (!last) missing.push('last name');
+      if (ageFromDob(dob) === null) missing.push('date of birth');
       if (!personType) missing.push('type');
-      if (personType === 'Student') {
-        if (!val('intake-grade')) missing.push('grade');
+      if (minor) {
         if (!val('intake-guardian-name')) missing.push('guardian name');
         if (!val('intake-guardian-email') && !val('intake-guardian-phone')) missing.push('guardian email or phone');
         if (!document.getElementById('intake-consent').checked) missing.push('guardian consent');
+      }
+      if (personType === 'Student') {
+        if (!val('intake-grade')) missing.push('grade');
       } else if (personType === 'AdultVolunteer') {
         if (!val('intake-emergency-name')) missing.push('emergency contact name');
         if (!val('intake-emergency-phone')) missing.push('emergency contact phone');
@@ -164,15 +191,17 @@
 
       btn.disabled = true; btn.textContent = 'Saving…'; err.style.display = 'none';
       try {
-        const payload = { firstName: first, lastName: last, personType };
-        if (personType === 'Student') {
+        const payload = { firstName: first, lastName: last, personType, dateOfBirth: dob };
+        if (minor) {
           Object.assign(payload, {
-            grade: val('intake-grade'),
             guardianName: val('intake-guardian-name'),
             guardianEmail: val('intake-guardian-email') || null,
             guardianPhone: val('intake-guardian-phone') || null,
             guardianConsent: document.getElementById('intake-consent').checked,
           });
+        }
+        if (personType === 'Student') {
+          payload.grade = val('intake-grade');
         } else {
           Object.assign(payload, {
             affiliation: val('intake-affiliation') || null,
