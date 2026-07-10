@@ -154,7 +154,7 @@
         const { logs, totalApprovedHours } = await Api.ServiceLogs.myLogs();
 
         // Stats
-        document.getElementById('stat-total').textContent   = totalApprovedHours.toFixed(1);
+        document.getElementById('stat-total').textContent   = (totalApprovedHours ?? 0).toFixed(1);
         document.getElementById('stat-pending').textContent = logs.filter(l => l.status === 'Pending').reduce((s, l) => s + l.hoursLogged, 0).toFixed(1);
         document.getElementById('stat-events').textContent  = logs.filter(l => l.status === 'Approved').length;
 
@@ -176,11 +176,11 @@
           tr.appendChild(tdDate);
 
           const tdEvent = document.createElement('td');
-          tdEvent.textContent = log.eventTitle;
+          tdEvent.textContent = log.eventTitle || '—';
           tr.appendChild(tdEvent);
 
           const tdOrg = document.createElement('td');
-          tdOrg.textContent = log.organizationName;
+          tdOrg.textContent = log.organizationName || '—';
           tr.appendChild(tdOrg);
 
           const tdHours = document.createElement('td');

@@ -32,6 +32,20 @@ public class ServiceLogFunctions(CosmosService cosmos, EmailService email, AuthC
 		body.SubmittedByUserId = ctx.UserId;
 		body.Status = "Pending";
 
+		// Denormalize the event/org names so the student's dashboard and the report
+		// can render them without a per-row lookup. The client only sends ids; trust
+		// the server's copy of the title/name, not client-supplied strings.
+		if (string.IsNullOrWhiteSpace(body.EventTitle) && !string.IsNullOrWhiteSpace(body.EventId))
+		{
+			var evt = await cosmos.GetEventAsync(body.EventId, orgId);
+			if (evt != null) body.EventTitle = evt.Title;
+		}
+		if (string.IsNullOrWhiteSpace(body.OrganizationName))
+		{
+			var org = await cosmos.GetTenantAsync(orgId);
+			if (org != null) body.OrganizationName = org.Name;
+		}
+
 		var created = await cosmos.CreateServiceLogAsync(body);
 		await TryCreatePendingApprovalAsync(created);
 
