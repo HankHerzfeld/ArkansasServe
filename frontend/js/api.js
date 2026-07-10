@@ -18,6 +18,10 @@ const Api = (() => {
     const headers = {};
     headers['Authorization'] = `Bearer ${token}`;
     if (body !== null) headers['Content-Type'] = 'application/json';
+    // #26: when a SuperAdmin is "acting as" another user, every call carries the
+    // opaque session id; the backend resolves the effective (target) context.
+    const impSid = Auth.getImpersonationSid && Auth.getImpersonationSid();
+    if (impSid) headers['X-Impersonation-Session'] = impSid;
 
     const options = { method, headers, cache: 'no-store' };
     if (body !== null) options.body = JSON.stringify(body);
@@ -194,6 +198,13 @@ const Api = (() => {
     resetDemoUsers:   ()                        => request('POST', '/manage/backend/demo-users/reset'),
   };
 
+  // ── Impersonation / remote access (SuperAdmin, #26) ───────────────────────
+  const Impersonation = {
+    start: (data) => request('POST',   '/manage/impersonation', data),
+    stop:  (sid)  => request('DELETE', `/manage/impersonation/${encodeURIComponent(sid)}`),
+    list:  ()     => request('GET',    '/manage/impersonation'),
+  };
+
   // ── DB Console (SuperAdmin, read-only) ────────────────────────────────────
   const Db = {
     containers: ()                       => request('GET',  '/manage/db/containers'),
@@ -234,5 +245,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Db, Crawler };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();

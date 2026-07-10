@@ -171,6 +171,7 @@ const UI = (() => {
     const host = document.getElementById('app-header');
     if (host) {
       host.innerHTML = '';
+      renderImpersonationBanner(host);
       host.appendChild(buildNav(current, profile));
       loadPane();
     }
@@ -184,6 +185,37 @@ const UI = (() => {
         console.error('[ui] scope init failed', err);
       }
     }
+  }
+
+  // ── Impersonation banner (#26) ──────────────────────────────────────────────
+  // Unmistakable, always-present while a SuperAdmin is "acting as" another user.
+  function renderImpersonationBanner(host) {
+    const imp = Auth.getImpersonation && Auth.getImpersonation();
+    if (!imp) return;
+
+    const bar = document.createElement('div');
+    bar.id = 'impersonation-banner';
+    bar.style.cssText = 'background:#b91c1c;color:#fff;padding:.5rem 1rem;display:flex;align-items:center;justify-content:center;gap:1rem;font-size:.9rem;font-weight:600;flex-wrap:wrap;';
+
+    const label = document.createElement('span');
+    const lvl = imp.adminLevel ? ` (${imp.adminLevel})` : '';
+    label.textContent = `⚠ Viewing as ${imp.name}${lvl} — read-only session`;
+    bar.appendChild(label);
+
+    const exit = document.createElement('button');
+    exit.textContent = 'Exit';
+    exit.className = 'btn btn-sm';
+    exit.style.cssText = 'background:#fff;color:#b91c1c;font-weight:700;';
+    exit.addEventListener('click', async () => {
+      exit.disabled = true;
+      exit.textContent = 'Exiting…';
+      try { await Api.Impersonation.stop(imp.sid); } catch { /* clear locally regardless */ }
+      Auth.clearImpersonation();
+      window.location.href = '/admin-backend.html';
+    });
+    bar.appendChild(exit);
+
+    host.insertBefore(bar, host.firstChild);
   }
 
   // ── Scope bar (active org/group for admins) ─────────────────────────────────

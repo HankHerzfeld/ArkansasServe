@@ -42,6 +42,7 @@ const Auth = (() => {
   const KEYS = {
     lastLoginAt: 'as_last_login_at',
     adminLevel:  'as_admin_level',
+    impersonation: 'as_impersonation',
   };
 
   // ── Admin level model (the single 5-level hierarchy) ──────────────────────
@@ -221,6 +222,34 @@ const Auth = (() => {
     return Number(sessionStorage.getItem(KEYS.lastLoginAt) || 0);
   }
 
+  // ── Impersonation (#26) ─────────────────────────────────────────────────────
+  // The session id travels only in sessionStorage + a request header (never a URL).
+  // Cleared automatically on logout (sessionStorage.clear) or when expired.
+  function setImpersonation(info) {
+    sessionStorage.setItem(KEYS.impersonation, JSON.stringify(info));
+  }
+  function getImpersonation() {
+    const raw = sessionStorage.getItem(KEYS.impersonation);
+    if (!raw) return null;
+    try {
+      const info = JSON.parse(raw);
+      if (info.expiresAt && Date.parse(info.expiresAt) <= Date.now()) {
+        clearImpersonation();
+        return null;
+      }
+      return info;
+    } catch {
+      clearImpersonation();
+      return null;
+    }
+  }
+  function getImpersonationSid() {
+    return getImpersonation()?.sid || null;
+  }
+  function clearImpersonation() {
+    sessionStorage.removeItem(KEYS.impersonation);
+  }
+
   // ── Profile ───────────────────────────────────────────────────────────────
   function getProfile() {
     const account = getAccount();
@@ -298,6 +327,10 @@ const Auth = (() => {
     adminRank,
     clearSession,
     getLastLoginAttemptAt,
+    setImpersonation,
+    getImpersonation,
+    getImpersonationSid,
+    clearImpersonation,
     init,
   };
 })();

@@ -262,12 +262,17 @@
       <button class="btn btn-danger" id="btn-reset-demo-users">Reset Demo Users</button>
       <span id="demo-reset-status" style="font-size:.85rem;color:var(--gray-600);"></span>
     </div>
+    <p style="color:var(--gray-600);font-size:.8rem;margin:.25rem 0 0;">
+      <strong>Act as</strong> opens a read-only session viewing the app exactly as that demo user.
+      Every session is time-boxed and audited. (Demo users only in this release.)
+    </p>
     <table class="table" id="demo-users-table" style="margin-top:1rem;display:none;">
       <thead>
         <tr>
           <th>Name</th>
           <th>Type</th>
           <th>Email</th>
+          <th>Remote access</th>
         </tr>
       </thead>
       <tbody id="demo-users-tbody"></tbody>

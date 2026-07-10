@@ -243,6 +243,18 @@ var cosmosContainerSpecs = [
     partitionKeyPath: '/userId'
     defaultTtl: 2592000 // 30 days — notifications auto-expire; do not change to -1
   }
+  // SuperAdmin remote access (#26): impersonation sessions + append-only audit trail,
+  // both partitioned by adminUserId. Additive — new resources, no change to existing.
+  {
+    name: 'ImpersonationSessions'
+    partitionKeyPath: '/adminUserId'
+    defaultTtl: null
+  }
+  {
+    name: 'AuditEvents'
+    partitionKeyPath: '/adminUserId'
+    defaultTtl: null
+  }
   {
     name: 'leases'
     partitionKeyPath: '/id'
@@ -392,6 +404,8 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     CosmosDb__Containers__ServiceLogs: 'ServiceLogs'
     CosmosDb__Containers__PendingApprovals: 'PendingApprovals'
     CosmosDb__Containers__Notifications: 'Notifications'
+    CosmosDb__Containers__ImpersonationSessions: 'ImpersonationSessions'
+    CosmosDb__Containers__AuditEvents: 'AuditEvents'
   }
 }
 

@@ -50,6 +50,8 @@ public partial class CosmosService
         _serviceLogsContainerName = GetContainerName(config, "ServiceLogs", "ServiceLogs");
         _pendingApprovalsContainerName = GetContainerName(config, "PendingApprovals", "PendingApprovals");
         _notificationsContainerName = GetContainerName(config, "Notifications", "Notifications");
+        _impersonationSessionsContainerName = GetContainerName(config, "ImpersonationSessions", "ImpersonationSessions");
+        _auditEventsContainerName = GetContainerName(config, "AuditEvents", "AuditEvents");
         _logger = logger;
     }
 

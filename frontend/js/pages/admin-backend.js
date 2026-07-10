@@ -426,8 +426,41 @@
       tr.appendChild(createTextCell(user.displayName || ''));
       tr.appendChild(createTextCell(user.demoUserType || user.adminLevel || ''));
       tr.appendChild(createTextCell(user.email || ''));
+
+      const actTd = document.createElement('td');
+      const actBtn = document.createElement('button');
+      actBtn.className = 'btn btn-secondary btn-sm';
+      actBtn.textContent = 'Act as';
+      actBtn.addEventListener('click', () => startImpersonation(user));
+      actTd.appendChild(actBtn);
+      tr.appendChild(actTd);
+
       tbody.appendChild(tr);
     });
+  }
+
+  // #26 Phase 1: start a read-only "act as" session for a demo user.
+  async function startImpersonation(user) {
+    const reason = window.prompt(`Act as demo user "${user.displayName}"?\n\nEnter a reason (recorded in the audit log):`, 'Demo / walkthrough');
+    if (reason == null || !reason.trim()) return;
+    try {
+      const res = await Api.Impersonation.start({
+        targetUserId: user.id,
+        targetTenantId: state.tenantId,
+        reason: reason.trim(),
+      });
+      Auth.setImpersonation({
+        sid: res.sessionId,
+        name: res.target.name,
+        email: res.target.email,
+        adminLevel: res.target.adminLevel,
+        expiresAt: res.expiresAt,
+      });
+      // Land on the dashboard, now viewing as the demo user.
+      window.location.href = '/dashboard.html';
+    } catch (err) {
+      alert(err.message || 'Could not start the session.');
+    }
   }
 
   // SAS-gated logo upload: fetch a short-lived write token, PUT straight to Blob Storage,

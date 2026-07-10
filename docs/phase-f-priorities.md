@@ -140,8 +140,16 @@ _Original plan (server-side variant) below, superseded by the client-side decisi
 - Server-side query params: search by **name** (uses #24 first/last), filter by `personType`, `adminLevel`, org/school, `status`, `isDemoUser`.
 - Table UX: a search box + facet filters + sortable columns + pagination for large tenants.
 
-### #26 — SuperAdmin remote access (impersonation), incl. demo users — **design drafted 2026-07-09**
-**Design doc:** [remote-access-impersonation-design.md](remote-access-impersonation-design.md) — full threat model, chosen mechanism (opaque server-side session + per-request lookup, no new token-signing), data model, API, `AuthMiddleware` effective-vs-real context, guardrails, audit/compliance, and a phased rollout (demo-users-only MVP → real users read-only → read-write). **Awaiting decisions** on launch scope, read-only vs read-write, notification policy, session length, and the audit container (coordinate with P2 Bicep-drift). No code until those are signed off.
+### #26 — SuperAdmin remote access (impersonation), incl. demo users — **Phase 1 built 2026-07-09**
+**Design doc:** [remote-access-impersonation-design.md](remote-access-impersonation-design.md).
+
+**Phase 1 (demo users only, read-only) — implemented:**
+- Backend: `ImpersonationSession` + `AuditEvent` models; `CosmosService.Impersonation` (create/get/end/delete/list + audit append); `AuthMiddleware` resolves the effective (target) context centrally from the `X-Impersonation-Session` header via `req.FunctionContext.InstanceServices` (zero changes to the 52 call sites), re-checking global-super **every** request; read-only enforcement (non-GET blocked while impersonating, except the `/manage/impersonation` exit route); `ImpersonationFunctions` `POST`/`DELETE {sid}`/`GET` under `/manage/impersonation` with the **demo-only gate**, no-nesting, 30-min expiry, and **fail-closed audit** (session rolled back if the start can't be logged).
+- Infra: added `ImpersonationSessions` + `AuditEvents` Cosmos containers (PK `/adminUserId`) + name mappings. `what-if` verified: **2 additive Creates, 0 Deletes** — the gate passes.
+- Frontend: `Auth` impersonation storage (sessionStorage, auto-expiry); `api.js` attaches the header only when impersonating; an **"Act as"** button on the demo-users table (reason prompt → start → land on dashboard as the demo user); an **unmistakable red banner** in every page's header ("⚠ Viewing as … — read-only session" + Exit).
+- Verified: backend builds clean; JS parses; Bicep compiles; storage roundtrip/expiry, header attach (present only when impersonating), and the banner render all confirmed in-browser. Runtime session create/resolve needs the deployed stack (Cosmos + auth).
+
+**Deferred to Phase 2/3** (per decisions): real-user impersonation (read-only, **notify the user** on start), read-write mode + per-mutation audit rows. Session-length cap still to confirm (currently 30 min).
 
 **Today:** SuperAdmin can *manage* demo users (`AdminFunctions` `GetDemoUsers`/`ResetDemoUsers`, `:255-286`) but cannot **act as** an arbitrary user. No impersonation path exists.
 

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
 using ArkansasServe.Functions.Functions;
+using ArkansasServe.Functions.Services;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -130,6 +131,30 @@ public static class AuthMiddleware
             if (string.IsNullOrWhiteSpace(userContext.UserId))
                 return (null, await WriteUnauthorized(req, "Invalid token"));
 
+            // ── Impersonation (#26) ──────────────────────────────────────────
+            // Default: acting as yourself.
+            userContext.RealUserId = userContext.UserId;
+            var impSid = req.Headers.TryGetValues("X-Impersonation-Session", out var impVals)
+                ? impVals.FirstOrDefault()
+                : null;
+            if (!string.IsNullOrWhiteSpace(impSid))
+            {
+                var effective = await TryResolveImpersonationAsync(req, userContext, impSid!, logger);
+                if (effective != null)
+                {
+                    // Read-only mode blocks writes while impersonating — except the
+                    // impersonation control routes (so the admin can always Exit).
+                    if (string.Equals(effective.ImpersonationMode, "read-only", StringComparison.OrdinalIgnoreCase)
+                        && !IsSafeMethod(req.Method)
+                        && !req.Url.AbsolutePath.Contains("/manage/impersonation", StringComparison.OrdinalIgnoreCase))
+                        return (null, await WriteForbidden(req, "Read-only impersonation: writes are disabled while viewing as another user."));
+
+                    userContext = effective;
+                }
+                // An invalid/expired session simply drops impersonation — the caller
+                // proceeds as themselves (the real, still-authenticated admin).
+            }
+
             // Minimum-level check — 403 so callers can distinguish "not
             // authenticated" (401) from "authenticated but under-ranked" (403).
             if (minAdminLevel != null &&
@@ -142,6 +167,60 @@ public static class AuthMiddleware
         {
             logger.LogError(ex, "Unexpected error during token validation");
             return (null, await WriteUnauthorized(req, "Authentication error"));
+        }
+    }
+
+    // ── Impersonation (#26) ───────────────────────────────────────────────────
+
+    private static bool IsSafeMethod(string method) =>
+        method.Equals("GET", StringComparison.OrdinalIgnoreCase)
+        || method.Equals("HEAD", StringComparison.OrdinalIgnoreCase)
+        || method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase);
+
+    // Builds the effective (target) context from an active session, or null if the
+    // session is missing/expired/not owned by this caller, or the caller is no longer
+    // a global SuperAdmin (re-checked EVERY request). CosmosService is resolved from
+    // the request's DI scope so no call site has to change.
+    private static async Task<UserContext?> TryResolveImpersonationAsync(
+        HttpRequestData req, UserContext realCtx, string sid, ILogger logger)
+    {
+        try
+        {
+            if (req.FunctionContext.InstanceServices.GetService(typeof(CosmosService)) is not CosmosService cosmos)
+                return null;
+
+            var session = await cosmos.GetImpersonationSessionAsync(sid, realCtx.UserId);
+            if (session == null
+                || !session.IsActive(DateTime.UtcNow)
+                || !string.Equals(session.AdminUserId, realCtx.UserId, StringComparison.Ordinal))
+                return null;
+
+            // Re-verify the caller is STILL a global super (a demotion mid-session kills it).
+            var isSuper = realCtx.IsSuperAdmin;
+            if (!isSuper)
+            {
+                var memberships = await cosmos.GetMembershipsByExternalIdAsync(realCtx.UserId);
+                isSuper = memberships.Any(m => string.Equals(m.AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase));
+            }
+            if (!isSuper) return null;
+
+            return new UserContext
+            {
+                UserId = session.TargetActingId,
+                TenantId = session.TargetTenantId,
+                AdminLevel = session.TargetAdminLevel,
+                Email = session.TargetEmail,
+                DisplayName = session.TargetName,
+                RealUserId = realCtx.UserId,
+                IsImpersonating = true,
+                ImpersonationSessionId = session.Id,
+                ImpersonationMode = session.Mode,
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Impersonation resolution failed for session {Sid}; proceeding as real user", sid);
+            return null;
         }
     }
 
@@ -209,6 +288,15 @@ public class UserContext
     public string DisplayName { get; set; } = string.Empty;
     public string GivenName   { get; set; } = string.Empty;
     public string FamilyName  { get; set; } = string.Empty;
+
+    // ── Impersonation (#26) ──────────────────────────────────────────────────
+    // When impersonating, UserId/TenantId/AdminLevel are the TARGET's (so all
+    // downstream authz/data act as the target), while RealUserId stays the acting
+    // SuperAdmin for audit and guardrails. Defaults: RealUserId == UserId, not impersonating.
+    public string RealUserId   { get; set; } = string.Empty;
+    public bool   IsImpersonating { get; set; }
+    public string? ImpersonationSessionId { get; set; }
+    public string  ImpersonationMode { get; set; } = string.Empty;
 
     public bool IsSuperAdmin   => string.Equals(AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase);
     public bool IsStudentLevel => AdminLevels.RankOf(AdminLevel) == 0;
