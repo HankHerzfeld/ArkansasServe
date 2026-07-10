@@ -1,0 +1,109 @@
+name: infra (bicep)
+
+# Gates every infra change behind `what-if` (P2). On a PR touching infra/**, this
+# compiles the Bicep and runs a read-only what-if that FAILS if the deploy would
+# DELETE any resource (destructive) — additive Creates and property Modifies are
+# reported for human review, not auto-blocked. Applying is manual-only
+# (workflow_dispatch) and runs against the `production-infra` environment, whose
+# required reviewers make the apply a deliberate, approved action.
+#
+# One-time setup before this can run (see infra/README.md):
+#   - An OIDC-federated identity with Contributor on rg-arkansas-serve.
+#   - Repo secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
+#     ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_AUDIENCE.
+# Until those exist the jobs no-op-fail on login; nothing deploys implicitly.
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/deploy-infra.yml'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Type "apply" to deploy after what-if (otherwise what-if only).'
+        required: false
+        default: ''
+
+permissions:
+  id-token: write   # OIDC login
+  contents: read
+  pull-requests: write  # post the what-if summary
+
+env:
+  RESOURCE_GROUP: rg-arkansas-serve
+  TEMPLATE: infra/main.bicep
+
+jobs:
+  whatif:
+    name: build + what-if (gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep build (lint)
+        run: az bicep build --file "$TEMPLATE" --stdout > /dev/null
+
+      - name: What-if (JSON)
+        run: |
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file "$TEMPLATE" \
+            --parameters \
+              entraTenantId="${{ secrets.ENTRA_TENANT_ID }}" \
+              entraClientId="${{ secrets.ENTRA_CLIENT_ID }}" \
+              entraAudience="${{ secrets.ENTRA_AUDIENCE }}" \
+            --no-pretty-print > whatif.json
+
+      - name: Summarize + gate on destructive changes
+        run: |
+          echo "### Bicep what-if — $RESOURCE_GROUP" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.changes | group_by(.changeType)[] | "\(.[0].changeType): \(length)"' whatif.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # Resource-level creates (additive) — allowed, but surfaced.
+          echo "#### Creates (additive — review):" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.changes[] | select(.changeType=="Create") | "- \(.resourceId)"' whatif.json >> "$GITHUB_STEP_SUMMARY" || true
+
+          # Deletes are destructive — the gate fails hard on any.
+          DELETES=$(jq -r '[.changes[] | select(.changeType=="Delete")] | length' whatif.json)
+          if [ "$DELETES" -gt 0 ]; then
+            echo "#### ❌ Destructive DELETES detected:" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.changes[] | select(.changeType=="Delete") | "- \(.resourceId)"' whatif.json >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::what-if would DELETE $DELETES resource(s); infra deploy blocked. Reconcile the template with live before merging."
+            exit 1
+          fi
+          echo "No resource deletions. ✅"
+
+  apply:
+    name: apply (manual, approved)
+    needs: whatif
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'apply'
+    runs-on: ubuntu-latest
+    environment: production-infra   # require-reviewers gate configured in repo settings
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy (incremental)
+        run: |
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file "$TEMPLATE" \
+            --mode Incremental \
+            --parameters \
+              entraTenantId="${{ secrets.ENTRA_TENANT_ID }}" \
+              entraClientId="${{ secrets.ENTRA_CLIENT_ID }}" \
+              entraAudience="${{ secrets.ENTRA_AUDIENCE }}"

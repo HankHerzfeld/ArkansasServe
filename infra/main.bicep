@@ -250,6 +250,31 @@ var cosmosContainerSpecs = [
   }
 ]
 
+// The live containers all use Cosmos' DEFAULT indexing and conflict-resolution
+// policies (verified 2026-07-09). Declaring them explicitly (rather than omitting)
+// keeps `what-if` at NoChange for the containers — otherwise ARM returns the
+// defaults and what-if reports a spurious "delete indexingPolicy" against the
+// template's silence. Re-applying the identical default policy is a no-op (no
+// reindex). If a container ever needs a custom index, override it per-spec.
+var defaultIndexingPolicy = {
+  indexingMode: 'consistent'
+  automatic: true
+  includedPaths: [
+    {
+      path: '/*'
+    }
+  ]
+  excludedPaths: [
+    {
+      path: '/"_etag"/?'
+    }
+  ]
+}
+var defaultConflictResolutionPolicy = {
+  mode: 'LastWriterWins'
+  conflictResolutionPath: '/_ts'
+}
+
 resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = [for spec in cosmosContainerSpecs: {
   name: spec.name
   parent: cosmosDb
@@ -263,6 +288,8 @@ resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/co
           ]
           kind: 'Hash'
         }
+        indexingPolicy: defaultIndexingPolicy
+        conflictResolutionPolicy: defaultConflictResolutionPolicy
       },
       spec.defaultTtl == null ? {} : { defaultTtl: spec.defaultTtl }
     )
