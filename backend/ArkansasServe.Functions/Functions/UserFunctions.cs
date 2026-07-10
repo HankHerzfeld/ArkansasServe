@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using ArkansasServe.Functions.Middleware;
 using ArkansasServe.Functions.Models;
 using ArkansasServe.Functions.Services;
@@ -112,67 +113,96 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		if (ctx == null) return authError!;
 		var tenantId = ResolveTenantId(ctx);
 
-		var body = await HttpHelper.ReadBody<User>(req);
-		if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
+		// Read the raw body so we can do a PARTIAL update: only fields actually present
+		// in the request are touched. Binding to a full User and assigning every field
+		// would let a basic edit (which omits intake fields) wipe guardian data/consent.
+		string raw;
+		using (var reader = new StreamReader(req.Body))
+			raw = await reader.ReadToEndAsync();
+		if (string.IsNullOrWhiteSpace(raw))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
 
-		try
+		JsonDocument doc;
+		try { doc = JsonDocument.Parse(raw); }
+		catch (JsonException) { return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body"); }
+
+		using (doc)
 		{
-			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
-			if (user == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
+			var root = doc.RootElement;
+			if (root.ValueKind != JsonValueKind.Object)
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
 
-			// Per-org: self-editing can be locked. Org admins can always self-edit.
-			// EXCEPTION: a person may always complete their own required intake on
-			// first login (a locked, still-incomplete profile can't be a dead end).
-			var tenant = await cosmos.GetTenantAsync(tenantId);
-			if (tenant is { AllowProfileSelfEdit: false }
-				&& user.ProfileComplete
-				&& !AdminLevels.AtLeast(ctx.AdminLevel, AdminLevels.OrganizationAdmin)
-				&& !AdminLevels.AtLeast(user.AdminLevel, AdminLevels.OrganizationAdmin))
-				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Profile editing is disabled for your organization");
+			bool Has(string n) => root.TryGetProperty(n, out _);
+			string? GetStr(string n) => root.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+			bool GetBool(string n, bool dflt) => root.TryGetProperty(n, out var v) && (v.ValueKind is JsonValueKind.True or JsonValueKind.False) ? v.GetBoolean() : dflt;
 
-			// Structured name (#24). Accept First/Last when provided; keep DisplayName
-			// in sync. Fall back to a raw DisplayName edit for legacy callers.
-			if (body.FirstName != null || body.LastName != null)
+			try
 			{
-				user.FirstName = body.FirstName?.Trim();
-				user.LastName = body.LastName?.Trim();
-				user.DisplayName = User.ComposeName(user.FirstName, user.LastName, body.DisplayName);
+				var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
+				if (user == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "User not found");
+
+				// First-login intake completion is the ONE self-edit a locked org must
+				// allow. Detect it by the intake wizard's payload (a valid personType on a
+				// still-incomplete profile) — NOT merely by ProfileComplete==false, which is
+				// also true for legacy profiles that predate intake. A plain name/phone edit
+				// carries no personType, so the org lock still applies to it.
+				var isIntakeSubmission = !user.ProfileComplete && Has("personType") && PersonTypes.IsValid(GetStr("personType"));
+
+				var tenant = await cosmos.GetTenantAsync(tenantId);
+				if (tenant is { AllowProfileSelfEdit: false }
+					&& !isIntakeSubmission
+					&& !AdminLevels.AtLeast(ctx.AdminLevel, AdminLevels.OrganizationAdmin)
+					&& !AdminLevels.AtLeast(user.AdminLevel, AdminLevels.OrganizationAdmin))
+					return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Profile editing is disabled for your organization");
+
+				// Structured name (#24). Keep DisplayName in sync, but never blank an
+				// existing name if the request supplies empty first/last.
+				var hasFirst = Has("firstName");
+				var hasLast = Has("lastName");
+				if (hasFirst || hasLast)
+				{
+					if (hasFirst) user.FirstName = GetStr("firstName")?.Trim();
+					if (hasLast) user.LastName = GetStr("lastName")?.Trim();
+					var composed = User.ComposeName(user.FirstName, user.LastName, Has("displayName") ? GetStr("displayName") : user.DisplayName);
+					if (!string.IsNullOrWhiteSpace(composed)) user.DisplayName = composed;
+				}
+				else if (Has("displayName"))
+				{
+					var dn = GetStr("displayName")?.Trim();
+					if (!string.IsNullOrWhiteSpace(dn)) user.DisplayName = dn;
+				}
+
+				if (Has("personType") && PersonTypes.IsValid(GetStr("personType"))) user.PersonType = GetStr("personType");
+
+				if (Has("phone")) user.Phone = GetStr("phone");
+				if (Has("grade")) user.Grade = GetStr("grade");
+
+				// Type-specific intake fields (#23), applied only when present. Background-
+				// check fields are admin-managed and intentionally NOT accepted here.
+				if (Has("dateOfBirth")) user.DateOfBirth = GetStr("dateOfBirth");
+				if (Has("guardianName")) user.GuardianName = GetStr("guardianName");
+				if (Has("guardianEmail")) user.GuardianEmail = GetStr("guardianEmail");
+				if (Has("guardianPhone")) user.GuardianPhone = GetStr("guardianPhone");
+				if (Has("guardianConsent")) user.GuardianConsent = GetBool("guardianConsent", user.GuardianConsent);
+				if (Has("affiliation")) user.Affiliation = GetStr("affiliation");
+				if (Has("emergencyContactName")) user.EmergencyContactName = GetStr("emergencyContactName");
+				if (Has("emergencyContactPhone")) user.EmergencyContactPhone = GetStr("emergencyContactPhone");
+
+				user.ProfileComplete = IntakeValidation.IsComplete(user);
+
+				var updated = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
+				return await HttpHelper.OkJson(req, updated);
 			}
-			else if (!string.IsNullOrWhiteSpace(body.DisplayName))
+			catch (CosmosException ex)
 			{
-				user.DisplayName = body.DisplayName.Trim();
+				logger.LogError(ex, "Cosmos error while updating current user {UserId} in tenant {TenantId}", ctx.UserId, tenantId);
+				return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to update user profile");
 			}
-
-			if (PersonTypes.IsValid(body.PersonType)) user.PersonType = body.PersonType;
-
-			user.Phone = body.Phone;
-			user.Grade = body.Grade;
-
-			// Type-specific intake fields (#23). Background-check fields are
-			// admin-managed and intentionally NOT accepted from self-service here.
-			user.DateOfBirth = body.DateOfBirth;
-			user.GuardianName = body.GuardianName;
-			user.GuardianEmail = body.GuardianEmail;
-			user.GuardianPhone = body.GuardianPhone;
-			user.GuardianConsent = body.GuardianConsent;
-			user.Affiliation = body.Affiliation;
-			user.EmergencyContactName = body.EmergencyContactName;
-			user.EmergencyContactPhone = body.EmergencyContactPhone;
-
-			user.ProfileComplete = IntakeValidation.IsComplete(user);
-
-			var updated = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
-			return await HttpHelper.OkJson(req, updated);
-		}
-		catch (CosmosException ex)
-		{
-			logger.LogError(ex, "Cosmos error while updating current user {UserId} in tenant {TenantId}", ctx.UserId, tenantId);
-			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to update user profile");
-		}
-		catch (Exception ex)
-		{
-			logger.LogError(ex, "Unexpected error while updating current user {UserId}", ctx.UserId);
-			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to update user profile");
+			catch (Exception ex)
+			{
+				logger.LogError(ex, "Unexpected error while updating current user {UserId}", ctx.UserId);
+				return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Unable to update user profile");
+			}
 		}
 	}
 
