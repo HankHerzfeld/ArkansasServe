@@ -183,6 +183,8 @@ const Api = (() => {
   const Admin = {
     getTenants:    ()     => request('GET',  '/manage/tenants'),
     createTenant:  (data) => request('POST', '/manage/tenants', data),
+    updateTenant:  (id, data)       => request('PATCH',  `/manage/backend/tenants/${encodeURIComponent(id)}`, data),
+    deleteTenant:  (id, confirmName) => request('DELETE', `/manage/tenants/${encodeURIComponent(id)}?confirmName=${encodeURIComponent(confirmName)}`),
   };
 
   // ── Admin Backend ─────────────────────────────────────────────────────────

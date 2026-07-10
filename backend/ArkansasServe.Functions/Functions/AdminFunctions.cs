@@ -71,6 +71,49 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		return await HttpHelper.CreatedJson(req, created);
 	}
 
+	// Destructive: removes the tenant and cascades to its events + memberships.
+	// Guarded three ways — SuperAdmin only, the root tenant can never be deleted, and
+	// the caller must echo the exact tenant name via ?confirmName= (the UI's type-to-
+	// confirm), so a stray call can't wipe an org. The deletion is audit-logged.
+	[Function("DeleteTenant")]
+	public async Task<HttpResponseData> DeleteTenant(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "manage/tenants/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
+
+		if (string.Equals(id, RootTenantId, StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "The root tenant cannot be deleted");
+
+		var tenant = await cosmos.GetTenantAsync(id);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+
+		var confirmName = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["confirmName"];
+		if (!string.Equals(confirmName?.Trim(), tenant.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Confirmation name does not match the organization name");
+
+		var (events, members) = await cosmos.DeleteTenantCascadeAsync(id);
+
+		try
+		{
+			await cosmos.AppendAuditEventAsync(new AuditEvent
+			{
+				AdminUserId = ctx.UserId,
+				TargetUserId = id,
+				Action = "tenant.delete",
+				Detail = $"{ctx.Email} deleted tenant '{tenant.Name}' ({id}); removed {events} event(s), {members} membership(s)",
+			});
+		}
+		catch (Exception ex)
+		{
+			logger.LogWarning(ex, "Tenant {TenantId} deleted but the audit write failed", id);
+		}
+
+		return await HttpHelper.OkJson(req, new { deleted = true, tenantId = id, events, members });
+	}
+
 	[Function("GetAdminBackendContext")]
 	public async Task<HttpResponseData> GetAdminBackendContext(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/backend/context")] HttpRequestData req)
