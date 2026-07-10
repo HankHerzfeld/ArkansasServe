@@ -171,28 +171,31 @@ SuperAdmin UI                     Functions                         Cosmos
 
 - **Non-repudiation:** `ImpersonationSession` + per-mutation `auditEvents`, both partitioned by `adminUserId`, append-only, denormalized names for human-readable review.
 - **Retention:** keep audit rows well beyond session life (proposal: 2 years; TTL off). Court-involved data ⇒ err long.
-- **Transparency (decision needed):** should the impersonated user (or their org admin) be **notified** that a platform admin viewed their account? Options: silent-but-audited, notify-org-admin, or notify-user. Recommendation: **notify the owning org admin** for real (non-demo) users; demo users need no notice.
+- **Transparency (decided 2026-07-09): notify the user.** When a **real** (non-demo) account is impersonated, the impersonated person is notified (in-app `Notification`, and email if configured). Demo users get no notice. This lands with **Phase 2** (real-user impersonation); Phase 1 is demo-only so no notification is generated. Copy should be reassuring and plain ("A platform administrator viewed your account to help with support on {date}").
 - **Policy doc:** ship a short written policy on acceptable use (support/debugging only), reviewable by schools/orgs, referencing the audit capability. This is a trust product for youth data; the policy is part of the feature.
 
 ---
 
 ## 9 · Rollout plan (phased, lowest-risk first)
 
-- **Phase 1 — demo users only (MVP).** Impersonation restricted to `isDemoUser:true` targets. Delivers the onboarding/demo value with **zero real-PII exposure**, while proving the whole mechanism (session, banner, audit, guardrails). Low blast radius.
-- **Phase 2 — real users, `read-only`, behind a config flag.** Adds the support/debugging value. Notify-org-admin on start.
+- **Phase 1 — demo users only (MVP).** ✅ **Chosen as the launch scope (2026-07-09).** Impersonation restricted to `isDemoUser:true` targets. Delivers the onboarding/demo value with **zero real-PII exposure**, while proving the whole mechanism (session, banner, audit, guardrails). Low blast radius. No user notification (demo accounts).
+- **Phase 2 — real users, `read-only`, behind a config flag.** Adds the support/debugging value. **Notifies the impersonated user** on start (decision §8).
 - **Phase 3 — `read-write` for real users**, opt-in per session, only if a concrete need emerges. May stay disabled indefinitely.
 
-Each phase is independently shippable and reversible via config.
+Each phase is independently shippable and reversible via config. The middleware/session/audit/banner machinery is identical across phases — only the **target eligibility filter** (`isDemoUser` gate) and the notify-on-start hook differ, so Phase 1 is a true subset, not throwaway.
 
 ---
 
-## 10 · Open decisions (need product/security sign-off)
+## 10 · Decisions
 
-1. **Launch scope** — demo-only MVP (Phase 1) first, or go straight to real users read-only?
-2. **Capability** — is `read-only` sufficient, or is `read-write` impersonation of real users required at some point?
-3. **Notification** — silent-but-audited, notify-org-admin, or notify-the-user when a real account is impersonated?
+**Settled (2026-07-09):**
+1. **Launch scope** → **Phase 1, demo users only.** ✅
+2. **Notification** → **notify the impersonated user** (applies when Phase 2 real-user impersonation ships; no-op for Phase 1 demo accounts). ✅
+
+**Still open (not blocking Phase 1):**
+3. **Capability** — is `read-only` sufficient long-term, or will `read-write` for real users be needed (Phase 3)? Phase 1 can ship `read-only`.
 4. **Session length** — 30 min default OK? Absolute cap?
-5. **Audit container** — new `auditEvents` container (my recommendation) vs. reusing an existing one; coordinate with the P2 Bicep-drift work before any infra change.
+5. **Audit container** — new `auditEvents` container (recommended) vs. reusing an existing one; coordinate with the **P2 Bicep-drift** work before any infra change. *This is the one true prerequisite for building Phase 1.*
 
 ## 11 · Acceptance criteria
 
