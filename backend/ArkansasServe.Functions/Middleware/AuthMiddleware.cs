@@ -140,8 +140,11 @@ public static class AuthMiddleware
             if (!string.IsNullOrWhiteSpace(impSid))
             {
                 // The impersonation control routes must always be reachable so the admin
-                // can Exit / manage sessions even when the session itself is invalid.
-                var isControlRoute = req.Url.AbsolutePath.Contains("/manage/impersonation", StringComparison.OrdinalIgnoreCase);
+                // can Exit / manage sessions even when the session itself is invalid. Match
+                // them exactly (…/manage/impersonation or …/manage/impersonation/{sid}) — an
+                // unanchored Contains would also exempt a future route like
+                // "…/manage/impersonation-notes" from the read-only write block.
+                var isControlRoute = IsImpersonationControlRoute(req.Url.AbsolutePath);
                 var effective = await TryResolveImpersonationAsync(req, userContext, impSid!, logger);
                 if (effective != null)
                 {
@@ -187,10 +190,28 @@ public static class AuthMiddleware
         || method.Equals("HEAD", StringComparison.OrdinalIgnoreCase)
         || method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase);
 
+    // Matches the impersonation control routes exactly: the collection route
+    // (…/manage/impersonation) and the per-session route (…/manage/impersonation/{sid}),
+    // but NOT a lookalike such as …/manage/impersonation-notes.
+    private static bool IsImpersonationControlRoute(string absolutePath)
+    {
+        var path = absolutePath.TrimEnd('/');
+        return path.EndsWith("/manage/impersonation", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("/manage/impersonation/", StringComparison.OrdinalIgnoreCase);
+    }
+
     // Builds the effective (target) context from an active session, or null if the
-    // session is missing/expired/not owned by this caller, or the caller is no longer
-    // a global SuperAdmin (re-checked EVERY request). CosmosService is resolved from
-    // the request's DI scope so no call site has to change.
+    // session is missing/expired/revoked/not owned by this caller, or the caller no
+    // longer qualifies as a global super. CosmosService is resolved from the request's
+    // DI scope so no call site has to change.
+    //
+    // Per-request kill guarantees: the session's active/revoked/expiry window and the
+    // caller's CURRENT global-super status are both re-evaluated every request. That
+    // catches a membership-based demotion (membership re-read below) and a
+    // bootstrap-domain demotion (re-applied from config in ValidateRequest). The one
+    // gap is a super asserted purely by a static token role claim, which — like all
+    // token claims in this app — only changes on token refresh; use session revoke to
+    // kill such a session immediately.
     private static async Task<UserContext?> TryResolveImpersonationAsync(
         HttpRequestData req, UserContext realCtx, string sid, ILogger logger)
     {
@@ -205,7 +226,8 @@ public static class AuthMiddleware
                 || !string.Equals(session.AdminUserId, realCtx.UserId, StringComparison.Ordinal))
                 return null;
 
-            // Re-verify the caller is STILL a global super (a demotion mid-session kills it).
+            // Re-verify the caller is STILL a global super. Fast-path the token claim,
+            // else re-read memberships so a membership-based demotion is caught mid-session.
             var isSuper = realCtx.IsSuperAdmin;
             if (!isSuper)
             {

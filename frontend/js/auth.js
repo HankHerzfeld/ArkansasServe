@@ -233,7 +233,10 @@ const Auth = (() => {
     if (!raw) return null;
     try {
       const info = JSON.parse(raw);
-      if (info.expiresAt && Date.parse(info.expiresAt) <= Date.now()) {
+      // Fail closed: a missing or unparseable expiry counts as expired, so a
+      // malformed record can never keep impersonation alive indefinitely.
+      const expiry = Date.parse(info.expiresAt);
+      if (isNaN(expiry) || expiry <= Date.now()) {
         clearImpersonation();
         return null;
       }
