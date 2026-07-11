@@ -166,7 +166,14 @@ const UI = (() => {
   // Renders the whole shell (header + scope bar). Kept named `setupHeader` so the
   // existing page calls keep working. `current` is this page's href.
   async function setupHeader(current, currentUser, opts = {}) {
-    const profile = Auth.getProfile();
+    // While impersonating, the whole shell must reflect the TARGET, not the real
+    // super — so the nav shows the target's name and only their tab set (a faithful
+    // "view as"), and the scope bar uses their level. Default to Student (minimal)
+    // if the stored level is somehow missing, never the super's.
+    const imp = Auth.getImpersonation && Auth.getImpersonation();
+    const profile = imp
+      ? { name: imp.name, adminLevel: imp.adminLevel || 'Student', email: imp.email }
+      : Auth.getProfile();
 
     const host = document.getElementById('app-header');
     if (host) {

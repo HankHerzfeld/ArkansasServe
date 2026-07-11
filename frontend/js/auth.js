@@ -270,6 +270,10 @@ const Auth = (() => {
 
   function setResolvedLevelFromUser(user) {
     if (!user || !user.adminLevel) return;
+    // While impersonating, /users/me returns the TARGET — don't let that overwrite
+    // the real account's cached level (which would strand the super below SuperAdmin
+    // after exiting). The cached level always represents the real signed-in user.
+    if (getImpersonation()) return;
     if (Object.hasOwn(ADMIN_RANK, user.adminLevel)) {
       sessionStorage.setItem(KEYS.adminLevel, user.adminLevel);
     }
