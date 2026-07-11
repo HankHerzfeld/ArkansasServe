@@ -116,6 +116,113 @@
       }
     });
 
+    // ── First-login intake (#22–#24) ─────────────────────────────────────────
+    const intakeType = document.getElementById('intake-type');
+    const intakeDob  = document.getElementById('intake-dob');
+
+    // Whole-year age from a yyyy-MM-dd string, or null if missing/invalid/future.
+    // Mirrors the server's IntakeValidation.TryComputeAge so the wizard shows exactly
+    // the fields the backend will require.
+    function ageFromDob(dob) {
+      if (!dob) return null;
+      const d = new Date(dob + 'T00:00:00');
+      if (isNaN(d)) return null;
+      const now = new Date();
+      let age = now.getFullYear() - d.getFullYear();
+      const m = now.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+      return age < 0 ? null : age;
+    }
+    const isMinorDob = (dob) => { const a = ageFromDob(dob); return a !== null && a < 18; };
+
+    function syncIntakeSections() {
+      const t = intakeType.value;
+      document.getElementById('intake-student').style.display = t === 'Student' ? 'block' : 'none';
+      document.getElementById('intake-adult').style.display   = t === 'AdultVolunteer' ? 'block' : 'none';
+      // Guardian consent is gated on age (DOB), independent of the chosen type.
+      document.getElementById('intake-guardian').style.display = isMinorDob(intakeDob.value) ? 'block' : 'none';
+    }
+    intakeType.addEventListener('change', syncIntakeSections);
+    intakeDob.addEventListener('input', syncIntakeSections);
+
+    function openIntake(user) {
+      document.getElementById('intake-first').value = user.firstName || '';
+      document.getElementById('intake-last').value  = user.lastName || '';
+      intakeDob.max = new Date().toISOString().slice(0, 10); // no future birth dates
+      intakeDob.value = user.dateOfBirth ? String(user.dateOfBirth).slice(0, 10) : '';
+      intakeType.value = user.personType || '';
+      document.getElementById('intake-grade').value = user.grade || '';
+      syncIntakeSections();
+      document.getElementById('intake-error').style.display = 'none';
+      document.getElementById('intake-modal').classList.add('open');
+    }
+    document.getElementById('intake-later').addEventListener('click', () =>
+      document.getElementById('intake-modal').classList.remove('open'));
+
+    document.getElementById('intake-save').addEventListener('click', async () => {
+      const btn = document.getElementById('intake-save');
+      const err = document.getElementById('intake-error');
+      const val = (id) => document.getElementById(id).value.trim();
+      const first = val('intake-first'), last = val('intake-last'), personType = intakeType.value;
+      const dob = intakeDob.value;
+      const minor = isMinorDob(dob);
+
+      const missing = [];
+      if (!first) missing.push('first name');
+      if (!last) missing.push('last name');
+      if (ageFromDob(dob) === null) missing.push('date of birth');
+      if (!personType) missing.push('type');
+      if (minor) {
+        if (!val('intake-guardian-name')) missing.push('guardian name');
+        if (!val('intake-guardian-email') && !val('intake-guardian-phone')) missing.push('guardian email or phone');
+        if (!document.getElementById('intake-consent').checked) missing.push('guardian consent');
+      }
+      if (personType === 'Student') {
+        if (!val('intake-grade')) missing.push('grade');
+      } else if (personType === 'AdultVolunteer') {
+        if (!val('intake-emergency-name')) missing.push('emergency contact name');
+        if (!val('intake-emergency-phone')) missing.push('emergency contact phone');
+      }
+      if (missing.length) {
+        err.textContent = `Please provide: ${missing.join(', ')}.`;
+        err.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Saving…'; err.style.display = 'none';
+      try {
+        const payload = { firstName: first, lastName: last, personType, dateOfBirth: dob };
+        if (minor) {
+          Object.assign(payload, {
+            guardianName: val('intake-guardian-name'),
+            guardianEmail: val('intake-guardian-email') || null,
+            guardianPhone: val('intake-guardian-phone') || null,
+            guardianConsent: document.getElementById('intake-consent').checked,
+          });
+        }
+        if (personType === 'Student') {
+          payload.grade = val('intake-grade');
+        } else {
+          Object.assign(payload, {
+            affiliation: val('intake-affiliation') || null,
+            emergencyContactName: val('intake-emergency-name'),
+            emergencyContactPhone: val('intake-emergency-phone'),
+          });
+        }
+        const updated = await Api.Users.updateMe(payload);
+        profileUser = updated;
+        Auth.setResolvedLevelFromUser(updated);
+        renderProfile(updated, profileMemberships);
+        document.getElementById('greeting').textContent = `Welcome, ${(updated.firstName || updated.displayName || 'back')}`;
+        document.getElementById('intake-modal').classList.remove('open');
+      } catch (e) {
+        err.textContent = e.message || 'Could not save your profile.';
+        err.style.display = 'block';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save & continue';
+      }
+    });
+
     async function loadDashboard() {
       try {
         const currentUser = await Api.Users.getMe();
@@ -128,6 +235,9 @@
         profileUser = currentUser;
         profileMemberships = memberships;
         renderProfile(currentUser, memberships);
+
+        // First-login: prompt to complete intake when the profile isn't complete.
+        if (currentUser.profileComplete === false) openIntake(currentUser);
 
         // First-login onboarding: a self-registered student not yet in any organization is
         // guided to join one. Skip the (necessarily empty) stats + log history.
@@ -154,7 +264,7 @@
         const { logs, totalApprovedHours } = await Api.ServiceLogs.myLogs();
 
         // Stats
-        document.getElementById('stat-total').textContent   = totalApprovedHours.toFixed(1);
+        document.getElementById('stat-total').textContent   = (totalApprovedHours ?? 0).toFixed(1);
         document.getElementById('stat-pending').textContent = logs.filter(l => l.status === 'Pending').reduce((s, l) => s + l.hoursLogged, 0).toFixed(1);
         document.getElementById('stat-events').textContent  = logs.filter(l => l.status === 'Approved').length;
 
@@ -176,11 +286,11 @@
           tr.appendChild(tdDate);
 
           const tdEvent = document.createElement('td');
-          tdEvent.textContent = log.eventTitle;
+          tdEvent.textContent = log.eventTitle || '—';
           tr.appendChild(tdEvent);
 
           const tdOrg = document.createElement('td');
-          tdOrg.textContent = log.organizationName;
+          tdOrg.textContent = log.organizationName || '—';
           tr.appendChild(tdOrg);
 
           const tdHours = document.createElement('td');

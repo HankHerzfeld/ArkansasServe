@@ -120,5 +120,6 @@ public partial class CosmosService
         EventTitle = log.EventTitle,
         HoursLogged = log.HoursLogged,
         ServiceDate = log.ServiceDate,
+        SubmittedAt = log.CreatedAt,
     };
 }

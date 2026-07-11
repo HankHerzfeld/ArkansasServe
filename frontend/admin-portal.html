@@ -36,10 +36,16 @@
 
   <!-- Pending approvals table -->
   <div class="card no-print">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
       <div class="card-title" style="margin:0;">Pending Approvals</div>
       <button class="btn btn-secondary btn-sm" id="btn-refresh-approvals">↻ Refresh</button>
     </div>
+    <p style="color:var(--gray-600);font-size:.85rem;margin:0 0 1rem;">
+      Organizations log hours for your students; those hours stay <span class="status status-pending">Pending</span>
+      until you decide. <strong>Approving</strong> credits the student and notifies them;
+      <strong>rejecting</strong> returns the hours with your reason.
+    </p>
+    <div id="review-banner" class="alert alert-success" style="display:none;margin-bottom:1rem;"></div>
     <div id="approvals-loading" class="loading-state"><div class="spinner"></div></div>
     <div id="approvals-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
       No pending approvals. All caught up! ✅
@@ -49,10 +55,12 @@
         <tr>
           <th>Student</th>
           <th>Event</th>
-          <th>Organization</th>
-          <th>Date</th>
+          <th>Logged by</th>
+          <th>Service date</th>
+          <th>Submitted</th>
           <th>Hours</th>
-          <th>Actions</th>
+          <th>Status</th>
+          <th>Decision</th>
         </tr>
       </thead>
       <tbody id="approvals-tbody"></tbody>
@@ -117,17 +125,20 @@
 <!-- Review modal -->
 <div class="modal-overlay" id="review-modal">
   <div class="modal">
-    <div class="modal-title" id="review-modal-title">Review Hours</div>
+    <div class="modal-title" id="review-modal-title">Approve service hours</div>
     <div id="review-details" style="background:var(--gray-100);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;font-size:.9rem;line-height:1.8;"></div>
+    <p id="review-consequence" style="font-size:.85rem;color:var(--gray-600);margin:0 0 1rem;"></p>
     <div class="form-group">
-      <label>Note (optional — required if rejecting)</label>
+      <label id="review-note-label" for="review-note">Note (optional)</label>
       <textarea id="review-note" placeholder="Add a note for the student or organization…"></textarea>
     </div>
     <div id="review-error" class="alert alert-error" style="display:none;"></div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" id="review-cancel">Cancel</button>
-      <button class="btn btn-danger" id="review-reject">Reject</button>
-      <button class="btn btn-primary" id="review-approve">Approve</button>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn btn-link btn-sm" id="review-switch" style="background:none;color:var(--green);padding:0;"></button>
+      <div style="display:flex;gap:.75rem;">
+        <button class="btn btn-secondary" id="review-cancel">Cancel</button>
+        <button class="btn btn-primary" id="review-confirm">Approve</button>
+      </div>
     </div>
   </div>
 </div>

@@ -66,6 +66,24 @@
         tdDate.textContent = t.contractStartDate ? new Date(t.contractStartDate).toLocaleDateString() : '—';
         tr.appendChild(tdDate);
 
+        const tdActions = document.createElement('td');
+        tdActions.style.whiteSpace = 'nowrap';
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-secondary btn-sm';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => openTenantModal(t));
+        tdActions.appendChild(editBtn);
+        // The root tenant is protected server-side; don't offer Delete for it.
+        if (t.id !== 'arkansas-serve-root') {
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn btn-danger btn-sm';
+          delBtn.style.marginLeft = '.4rem';
+          delBtn.textContent = 'Delete';
+          delBtn.addEventListener('click', () => openDeleteTenant(t));
+          tdActions.appendChild(delBtn);
+        }
+        tr.appendChild(tdActions);
+
         tbody.appendChild(tr);
       });
     } catch (err) {
@@ -74,18 +92,35 @@
     }
   }
 
-  // Add tenant modal
-  document.getElementById('btn-new-tenant').addEventListener('click', () => {
-    document.getElementById('tenant-name').value     = '';
-    document.getElementById('tenant-type').value     = '';
-    document.getElementById('tenant-sso').value      = '';
-    document.getElementById('tenant-google').value   = '';
-    document.getElementById('tenant-email').value    = '';
-    document.getElementById('tenant-contract').value = '';
+  // ── Create / edit tenant modal ──────────────────────────────────────────
+  let editingTenantId = null;
+
+  // Fields that can't change after creation (the settings API doesn't update
+  // type/domains); shown but disabled in edit mode.
+  const CREATE_ONLY_FIELDS = ['tenant-type', 'tenant-sso', 'tenant-google', 'tenant-contract'];
+  function setCreateOnlyDisabled(disabled) {
+    CREATE_ONLY_FIELDS.forEach(id => { document.getElementById(id).disabled = disabled; });
+  }
+
+  function openTenantModal(tenant) {
+    editingTenantId = tenant ? tenant.id : null;
+    const editing = !!tenant;
+    document.querySelector('#tenant-modal .modal-title').textContent = editing ? 'Edit organization' : 'Add Tenant';
+    document.getElementById('tenant-save').textContent = editing ? 'Save changes' : 'Add Tenant';
+    document.getElementById('tenant-name').value     = tenant?.name || '';
+    document.getElementById('tenant-type').value     = tenant?.type || '';
+    document.getElementById('tenant-sso').value      = tenant?.ssoDomain || '';
+    document.getElementById('tenant-google').value   = tenant?.googleWorkspaceDomain || '';
+    document.getElementById('tenant-email').value    = tenant?.contactEmail || '';
+    document.getElementById('tenant-contract').value = tenant?.contractStartDate ? tenant.contractStartDate.slice(0, 10) : '';
+    document.getElementById('tenant-status').value   = tenant?.status || 'active';
+    document.getElementById('tenant-status-group').style.display = editing ? 'block' : 'none';
+    setCreateOnlyDisabled(editing);
     document.getElementById('tenant-error').style.display = 'none';
     document.getElementById('tenant-modal').classList.add('open');
-  });
+  }
 
+  document.getElementById('btn-new-tenant').addEventListener('click', () => openTenantModal(null));
   document.getElementById('tenant-cancel').addEventListener('click', () =>
     document.getElementById('tenant-modal').classList.remove('open'));
 
@@ -94,30 +129,83 @@
     errEl.style.display = 'none';
     const name = document.getElementById('tenant-name').value.trim();
     const type = document.getElementById('tenant-type').value;
-    if (!name || !type) {
+    const email = document.getElementById('tenant-email').value.trim() || null;
+    if (!name || (!editingTenantId && !type)) {
       errEl.textContent = 'Name and type are required.';
       errEl.style.display = 'block';
       return;
     }
     const btn = document.getElementById('tenant-save');
+    const original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      await Api.Admin.createTenant({
-        name,
-        type,
-        ssoDomain:             document.getElementById('tenant-sso').value.trim() || null,
-        googleWorkspaceDomain: document.getElementById('tenant-google').value.trim() || null,
-        contactEmail:          document.getElementById('tenant-email').value.trim() || null,
-        contractStartDate:     document.getElementById('tenant-contract').value || null,
-        status: 'active'
-      });
+      if (editingTenantId) {
+        // Settings API updates name/status/contactEmail; type/domains are fixed.
+        await Api.Admin.updateTenant(editingTenantId, {
+          name,
+          contactEmail: email,
+          status: document.getElementById('tenant-status').value,
+        });
+      } else {
+        await Api.Admin.createTenant({
+          name,
+          type,
+          ssoDomain:             document.getElementById('tenant-sso').value.trim() || null,
+          googleWorkspaceDomain: document.getElementById('tenant-google').value.trim() || null,
+          contactEmail:          email,
+          contractStartDate:     document.getElementById('tenant-contract').value || null,
+          status: 'active',
+        });
+      }
       document.getElementById('tenant-modal').classList.remove('open');
       loadTenants();
     } catch (err) {
-      errEl.textContent = err.message || 'Failed to add tenant.';
+      errEl.textContent = err.message || 'Save failed.';
       errEl.style.display = 'block';
     } finally {
-      btn.disabled = false; btn.textContent = 'Add Tenant';
+      btn.disabled = false; btn.textContent = original;
+    }
+  });
+
+  // ── Delete organization (type-to-confirm) ───────────────────────────────
+  let deletingTenant = null;
+  const delInput   = document.getElementById('delete-tenant-input');
+  const delConfirm = document.getElementById('delete-tenant-confirm');
+
+  function openDeleteTenant(tenant) {
+    deletingTenant = tenant;
+    document.getElementById('delete-tenant-name').textContent = tenant.name;
+    document.getElementById('delete-tenant-prompt').textContent = `Type "${tenant.name}" to confirm`;
+    delInput.value = '';
+    delConfirm.disabled = true;
+    document.getElementById('delete-tenant-error').style.display = 'none';
+    document.getElementById('delete-tenant-modal').classList.add('open');
+    delInput.focus();
+  }
+
+  // Enable the button only on an exact (trimmed) name match.
+  delInput.addEventListener('input', () => {
+    delConfirm.disabled = !deletingTenant || delInput.value.trim() !== deletingTenant.name.trim();
+  });
+
+  document.getElementById('delete-tenant-cancel').addEventListener('click', () =>
+    document.getElementById('delete-tenant-modal').classList.remove('open'));
+
+  delConfirm.addEventListener('click', async () => {
+    if (!deletingTenant) return;
+    const errEl = document.getElementById('delete-tenant-error');
+    errEl.style.display = 'none';
+    delConfirm.disabled = true; delConfirm.textContent = 'Deleting…';
+    try {
+      const res = await Api.Admin.deleteTenant(deletingTenant.id, deletingTenant.name);
+      document.getElementById('delete-tenant-modal').classList.remove('open');
+      alert(`Deleted "${deletingTenant.name}" — removed ${res.events} event(s) and ${res.members} member account(s).`);
+      loadTenants();
+    } catch (err) {
+      errEl.textContent = err.message || 'Delete failed.';
+      errEl.style.display = 'block';
+    } finally {
+      delConfirm.disabled = false; delConfirm.textContent = 'Delete permanently';
     }
   });
 

@@ -88,6 +88,10 @@ public partial class CosmosService
     // everyone else only where they actually hold a membership (else null).
     public async Task<User?> ResolveActorInOrgAsync(string externalId, string tokenAdminLevel, string orgId, CancellationToken cancellationToken = default)
     {
+        // Global super = token claim OR any SuperAdmin membership (same definition
+        // used by the admin endpoints). Membership-based supers (granted via the role
+        // matrix/seed) carry no super claim on their token, so relying on the token
+        // alone would 403 them on orgs where they hold no membership doc.
         var isSuper = string.Equals(tokenAdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
 
         var membership = await GetUserByExternalIdAsync(externalId, orgId, cancellationToken);
@@ -97,6 +101,13 @@ public partial class CosmosService
                 membership.AdminLevel = "SuperAdmin";
             return membership;
         }
+
+        // No membership in this org — only a global super may still act here. Check
+        // memberships lazily (only on this no-membership path, so regular callers
+        // pay nothing extra).
+        if (!isSuper)
+            isSuper = (await GetMembershipsByExternalIdAsync(externalId, cancellationToken))
+                .Any(m => string.Equals(m.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
 
         if (isSuper)
         {

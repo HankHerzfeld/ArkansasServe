@@ -243,12 +243,49 @@ var cosmosContainerSpecs = [
     partitionKeyPath: '/userId'
     defaultTtl: 2592000 // 30 days — notifications auto-expire; do not change to -1
   }
+  // SuperAdmin remote access (#26): impersonation sessions + append-only audit trail,
+  // both partitioned by adminUserId. Additive — new resources, no change to existing.
+  {
+    name: 'ImpersonationSessions'
+    partitionKeyPath: '/adminUserId'
+    defaultTtl: null
+  }
+  {
+    name: 'AuditEvents'
+    partitionKeyPath: '/adminUserId'
+    defaultTtl: null
+  }
   {
     name: 'leases'
     partitionKeyPath: '/id'
     defaultTtl: -1
   }
 ]
+
+// The live containers all use Cosmos' DEFAULT indexing and conflict-resolution
+// policies (verified 2026-07-09). Declaring them explicitly (rather than omitting)
+// keeps `what-if` at NoChange for the containers — otherwise ARM returns the
+// defaults and what-if reports a spurious "delete indexingPolicy" against the
+// template's silence. Re-applying the identical default policy is a no-op (no
+// reindex). If a container ever needs a custom index, override it per-spec.
+var defaultIndexingPolicy = {
+  indexingMode: 'consistent'
+  automatic: true
+  includedPaths: [
+    {
+      path: '/*'
+    }
+  ]
+  excludedPaths: [
+    {
+      path: '/"_etag"/?'
+    }
+  ]
+}
+var defaultConflictResolutionPolicy = {
+  mode: 'LastWriterWins'
+  conflictResolutionPath: '/_ts'
+}
 
 resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = [for spec in cosmosContainerSpecs: {
   name: spec.name
@@ -263,6 +300,8 @@ resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/co
           ]
           kind: 'Hash'
         }
+        indexingPolicy: defaultIndexingPolicy
+        conflictResolutionPolicy: defaultConflictResolutionPolicy
       },
       spec.defaultTtl == null ? {} : { defaultTtl: spec.defaultTtl }
     )
@@ -365,6 +404,8 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     CosmosDb__Containers__ServiceLogs: 'ServiceLogs'
     CosmosDb__Containers__PendingApprovals: 'PendingApprovals'
     CosmosDb__Containers__Notifications: 'Notifications'
+    CosmosDb__Containers__ImpersonationSessions: 'ImpersonationSessions'
+    CosmosDb__Containers__AuditEvents: 'AuditEvents'
   }
 }
 

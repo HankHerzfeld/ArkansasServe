@@ -42,6 +42,7 @@ const Auth = (() => {
   const KEYS = {
     lastLoginAt: 'as_last_login_at',
     adminLevel:  'as_admin_level',
+    impersonation: 'as_impersonation',
   };
 
   // ── Admin level model (the single 5-level hierarchy) ──────────────────────
@@ -221,6 +222,37 @@ const Auth = (() => {
     return Number(sessionStorage.getItem(KEYS.lastLoginAt) || 0);
   }
 
+  // ── Impersonation (#26) ─────────────────────────────────────────────────────
+  // The session id travels only in sessionStorage + a request header (never a URL).
+  // Cleared automatically on logout (sessionStorage.clear) or when expired.
+  function setImpersonation(info) {
+    sessionStorage.setItem(KEYS.impersonation, JSON.stringify(info));
+  }
+  function getImpersonation() {
+    const raw = sessionStorage.getItem(KEYS.impersonation);
+    if (!raw) return null;
+    try {
+      const info = JSON.parse(raw);
+      // Fail closed: a missing or unparseable expiry counts as expired, so a
+      // malformed record can never keep impersonation alive indefinitely.
+      const expiry = Date.parse(info.expiresAt);
+      if (isNaN(expiry) || expiry <= Date.now()) {
+        clearImpersonation();
+        return null;
+      }
+      return info;
+    } catch {
+      clearImpersonation();
+      return null;
+    }
+  }
+  function getImpersonationSid() {
+    return getImpersonation()?.sid || null;
+  }
+  function clearImpersonation() {
+    sessionStorage.removeItem(KEYS.impersonation);
+  }
+
   // ── Profile ───────────────────────────────────────────────────────────────
   function getProfile() {
     const account = getAccount();
@@ -241,6 +273,10 @@ const Auth = (() => {
 
   function setResolvedLevelFromUser(user) {
     if (!user || !user.adminLevel) return;
+    // While impersonating, /users/me returns the TARGET — don't let that overwrite
+    // the real account's cached level (which would strand the super below SuperAdmin
+    // after exiting). The cached level always represents the real signed-in user.
+    if (getImpersonation()) return;
     if (Object.hasOwn(ADMIN_RANK, user.adminLevel)) {
       sessionStorage.setItem(KEYS.adminLevel, user.adminLevel);
     }
@@ -298,6 +334,10 @@ const Auth = (() => {
     adminRank,
     clearSession,
     getLastLoginAttemptAt,
+    setImpersonation,
+    getImpersonation,
+    getImpersonationSid,
+    clearImpersonation,
     init,
   };
 })();

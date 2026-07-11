@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
 using ArkansasServe.Functions.Functions;
+using ArkansasServe.Functions.Services;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -101,7 +102,9 @@ public static class AuthMiddleware
                 // here, into the 5-level adminLevel used everywhere downstream.
                 AdminLevel  = AdminLevels.FromLegacyRole(Claim("extension_Role") ?? roleFromRolesClaim),
                 Email       = Claim("email") ?? Claim("preferred_username") ?? string.Empty,
-                DisplayName = Claim("name") ?? string.Empty
+                DisplayName = Claim("name") ?? string.Empty,
+                GivenName   = Claim("given_name") ?? string.Empty,
+                FamilyName  = Claim("family_name") ?? string.Empty
             };
 
             // ── Bootstrap elevation (config-gated; empty setting = disabled) ─
@@ -128,6 +131,43 @@ public static class AuthMiddleware
             if (string.IsNullOrWhiteSpace(userContext.UserId))
                 return (null, await WriteUnauthorized(req, "Invalid token"));
 
+            // ── Impersonation (#26) ──────────────────────────────────────────
+            // Default: acting as yourself.
+            userContext.RealUserId = userContext.UserId;
+            var impSid = req.Headers.TryGetValues("X-Impersonation-Session", out var impVals)
+                ? impVals.FirstOrDefault()
+                : null;
+            if (!string.IsNullOrWhiteSpace(impSid))
+            {
+                // The impersonation control routes must always be reachable so the admin
+                // can Exit / manage sessions even when the session itself is invalid. Match
+                // them exactly (…/manage/impersonation or …/manage/impersonation/{sid}) — an
+                // unanchored Contains would also exempt a future route like
+                // "…/manage/impersonation-notes" from the read-only write block.
+                var isControlRoute = IsImpersonationControlRoute(req.Url.AbsolutePath);
+                var effective = await TryResolveImpersonationAsync(req, userContext, impSid!, logger);
+                if (effective != null)
+                {
+                    // Read-only mode blocks writes while impersonating — except the control routes.
+                    if (string.Equals(effective.ImpersonationMode, "read-only", StringComparison.OrdinalIgnoreCase)
+                        && !IsSafeMethod(req.Method)
+                        && !isControlRoute)
+                        return (null, await WriteForbidden(req, "Read-only impersonation: writes are disabled while viewing as another user."));
+
+                    userContext = effective;
+                }
+                else if (!isControlRoute)
+                {
+                    // Header present but the session is expired/revoked/not-owned. Do NOT
+                    // silently fall back to the real SuperAdmin — otherwise a request the
+                    // operator believes is a read-only demo view would run live as super.
+                    // Signal the client to exit impersonation (409 + a distinct code).
+                    return (null, await WriteImpersonationExpired(req));
+                }
+                // Control route with an invalid session: fall through as the real admin so
+                // Exit/cleanup can proceed.
+            }
+
             // Minimum-level check — 403 so callers can distinguish "not
             // authenticated" (401) from "authenticated but under-ranked" (403).
             if (minAdminLevel != null &&
@@ -140,6 +180,79 @@ public static class AuthMiddleware
         {
             logger.LogError(ex, "Unexpected error during token validation");
             return (null, await WriteUnauthorized(req, "Authentication error"));
+        }
+    }
+
+    // ── Impersonation (#26) ───────────────────────────────────────────────────
+
+    private static bool IsSafeMethod(string method) =>
+        method.Equals("GET", StringComparison.OrdinalIgnoreCase)
+        || method.Equals("HEAD", StringComparison.OrdinalIgnoreCase)
+        || method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase);
+
+    // Matches the impersonation control routes exactly: the collection route
+    // (…/manage/impersonation) and the per-session route (…/manage/impersonation/{sid}),
+    // but NOT a lookalike such as …/manage/impersonation-notes.
+    private static bool IsImpersonationControlRoute(string absolutePath)
+    {
+        var path = absolutePath.TrimEnd('/');
+        return path.EndsWith("/manage/impersonation", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("/manage/impersonation/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Builds the effective (target) context from an active session, or null if the
+    // session is missing/expired/revoked/not owned by this caller, or the caller no
+    // longer qualifies as a global super. CosmosService is resolved from the request's
+    // DI scope so no call site has to change.
+    //
+    // Per-request kill guarantees: the session's active/revoked/expiry window and the
+    // caller's CURRENT global-super status are both re-evaluated every request. That
+    // catches a membership-based demotion (membership re-read below) and a
+    // bootstrap-domain demotion (re-applied from config in ValidateRequest). The one
+    // gap is a super asserted purely by a static token role claim, which — like all
+    // token claims in this app — only changes on token refresh; use session revoke to
+    // kill such a session immediately.
+    private static async Task<UserContext?> TryResolveImpersonationAsync(
+        HttpRequestData req, UserContext realCtx, string sid, ILogger logger)
+    {
+        try
+        {
+            if (req.FunctionContext.InstanceServices.GetService(typeof(CosmosService)) is not CosmosService cosmos)
+                return null;
+
+            var session = await cosmos.GetImpersonationSessionAsync(sid, realCtx.UserId);
+            if (session == null
+                || !session.IsActive(DateTime.UtcNow)
+                || !string.Equals(session.AdminUserId, realCtx.UserId, StringComparison.Ordinal))
+                return null;
+
+            // Re-verify the caller is STILL a global super. Fast-path the token claim,
+            // else re-read memberships so a membership-based demotion is caught mid-session.
+            var isSuper = realCtx.IsSuperAdmin;
+            if (!isSuper)
+            {
+                var memberships = await cosmos.GetMembershipsByExternalIdAsync(realCtx.UserId);
+                isSuper = memberships.Any(m => string.Equals(m.AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase));
+            }
+            if (!isSuper) return null;
+
+            return new UserContext
+            {
+                UserId = session.TargetActingId,
+                TenantId = session.TargetTenantId,
+                AdminLevel = session.TargetAdminLevel,
+                Email = session.TargetEmail,
+                DisplayName = session.TargetName,
+                RealUserId = realCtx.UserId,
+                IsImpersonating = true,
+                ImpersonationSessionId = session.Id,
+                ImpersonationMode = session.Mode,
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Impersonation resolution failed for session {Sid}; proceeding as real user", sid);
+            return null;
         }
     }
 
@@ -157,6 +270,20 @@ public static class AuthMiddleware
     {
         var res = req.CreateResponse(HttpStatusCode.Forbidden);
         await res.WriteStringAsync(JsonSerializer.Serialize(new { error = message }));
+        res.Headers.Add("Content-Type", "application/json");
+        return res;
+    }
+
+    // 409 with a distinct code so the client can cleanly exit impersonation (and NOT
+    // treat it as a normal session logout, which a 401 would trigger).
+    private static async Task<HttpResponseData> WriteImpersonationExpired(HttpRequestData req)
+    {
+        var res = req.CreateResponse(HttpStatusCode.Conflict);
+        await res.WriteStringAsync(JsonSerializer.Serialize(new
+        {
+            error = "Your impersonation session has ended.",
+            code = "impersonation_expired",
+        }));
         res.Headers.Add("Content-Type", "application/json");
         return res;
     }
@@ -205,6 +332,17 @@ public class UserContext
     public string AdminLevel  { get; set; } = AdminLevels.Student;
     public string Email       { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string GivenName   { get; set; } = string.Empty;
+    public string FamilyName  { get; set; } = string.Empty;
+
+    // ── Impersonation (#26) ──────────────────────────────────────────────────
+    // When impersonating, UserId/TenantId/AdminLevel are the TARGET's (so all
+    // downstream authz/data act as the target), while RealUserId stays the acting
+    // SuperAdmin for audit and guardrails. Defaults: RealUserId == UserId, not impersonating.
+    public string RealUserId   { get; set; } = string.Empty;
+    public bool   IsImpersonating { get; set; }
+    public string? ImpersonationSessionId { get; set; }
+    public string  ImpersonationMode { get; set; } = string.Empty;
 
     public bool IsSuperAdmin   => string.Equals(AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase);
     public bool IsStudentLevel => AdminLevels.RankOf(AdminLevel) == 0;

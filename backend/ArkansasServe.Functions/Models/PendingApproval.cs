@@ -27,4 +27,9 @@ public class PendingApproval : CosmosDocument
 
 	[JsonPropertyName("serviceDate")]
 	public DateTime ServiceDate { get; set; }
+
+	// When the hours were submitted for review (the source log's createdAt), so the
+	// queue can show "submitted" distinct from the date service was performed.
+	[JsonPropertyName("submittedAt")]
+	public DateTime SubmittedAt { get; set; }
 }

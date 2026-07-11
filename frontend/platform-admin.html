@@ -46,6 +46,7 @@
           <th>SSO Domain</th>
           <th>Status</th>
           <th>Contract Start</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody id="tenants-tbody"></tbody>
@@ -146,10 +147,37 @@
       <label>Contract Start Date</label>
       <input type="date" id="tenant-contract">
     </div>
+    <div class="form-group" id="tenant-status-group" style="display:none;">
+      <label>Status</label>
+      <select id="tenant-status">
+        <option value="active">Active</option>
+        <option value="suspended">Suspended</option>
+      </select>
+    </div>
     <div id="tenant-error" class="alert alert-error" style="display:none;"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="tenant-cancel">Cancel</button>
       <button class="btn btn-primary" id="tenant-save">Add Tenant</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete-organization confirm modal (type-to-confirm) -->
+<div class="modal-overlay" id="delete-tenant-modal">
+  <div class="modal">
+    <div class="modal-title">Delete organization</div>
+    <p style="color:var(--gray-700);font-size:.9rem;">
+      This permanently deletes <strong id="delete-tenant-name"></strong> and cascades to its
+      <strong>events</strong> and <strong>member accounts</strong>. This cannot be undone.
+    </p>
+    <div class="form-group">
+      <label id="delete-tenant-prompt">Type the full organization name to confirm</label>
+      <input type="text" id="delete-tenant-input" autocomplete="off" placeholder="Organization name">
+    </div>
+    <div id="delete-tenant-error" class="alert alert-error" style="display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="delete-tenant-cancel">Cancel</button>
+      <button class="btn btn-danger" id="delete-tenant-confirm" disabled>Delete permanently</button>
     </div>
   </div>
 </div>

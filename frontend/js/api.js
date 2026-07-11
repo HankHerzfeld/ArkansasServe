@@ -18,6 +18,10 @@ const Api = (() => {
     const headers = {};
     headers['Authorization'] = `Bearer ${token}`;
     if (body !== null) headers['Content-Type'] = 'application/json';
+    // #26: when a SuperAdmin is "acting as" another user, every call carries the
+    // opaque session id; the backend resolves the effective (target) context.
+    const impSid = Auth.getImpersonationSid && Auth.getImpersonationSid();
+    if (impSid) headers['X-Impersonation-Session'] = impSid;
 
     const options = { method, headers, cache: 'no-store' };
     if (body !== null) options.body = JSON.stringify(body);
@@ -47,6 +51,13 @@ const Api = (() => {
         try {
           const parsed = JSON.parse(text);
           errorMessage = parsed.error || parsed.message || errorMessage;
+          // #26: the impersonation session ended server-side (expired/revoked) while
+          // the client still thought it was active. Exit cleanly rather than letting
+          // the operator keep acting as themselves behind a stale "viewing as" banner.
+          if (res.status === 409 && parsed.code === 'impersonation_expired') {
+            Auth.clearImpersonation();
+            window.location.href = '/admin-backend.html?impersonation=expired';
+          }
         } catch {
           errorMessage = text;
         }
@@ -179,6 +190,8 @@ const Api = (() => {
   const Admin = {
     getTenants:    ()     => request('GET',  '/manage/tenants'),
     createTenant:  (data) => request('POST', '/manage/tenants', data),
+    updateTenant:  (id, data)       => request('PATCH',  `/manage/backend/tenants/${encodeURIComponent(id)}`, data),
+    deleteTenant:  (id, confirmName) => request('DELETE', `/manage/tenants/${encodeURIComponent(id)}?confirmName=${encodeURIComponent(confirmName)}`),
   };
 
   // ── Admin Backend ─────────────────────────────────────────────────────────
@@ -192,6 +205,13 @@ const Api = (() => {
     logoUploadToken:  (tenantId, fileName)      => request('POST', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/logo-upload-token`, { fileName }),
     demoUsers:        ()                        => request('GET',  '/manage/backend/demo-users'),
     resetDemoUsers:   ()                        => request('POST', '/manage/backend/demo-users/reset'),
+  };
+
+  // ── Impersonation / remote access (SuperAdmin, #26) ───────────────────────
+  const Impersonation = {
+    start: (data) => request('POST',   '/manage/impersonation', data),
+    stop:  (sid)  => request('DELETE', `/manage/impersonation/${encodeURIComponent(sid)}`),
+    list:  ()     => request('GET',    '/manage/impersonation'),
   };
 
   // ── DB Console (SuperAdmin, read-only) ────────────────────────────────────
@@ -234,5 +254,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Db, Crawler };
+  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();

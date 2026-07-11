@@ -116,6 +116,19 @@
 
   <div class="card" id="users-card" style="display:none;">
     <div class="card-title">User Access Management</div>
+    <div class="table-filters" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.75rem;">
+      <input id="users-search" type="search" placeholder="Search name or email…" style="min-width:14rem;flex:1;padding:.4rem .6rem;border:1px solid var(--gray-400);border-radius:6px;">
+      <select id="users-filter-type" style="padding:.4rem;border:1px solid var(--gray-400);border-radius:6px;">
+        <option value="">All types</option>
+        <option value="Student">Students</option>
+        <option value="AdultVolunteer">Adult volunteers</option>
+        <option value="Staff">Staff</option>
+      </select>
+      <select id="users-filter-level" style="padding:.4rem;border:1px solid var(--gray-400);border-radius:6px;">
+        <option value="">All levels</option>
+      </select>
+      <span id="users-count" style="font-size:.8rem;color:var(--gray-600);"></span>
+    </div>
     <table class="table" id="users-table" style="display:none;">
       <thead>
         <tr>
@@ -138,13 +151,24 @@
       Add volunteers to monitor their service. If a volunteer later signs in with the same email, their account links automatically.
     </p>
     <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.5rem;">
+      <div class="form-group" style="margin:0;min-width:8rem;">
+        <label for="vol-first">First name</label>
+        <input id="vol-first" type="text" autocomplete="given-name" />
+      </div>
+      <div class="form-group" style="margin:0;min-width:8rem;">
+        <label for="vol-last">Last name</label>
+        <input id="vol-last" type="text" autocomplete="family-name" />
+      </div>
       <div class="form-group" style="margin:0;min-width:11rem;">
-        <label for="vol-name">Name</label>
-        <input id="vol-name" type="text" />
+        <label for="vol-type">Type</label>
+        <select id="vol-type">
+          <option value="Student">Student</option>
+          <option value="AdultVolunteer">Adult volunteer</option>
+        </select>
       </div>
       <div class="form-group" style="margin:0;min-width:13rem;">
         <label for="vol-email">Email</label>
-        <input id="vol-email" type="email" />
+        <input id="vol-email" type="email" autocomplete="email" />
       </div>
       <div class="form-group" style="margin:0;min-width:11rem;">
         <label for="vol-group">Group (optional)</label>
@@ -153,11 +177,27 @@
       <button class="btn btn-primary" id="btn-add-volunteer">Add Volunteer</button>
       <span id="vol-status" style="font-size:.85rem;color:var(--gray-600);"></span>
     </div>
+    <div class="table-filters" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:.75rem 0 .25rem;">
+      <input id="volf-search" type="search" placeholder="Search name or email…" style="min-width:14rem;flex:1;padding:.4rem .6rem;border:1px solid var(--gray-400);border-radius:6px;">
+      <select id="volf-type" style="padding:.4rem;border:1px solid var(--gray-400);border-radius:6px;">
+        <option value="">All types</option>
+        <option value="Student">Students</option>
+        <option value="AdultVolunteer">Adult volunteers</option>
+        <option value="Staff">Staff</option>
+      </select>
+      <select id="volf-status" style="padding:.4rem;border:1px solid var(--gray-400);border-radius:6px;">
+        <option value="">Any status</option>
+        <option value="active">Active (has login)</option>
+        <option value="managed">Managed (no login yet)</option>
+      </select>
+      <span id="volf-count" style="font-size:.8rem;color:var(--gray-600);"></span>
+    </div>
     <table class="table" id="volunteers-table" style="margin-top:.5rem;display:none;">
       <thead>
         <tr>
           <th style="width:2rem;"></th>
           <th>Name</th>
+          <th>Type</th>
           <th>Email</th>
           <th>Groups</th>
           <th>Status</th>
@@ -222,12 +262,17 @@
       <button class="btn btn-danger" id="btn-reset-demo-users">Reset Demo Users</button>
       <span id="demo-reset-status" style="font-size:.85rem;color:var(--gray-600);"></span>
     </div>
+    <p style="color:var(--gray-600);font-size:.8rem;margin:.25rem 0 0;">
+      <strong>Act as</strong> opens a read-only session viewing the app exactly as that demo user.
+      Every session is time-boxed and audited. (Demo users only in this release.)
+    </p>
     <table class="table" id="demo-users-table" style="margin-top:1rem;display:none;">
       <thead>
         <tr>
           <th>Name</th>
           <th>Type</th>
           <th>Email</th>
+          <th>Remote access</th>
         </tr>
       </thead>
       <tbody id="demo-users-tbody"></tbody>
