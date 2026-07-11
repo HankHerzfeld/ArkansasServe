@@ -51,6 +51,13 @@ const Api = (() => {
         try {
           const parsed = JSON.parse(text);
           errorMessage = parsed.error || parsed.message || errorMessage;
+          // #26: the impersonation session ended server-side (expired/revoked) while
+          // the client still thought it was active. Exit cleanly rather than letting
+          // the operator keep acting as themselves behind a stale "viewing as" banner.
+          if (res.status === 409 && parsed.code === 'impersonation_expired') {
+            Auth.clearImpersonation();
+            window.location.href = '/admin-backend.html?impersonation=expired';
+          }
         } catch {
           errorMessage = text;
         }

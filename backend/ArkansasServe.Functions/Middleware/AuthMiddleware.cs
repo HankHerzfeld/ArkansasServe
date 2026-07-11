@@ -139,20 +139,30 @@ public static class AuthMiddleware
                 : null;
             if (!string.IsNullOrWhiteSpace(impSid))
             {
+                // The impersonation control routes must always be reachable so the admin
+                // can Exit / manage sessions even when the session itself is invalid.
+                var isControlRoute = req.Url.AbsolutePath.Contains("/manage/impersonation", StringComparison.OrdinalIgnoreCase);
                 var effective = await TryResolveImpersonationAsync(req, userContext, impSid!, logger);
                 if (effective != null)
                 {
-                    // Read-only mode blocks writes while impersonating — except the
-                    // impersonation control routes (so the admin can always Exit).
+                    // Read-only mode blocks writes while impersonating — except the control routes.
                     if (string.Equals(effective.ImpersonationMode, "read-only", StringComparison.OrdinalIgnoreCase)
                         && !IsSafeMethod(req.Method)
-                        && !req.Url.AbsolutePath.Contains("/manage/impersonation", StringComparison.OrdinalIgnoreCase))
+                        && !isControlRoute)
                         return (null, await WriteForbidden(req, "Read-only impersonation: writes are disabled while viewing as another user."));
 
                     userContext = effective;
                 }
-                // An invalid/expired session simply drops impersonation — the caller
-                // proceeds as themselves (the real, still-authenticated admin).
+                else if (!isControlRoute)
+                {
+                    // Header present but the session is expired/revoked/not-owned. Do NOT
+                    // silently fall back to the real SuperAdmin — otherwise a request the
+                    // operator believes is a read-only demo view would run live as super.
+                    // Signal the client to exit impersonation (409 + a distinct code).
+                    return (null, await WriteImpersonationExpired(req));
+                }
+                // Control route with an invalid session: fall through as the real admin so
+                // Exit/cleanup can proceed.
             }
 
             // Minimum-level check — 403 so callers can distinguish "not
@@ -238,6 +248,20 @@ public static class AuthMiddleware
     {
         var res = req.CreateResponse(HttpStatusCode.Forbidden);
         await res.WriteStringAsync(JsonSerializer.Serialize(new { error = message }));
+        res.Headers.Add("Content-Type", "application/json");
+        return res;
+    }
+
+    // 409 with a distinct code so the client can cleanly exit impersonation (and NOT
+    // treat it as a normal session logout, which a 401 would trigger).
+    private static async Task<HttpResponseData> WriteImpersonationExpired(HttpRequestData req)
+    {
+        var res = req.CreateResponse(HttpStatusCode.Conflict);
+        await res.WriteStringAsync(JsonSerializer.Serialize(new
+        {
+            error = "Your impersonation session has ended.",
+            code = "impersonation_expired",
+        }));
         res.Headers.Add("Content-Type", "application/json");
         return res;
     }

@@ -172,6 +172,7 @@ const UI = (() => {
     if (host) {
       host.innerHTML = '';
       renderImpersonationBanner(host);
+      renderExpiredNotice(host);
       host.appendChild(buildNav(current, profile));
       loadPane();
     }
@@ -187,11 +188,29 @@ const UI = (() => {
     }
   }
 
+  // One-time notice after an impersonation session ended (expiry/revoke), so the
+  // operator understands why they're back on their own account.
+  function renderExpiredNotice(host) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('impersonation') !== 'expired') return;
+    const note = document.createElement('div');
+    note.style.cssText = 'background:var(--amber-pale);color:var(--amber);padding:.5rem 1rem;text-align:center;font-size:.85rem;font-weight:600;';
+    note.textContent = 'The impersonation session ended — you are back on your own account.';
+    host.insertBefore(note, host.firstChild);
+    setTimeout(() => note.remove(), 6000);
+  }
+
   // ── Impersonation banner (#26) ──────────────────────────────────────────────
   // Unmistakable, always-present while a SuperAdmin is "acting as" another user.
   function renderImpersonationBanner(host) {
     const imp = Auth.getImpersonation && Auth.getImpersonation();
     if (!imp) return;
+
+    async function exitImpersonation(stopServer, expired) {
+      if (stopServer) { try { await Api.Impersonation.stop(imp.sid); } catch { /* clear locally regardless */ } }
+      Auth.clearImpersonation();
+      window.location.href = expired ? '/admin-backend.html?impersonation=expired' : '/admin-backend.html';
+    }
 
     const bar = document.createElement('div');
     bar.id = 'impersonation-banner';
@@ -199,7 +218,9 @@ const UI = (() => {
 
     const label = document.createElement('span');
     const lvl = imp.adminLevel ? ` (${imp.adminLevel})` : '';
-    label.textContent = `⚠ Viewing as ${imp.name}${lvl} — read-only session`;
+    const expiry = imp.expiresAt ? new Date(imp.expiresAt) : null;
+    const expiryTxt = expiry ? ` — expires ${expiry.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
+    label.textContent = `⚠ Viewing as ${imp.name}${lvl} — read-only session${expiryTxt}`;
     bar.appendChild(label);
 
     const exit = document.createElement('button');
@@ -209,11 +230,17 @@ const UI = (() => {
     exit.addEventListener('click', async () => {
       exit.disabled = true;
       exit.textContent = 'Exiting…';
-      try { await Api.Impersonation.stop(imp.sid); } catch { /* clear locally regardless */ }
-      Auth.clearImpersonation();
-      window.location.href = '/admin-backend.html';
+      await exitImpersonation(true, false);
     });
     bar.appendChild(exit);
+
+    // Auto-exit exactly at expiry so the banner never outlives the session and the
+    // operator is never left silently acting as themselves behind a stale banner.
+    if (expiry) {
+      const ms = expiry.getTime() - Date.now();
+      if (ms <= 0) { exitImpersonation(false, true); return; }
+      setTimeout(() => exitImpersonation(false, true), Math.min(ms, 2147483647));
+    }
 
     host.insertBefore(bar, host.firstChild);
   }
