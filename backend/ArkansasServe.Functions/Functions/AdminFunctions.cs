@@ -377,12 +377,8 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 
 	// A person is a platform super if their token level is SuperAdmin or any of
 	// their memberships is SuperAdmin (e.g. granted via the role matrix).
-	private async Task<bool> IsGlobalSuperAsync(UserContext ctx)
-	{
-		if (ctx.IsSuperAdmin) return true;
-		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
-		return memberships.Any(m => string.Equals(m.AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase));
-	}
+	private Task<bool> IsGlobalSuperAsync(UserContext ctx) =>
+		cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel);
 
 	// True when the caller may manage the given tenant: a super, or an
 	// OrganizationAdmin+ membership in that specific tenant.

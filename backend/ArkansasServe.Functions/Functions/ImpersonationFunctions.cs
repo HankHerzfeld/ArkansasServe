@@ -132,12 +132,8 @@ public class ImpersonationFunctions(CosmosService cosmos, AuthConfig authConfig,
 		return await HttpHelper.OkJson(req, sessions);
 	}
 
-	private async Task<bool> IsGlobalSuperAsync(UserContext ctx)
-	{
-		if (ctx.IsSuperAdmin) return true;
-		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
-		return memberships.Any(m => string.Equals(m.AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase));
-	}
+	private Task<bool> IsGlobalSuperAsync(UserContext ctx) =>
+		cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel);
 
 	private sealed record StartRequest(string TargetUserId, string TargetTenantId, string Reason);
 }
