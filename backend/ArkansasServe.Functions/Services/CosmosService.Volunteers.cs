@@ -1,3 +1,4 @@
+using ArkansasServe.Functions.Functions;
 using ArkansasServe.Functions.Models;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Linq;
@@ -133,6 +134,17 @@ public partial class CosmosService
         AdminLevel = "SuperAdmin",
         Status = "active",
     };
+
+    // True if the caller holds at least `minLevel` in ANY org (token claim or any
+    // membership). Used only where the request doesn't identify a specific org
+    // (e.g. an upload token, or registrations addressed by event id) — a global super
+    // is covered because their SuperAdmin membership clears any minLevel.
+    public async Task<bool> IsAtLeastInAnyOrgAsync(string externalId, string tokenAdminLevel, string minLevel, CancellationToken cancellationToken = default)
+    {
+        if (AdminLevels.AtLeast(tokenAdminLevel, minLevel)) return true;
+        var memberships = await GetMembershipsByExternalIdAsync(externalId, cancellationToken);
+        return memberships.Any(m => AdminLevels.AtLeast(m.AdminLevel, minLevel));
+    }
 
     // Every user document across all orgs — for the SuperAdmin role matrix.
     public async Task<List<User>> GetAllUsersAsync(CancellationToken cancellationToken = default)
