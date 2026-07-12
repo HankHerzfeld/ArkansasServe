@@ -88,41 +88,51 @@ public partial class CosmosService
     // everyone else only where they actually hold a membership (else null).
     public async Task<User?> ResolveActorInOrgAsync(string externalId, string tokenAdminLevel, string orgId, CancellationToken cancellationToken = default)
     {
-        // Global super = token claim OR any SuperAdmin membership (same definition
-        // used by the admin endpoints). Membership-based supers (granted via the role
-        // matrix/seed) carry no super claim on their token, so relying on the token
-        // alone would 403 them on orgs where they hold no membership doc.
-        var isSuper = string.Equals(tokenAdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
+        // A global super — by token claim OR a SuperAdmin membership in ANY org — may act
+        // as super in EVERY org, INCLUDING one where they happen to hold a lower membership
+        // (e.g. a Student self-join). Two ways to get this wrong, both of which caused 403s:
+        //   • trusting only the token claim misses membership-based supers (their token
+        //     carries no super claim);
+        //   • trusting only the per-org membership level caps a global super at whatever
+        //     low role they hold in that specific org.
+        var tokenSuper = string.Equals(tokenAdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
 
-        var membership = await GetUserByExternalIdAsync(externalId, orgId, cancellationToken);
-        if (membership != null)
+        // Fast path: a token super needs only the single-partition membership lookup.
+        if (tokenSuper)
         {
-            if (isSuper && !string.Equals(membership.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
-                membership.AdminLevel = "SuperAdmin";
-            return membership;
-        }
-
-        // No membership in this org — only a global super may still act here. Check
-        // memberships lazily (only on this no-membership path, so regular callers
-        // pay nothing extra).
-        if (!isSuper)
-            isSuper = (await GetMembershipsByExternalIdAsync(externalId, cancellationToken))
-                .Any(m => string.Equals(m.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
-
-        if (isSuper)
-        {
-            return new User
+            var m = await GetUserByExternalIdAsync(externalId, orgId, cancellationToken);
+            if (m != null)
             {
-                ExternalId = externalId,
-                TenantId = orgId,
-                OrganizationId = orgId,
-                AdminLevel = "SuperAdmin",
-                Status = "active",
-            };
+                if (!string.Equals(m.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                    m.AdminLevel = "SuperAdmin";
+                return m;
+            }
+            return SyntheticSuperActor(externalId, orgId);
         }
 
-        return null;
+        // Otherwise one fan-out by externalId yields BOTH this org's membership AND whether
+        // the caller is a global super (a SuperAdmin membership anywhere).
+        var memberships = await GetMembershipsByExternalIdAsync(externalId, cancellationToken);
+        var here = memberships.FirstOrDefault(u => string.Equals(u.TenantId, orgId, StringComparison.OrdinalIgnoreCase));
+        var isGlobalSuper = memberships.Any(u => string.Equals(u.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase));
+
+        if (here != null)
+        {
+            if (isGlobalSuper && !string.Equals(here.AdminLevel, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                here.AdminLevel = "SuperAdmin";
+            return here;
+        }
+        return isGlobalSuper ? SyntheticSuperActor(externalId, orgId) : null;
     }
+
+    private static User SyntheticSuperActor(string externalId, string orgId) => new()
+    {
+        ExternalId = externalId,
+        TenantId = orgId,
+        OrganizationId = orgId,
+        AdminLevel = "SuperAdmin",
+        Status = "active",
+    };
 
     // Every user document across all orgs — for the SuperAdmin role matrix.
     public async Task<List<User>> GetAllUsersAsync(CancellationToken cancellationToken = default)
