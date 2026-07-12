@@ -61,7 +61,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 	public async Task<HttpResponseData> CreateEvent(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<Event>(req);
@@ -69,7 +69,15 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (string.IsNullOrWhiteSpace(body.Title) || body.StartDateTime == default)
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Title and StartDateTime are required");
 
-		body.OrganizationId = ctx.IsSuperAdmin ? body.OrganizationId : ctx.TenantId;
+		// Per-org: authorize by the caller's membership IN THE TARGET ORG (or global
+		// super), not their token level — a membership-based admin/super carries no
+		// matching role on the token.
+		var orgId = string.IsNullOrWhiteSpace(body.OrganizationId) ? ctx.TenantId : body.OrganizationId;
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You cannot create events in this organization");
+
+		body.OrganizationId = orgId;
 		body.CreatedByUserId = ctx.UserId;
 		body.Status = "Open";
 		body.CurrentSlots = 0;
@@ -83,7 +91,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		[HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "events/{id}")] HttpRequestData req,
 		string id)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
 		var body = await HttpHelper.ReadBody<Event>(req);
@@ -92,8 +100,10 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var existing = await cosmos.GetEventAsync(id, body.OrganizationId);
 		if (existing == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
 
-		if (!ctx.IsSuperAdmin && existing.OrganizationId != ctx.TenantId)
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot edit another organization's event");
+		// Per-org: must be EventAdmin+ in the event's own org (or global super).
+		var editor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, existing.OrganizationId);
+		if (editor == null || !AdminLevels.AtLeast(editor.AdminLevel, AdminLevels.EventAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot edit this organization's event");
 
 		existing.Title = body.Title;
 		existing.Description = body.Description;
@@ -133,8 +143,12 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "events/{id}/registrations")] HttpRequestData req,
 		string id)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
+		// Event registrations are addressed by event id (no org in the route), so authorize
+		// by EventAdmin+ in any org (a global super's SuperAdmin membership clears this).
+		if (!await cosmos.IsAtLeastInAnyOrgAsync(ctx.UserId, ctx.AdminLevel, AdminLevels.EventAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
 		var registrations = await cosmos.GetRegistrationsByEventAsync(id);
 		return await HttpHelper.OkJson(req, registrations);
@@ -144,8 +158,10 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 	public async Task<HttpResponseData> GetUploadToken(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events/upload-token")] HttpRequestData req)
 	{
-		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger, AdminLevels.EventAdmin);
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
+		if (!await cosmos.IsAtLeastInAnyOrgAsync(ctx.UserId, ctx.AdminLevel, AdminLevels.EventAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
 		var body = await HttpHelper.ReadBody<UploadTokenRequest>(req);
 		if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "fileName is required");
