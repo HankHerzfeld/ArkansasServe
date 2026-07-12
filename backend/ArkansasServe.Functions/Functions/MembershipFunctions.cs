@@ -163,6 +163,17 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		if (existing != null)
 			return await HttpHelper.OkJson(req, existing);
 
+		// A global super already has access to every org via ResolveActorInOrgAsync.
+		// Creating a self-joined Student membership here would only pollute the data and
+		// cap them at Student in that org's authz — the exact stray-membership problem.
+		// Return their effective (super) actor without persisting anything.
+		if (await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel))
+		{
+			// Non-null for a confirmed global super (returns the membership or a synthetic super).
+			var superActor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
+			return await HttpHelper.OkJson(req, superActor!);
+		}
+
 		var email = ctx.Email?.Trim().ToLowerInvariant();
 		if (!string.IsNullOrWhiteSpace(email))
 		{
