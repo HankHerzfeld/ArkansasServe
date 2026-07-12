@@ -26,6 +26,12 @@ param cosmosSharedThroughput int = 1000
 @description('Storage account name.')
 param storageAccountName string = 'starkansasservearksrv'
 
+@description('Origins allowed to upload directly to Blob Storage via SAS from the browser. Must include the site origin(s) — the frontend PUTs event photos / org logos straight to the blob endpoint, which needs a matching account-level CORS rule (defaults match the live rule).')
+param blobCorsAllowedOrigins array = [
+  'https://arkansasserve.com'
+  'https://www.arkansasserve.com'
+]
+
 @description('Application Insights resource name.')
 param appInsightsName string = 'appi-arkansas-serve-arksrv'
 
@@ -129,9 +135,35 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
+// Account-level CORS so the browser can PUT directly to blob (event photos / org logos)
+// with a SAS. Without this the preflight OPTIONS is blocked (no Access-Control-Allow-Origin)
+// and uploads fail even though the SAS is valid. Reads use <img src> and don't need CORS,
+// but GET/HEAD are included for any fetch-based read. Matches the live rule applied out-of-band.
 resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   name: 'default'
   parent: storage
+  properties: {
+    cors: {
+      corsRules: [
+        {
+          allowedOrigins: blobCorsAllowedOrigins
+          allowedMethods: [
+            'PUT'
+            'GET'
+            'OPTIONS'
+            'HEAD'
+          ]
+          allowedHeaders: [
+            '*'
+          ]
+          exposedHeaders: [
+            '*'
+          ]
+          maxAgeInSeconds: 3600
+        }
+      ]
+    }
+  }
 }
 
 // All three containers are PRIVATE. The account sets allowBlobPublicAccess:false

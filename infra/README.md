@@ -83,6 +83,21 @@ Until this is done the workflow fails at login and nothing deploys implicitly.
 
 ## Notes / open items
 
+- **Out-of-band prod fixes applied 2026-07-12 that the live env needs and a full Bicep deploy
+  would also set** (recorded here because the app-settings/CORS have only ever been applied
+  manually, not via a full `deployment group create`):
+  - `BlobStorage__ConnectionString` app setting was **missing** on the live Function App
+    (uploads 500'd with "Blob storage is not configured"). Set it out-of-band to the storage
+    account's connection string. The Bicep already declares it (`functionAppSettings`), so a
+    full deploy re-asserts it. Also note: services must read config via **both** the `__` and
+    `:` key forms — Azure's env-var provider exposes `Foo__Bar` app settings under `Foo:Bar`,
+    so a `__`-only read returns null in the deployed app (this bit `BlobService`/`EmailService`;
+    fixed in code).
+  - **Blob CORS**: the account had no CORS rules, so browser direct-to-blob SAS uploads were
+    blocked by preflight. A rule allowing `https://arkansasserve.com` (+ `www`) for
+    `PUT/GET/OPTIONS/HEAD` was applied live and is now codified in `main.bicep`
+    (`blobService.properties.cors`, param `blobCorsAllowedOrigins`) — `what-if` shows no CORS
+    diff, confirming template == live.
 - **`platformAdminEmailDomain`** in `main.prod.bicepparam` is currently `arkansasserve.com`,
   i.e. deploying would re-enable domain-based PlatformAdmin bootstrap elevation. If the first
   admin is already seeded, set this to `''` and redeploy to close that path (the middleware
