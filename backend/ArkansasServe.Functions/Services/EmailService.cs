@@ -24,8 +24,12 @@ public class EmailService
     {
         _logger = logger;
 
-        var connectionString = config["Communication__ConnectionString"] ?? string.Empty;
-        _senderAddress = config["Communication__SenderAddress"] ?? string.Empty;
+        // Read both the `__` and `:` forms (Azure's env-var provider exposes the
+        // "Communication__*" app settings under "Communication:*"). Without the `:`
+        // fallback this would stay disabled even after ACS is configured — same bug that
+        // broke blob uploads.
+        var connectionString = config["Communication__ConnectionString"] ?? config["Communication:ConnectionString"] ?? string.Empty;
+        _senderAddress = config["Communication__SenderAddress"] ?? config["Communication:SenderAddress"] ?? string.Empty;
 
         if (!string.IsNullOrWhiteSpace(connectionString))
             _client = new EmailClient(connectionString);

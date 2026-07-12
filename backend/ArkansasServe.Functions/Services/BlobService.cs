@@ -17,8 +17,15 @@ public class BlobService
     {
         _logger = logger;
 
-        // Parse account name and key from connection string for SAS generation
-        var connStr = config["BlobStorage__ConnectionString"] ?? string.Empty;
+        // Parse account name and key from connection string for SAS generation.
+        // Read BOTH the `__` and `:` forms: Azure's env-var config provider exposes an
+        // app setting named "BlobStorage__ConnectionString" under the key
+        // "BlobStorage:ConnectionString", so the `__` lookup alone returns null in the
+        // deployed app (every other service already has this fallback — this one didn't,
+        // which is why blob uploads 500'd with "not configured" while Cosmos worked).
+        var connStr = config["BlobStorage__ConnectionString"]
+            ?? config["BlobStorage:ConnectionString"]
+            ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(connStr))
             _client = new BlobServiceClient(connStr);
 
