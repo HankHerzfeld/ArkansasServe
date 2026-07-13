@@ -49,7 +49,7 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 						var adopted = await cosmos.UpsertUserWithPartitionFallbackAsync(managed);
 						await TryMigrateAdoptedLogsAsync(adopted.Id, ctx.UserId);
 						logger.LogInformation("Adopted managed volunteer record on first sign-in for tenant {TenantId}.", tenantId);
-						return await HttpHelper.OkJson(req, adopted);
+						return await HttpHelper.OkJson(req, await WithEffectiveAdminLevelAsync(adopted, ctx.UserId));
 					}
 
 					logger.LogInformation("No user profile found for current principal; starting bootstrap create.");
@@ -91,7 +91,7 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 			}
 
 			logger.LogInformation("Returning current user profile payload.");
-			return await HttpHelper.OkJson(req, user);
+			return await HttpHelper.OkJson(req, await WithEffectiveAdminLevelAsync(user, ctx.UserId));
 		}
 		catch (CosmosException ex)
 		{
@@ -219,6 +219,34 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		{
 			logger.LogError(ex, "Failed to migrate service logs from {Old} to {New} on adoption", oldStudentId, externalId);
 		}
+	}
+
+	// A person holds one User doc per org, each with its own AdminLevel, but the
+	// /users/me response carries a single adminLevel that the client uses to gate tab
+	// visibility and route guards. Report the STRONGEST level held across all
+	// memberships — otherwise someone who is an admin only in a non-home org resolves
+	// to their home-org level and is locked out of every admin surface (per-org
+	// authorization is still enforced server-side by the actual per-org doc). The
+	// mutation is response-only: it is never upserted back to the home-org doc.
+	private async Task<User> WithEffectiveAdminLevelAsync(User user, string externalId)
+	{
+		try
+		{
+			var memberships = await cosmos.GetMembershipsByExternalIdAsync(externalId);
+			var bestLevel = user.AdminLevel;
+			var bestRank = AdminLevels.RankOf(bestLevel);
+			foreach (var m in memberships)
+			{
+				var rank = AdminLevels.RankOf(m.AdminLevel);
+				if (rank > bestRank) { bestRank = rank; bestLevel = m.AdminLevel; }
+			}
+			user.AdminLevel = bestLevel;
+		}
+		catch (Exception ex)
+		{
+			logger.LogWarning(ex, "Could not compute effective admin level for {ExternalId}; returning home-org level.", externalId);
+		}
+		return user;
 	}
 
 	private static string ResolveTenantId(UserContext ctx)

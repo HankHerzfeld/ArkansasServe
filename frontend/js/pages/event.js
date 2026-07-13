@@ -143,7 +143,24 @@
     if (evt.externalUrl) {
       actions.appendChild(elem('a', { class: 'btn btn-secondary', href: evt.externalUrl, target: '_blank', rel: 'noopener', text: 'More info ↗' }));
     }
-    if (profile.adminLevel === 'Student' && (evt.status === 'Open')) {
+    if (evt.myRegistration) {
+      // Already signed up: show the state + a cancel affordance instead of a Sign Up
+      // button that would only 409 on the server's already-registered guard.
+      actions.appendChild(elem('span', { class: 'event-badge', text: "✓ You're signed up", style: 'align-self:center;' }));
+      const cancelBtn = elem('button', { class: 'btn btn-secondary', text: 'Cancel sign-up' });
+      cancelBtn.addEventListener('click', async () => {
+        cancelBtn.disabled = true; cancelBtn.textContent = 'Cancelling…';
+        try {
+          await Api.Registrations.cancel(evt.myRegistration.id, evt.id);
+          await loadEvent();
+          showToast('Your sign-up was cancelled.', 'success');
+        } catch (err) {
+          cancelBtn.disabled = false; cancelBtn.textContent = 'Cancel sign-up';
+          showToast(err.message || 'Could not cancel. Please try again.', 'error');
+        }
+      });
+      actions.appendChild(cancelBtn);
+    } else if (profile.adminLevel === 'Student' && (evt.status === 'Open')) {
       const btn = elem('button', { class: 'btn btn-primary', text: 'Sign Up' });
       btn.addEventListener('click', () => openSignup(evt));
       actions.appendChild(btn);

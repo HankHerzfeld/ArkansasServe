@@ -1,8 +1,9 @@
 # Manual verification checklist — 2026-07-07 changes
 
-Covers everything shipped on `auth/external-id-rewrite` today (PRs #31–#36). None
-of this could be exercised from the build environment (no interactive Entra
-sign-in), so it needs a human pass against deployed `main`.
+Covers everything shipped on `auth/external-id-rewrite` (PRs #31–#44): the
+backlog items (#31–#36) and the display + events/orgs rework (Phases A–D,
+#37–#44). None of this could be exercised from the build environment (no
+interactive Entra sign-in), so it needs a human pass against deployed `main`.
 
 ## Prerequisites
 
@@ -142,3 +143,111 @@ Platform Admin → Roles.
       Workspace federation and sign in with a real Google account through to a
       created/adopted membership. This is an Entra-side config check plus a live
       federated login.
+
+---
+---
+
+# Display + events/orgs rework — Phases A–D (PRs #37–#44)
+
+Same prerequisites and test accounts as above. New pages introduced:
+`event.html?id=&organizationId=` and `organization.html?id=`.
+
+## Phase A — shared app shell (#37)
+
+Applies to every authenticated page (dashboard, events, organizations,
+org-portal, admin-portal, admin-backend, platform-admin).
+
+- [ ] Every page shows the **same header**: brand, a role-aware tab bar, a
+      notification bell, your name, and Sign Out — identical across pages.
+- [ ] The **current page's tab is highlighted** (active state) and doesn't link
+      to itself.
+- [ ] Tabs shown match your level: everyone sees Dashboard / Find Events /
+      Organizations; EventAdmin+ also Manage Events; OrganizationAdmin+ also
+      Approvals + Admin Backend; SuperAdmin also Platform Admin.
+- [ ] **Your name in the header links to `/dashboard.html`.**
+- [ ] Sign Out works from the shell on any page.
+- [ ] In Chrome, navigating between pages **animates** (cross-document view
+      transition) rather than a hard flash. (No-op in browsers without support —
+      not a failure.)
+- [ ] `index.html` (landing) and `auth-callback.html` keep their own minimal
+      chrome (no app shell) — expected.
+
+## Phase B — dashboard profile + editing (#38)
+
+- [ ] Dashboard shows a **profile card**: avatar initial, name, email, role
+      badge, and org-membership chips. Phone/grade appear **only when set**.
+- [ ] **Edit profile** opens a modal; saving name/phone/grade updates the card
+      and the greeting.
+- [ ] Renders for **both** students and admins.
+- [ ] **Per-org lock:** in Admin Backend → Organization Settings, turn **off**
+      "Allow members to edit their own profile" for an org. Then, as a volunteer
+      in that org, the Edit button is hidden and a direct `PUT /users/me` is
+      refused (403). An **org admin can still edit** even when it's off.
+
+## Phase C — role-scoped notification pane (#39)
+
+- [ ] The bell shows an **unread badge** (unread personal notifications + admin
+      action items).
+- [ ] As a **student**: the pane shows only a **"For you"** list; "Mark read"
+      clears items and drops the badge.
+- [ ] As an **org admin** with a pending approval and a recent self-join: the
+      pane shows a **"Needs attention"** section with a **Review** link (→ Approvals)
+      and a **View** link (→ Admin Backend), above "For you".
+- [ ] The pane closes on an outside click and is reachable from every page.
+- [ ] The dashboard no longer shows a separate in-body notifications section
+      (it moved into the bell) — expected.
+
+## Phase D1 — event detail page + richer fields (#40)
+
+- [ ] From Find Events, clicking an event title opens **`event.html`**.
+- [ ] The page renders hero photo, title/org, status + category + tag badges, a
+      facts row (**When**, **Where** with a maps link, credit, spots), **About**,
+      **What to know**, **Contact** (with mailto), and a **More info** link —
+      each shown **only when it has data**.
+- [ ] A volunteer can **Sign Up** inline; the slot count updates.
+- [ ] In org-portal, an admin can set the new fields (tags, requirements,
+      external link, contact) and they appear on the detail page.
+
+## Phase D2 — event shifts/slots + custom questions (#43)
+
+- [ ] In org-portal, build an event with **2 shifts** (give one a small capacity)
+      and **1 required question** (text or choice); save and reopen — the shifts +
+      question **persist** in the form.
+- [ ] On the event's list card, its **Sign Up** now routes to the detail page
+      (not the quick modal) because it's structured.
+- [ ] Signing up requires **choosing a shift** and **answering the required
+      question**; the sign-up modal shows both.
+- [ ] Fill a shift to capacity → it shows **FULL / 0 left** and is not selectable;
+      the overall event may still be open via other shifts.
+- [ ] Cancelling a registration **frees** the shift's spot.
+- [ ] **Editing the event does not reset shift fill counts** (filled is preserved
+      by shift id on the server).
+
+## Phase D3 — public organization profile page (#41)
+
+- [ ] From Organizations, the card title / **View** opens **`organization.html`**.
+- [ ] Renders logo + name/type header with **Join/Leave**, **Mission** / **About**,
+      a **Contact** block, and an **Upcoming events** list linking to each event —
+      each shown only when it has data.
+- [ ] **Join/Leave** on the profile works and reflects membership.
+- [ ] An org with no description/mission yet shows those sections **omitted**
+      (until an admin fills them in — see D4).
+
+## Phase D4 — org admin editing of the public profile (#44)
+
+- [ ] In Admin Backend → Organization Settings, a **"Public profile"** group
+      exists: description, mission, website, logo URL, contact email/phone, address.
+- [ ] As an **org admin** (not just SuperAdmin), the form **loads the org's
+      current values** (from context) and saving updates them.
+- [ ] Saved values then appear on that org's **`organization.html`** (D3); cleared
+      values disappear (empty = hidden).
+- [ ] Editing is gated to `OrganizationAdmin+` for that org.
+
+## Cross-cutting regression pass
+
+- [ ] All prior surfaces still work behind the new shell: approvals, reports,
+      role matrix (filter/search/load-more + inline errors), admin backend user
+      management, bulk/CSV hours, volunteer self-service join/leave.
+- [ ] Unauthenticated probes still 401: `GET /api/manage/orgs`,
+      `GET /api/manage/orgs/<id>`, `GET /api/manage/matrix`, `GET /api/users/me`.
+      (`GET /api/registrations` returns 404 — it's POST-only — which is expected.)

@@ -166,6 +166,10 @@ const UI = (() => {
   // Renders the whole shell (header + scope bar). Kept named `setupHeader` so the
   // existing page calls keep working. `current` is this page's href.
   async function setupHeader(current, currentUser, opts = {}) {
+    // Cache the authoritative name/level from /users/me before rendering, so the
+    // header shows the person's real display name (not the token's `name` claim)
+    // right away on pages that resolve the user first.
+    if (currentUser) Auth.setResolvedLevelFromUser(currentUser);
     // While impersonating, the whole shell must reflect the TARGET, not the real
     // super — so the nav shows the target's name and only their tab set (a faithful
     // "view as"), and the scope bar uses their level. Default to Student (minimal)

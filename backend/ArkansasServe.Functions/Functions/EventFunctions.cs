@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ArkansasServe.Functions.Middleware;
 using ArkansasServe.Functions.Models;
 using ArkansasServe.Functions.Services;
@@ -54,7 +56,26 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var evt = await cosmos.GetEventAsync(id, orgId);
 		if (evt == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
 		SignEventPhoto(evt);
-		return await HttpHelper.OkJson(req, evt);
+
+		// Attach the viewer's own active registration so the detail page can render a
+		// "you're signed up" state + Cancel, instead of always offering Sign Up (which
+		// then 409s on the already-registered guard). Merged onto the response only —
+		// never persisted. Uses camelCase to match the API's serialization.
+		var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+		var payload = JsonSerializer.SerializeToNode(evt, opts)!.AsObject();
+		try
+		{
+			var regs = await cosmos.GetRegistrationsByEventAsync(id);
+			var mine = regs.FirstOrDefault(r =>
+				string.Equals(r.UserId, ctx.UserId, StringComparison.OrdinalIgnoreCase)
+				&& !string.Equals(r.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
+			payload["myRegistration"] = mine == null ? null : JsonSerializer.SerializeToNode(mine, opts);
+		}
+		catch (Exception ex)
+		{
+			logger.LogWarning(ex, "Could not attach viewer registration for event {EventId}", id);
+		}
+		return await HttpHelper.OkJson(req, payload);
 	}
 
 	[Function("CreateEvent")]
