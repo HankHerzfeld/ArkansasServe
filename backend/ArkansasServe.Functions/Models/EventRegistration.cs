@@ -16,6 +16,12 @@ public class EventRegistration : CosmosDocument
 	[JsonPropertyName("schoolId")]
 	public string SchoolId { get; set; } = string.Empty;
 
+	// The event's owning org — this is the Events partition key, which can differ from
+	// SchoolId (the registrant's home tenant) for a cross-org sign-up. Used to locate the
+	// event when adjusting slot/shift counts on cancel. Nullable for pre-existing records.
+	[JsonPropertyName("organizationId")]
+	public string? OrganizationId { get; set; }
+
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "Registered";
 
