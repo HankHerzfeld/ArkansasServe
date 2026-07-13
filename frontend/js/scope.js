@@ -66,6 +66,17 @@ const Scope = (() => {
     return (groups || []).map(g => ({ id: g.id, name: g.name || g.id }));
   }
 
+  // The org where the user holds the strongest admin role (null if none / supers,
+  // whose orgs carry no per-org adminLevel). Used to pick a sensible default org.
+  function bestAdminOrgId(orgs) {
+    let best = null, bestRank = 0;
+    (orgs || []).forEach(o => {
+      const rank = Auth.adminRank(o.adminLevel);
+      if (rank > bestRank) { bestRank = rank; best = o.id; }
+    });
+    return best;
+  }
+
   // Resolve the orgs/groups this user can act within.
   //   SuperAdmin  → every tenant (with its groups)
   //   Org admin   → their own org (name + groups from the tenant record)
@@ -108,7 +119,12 @@ const Scope = (() => {
     }
 
     const savedOrg = sessionStorage.getItem(KEYS.org);
-    state.activeOrgId = state.orgs.find(o => o.id === savedOrg)?.id || state.orgs[0]?.id || null;
+    // Default to the org where the user holds the STRONGEST admin role, so admin
+    // pages open on an org they can actually manage rather than, say, a volunteer-only
+    // home org (which would render an unusable/empty admin view until they switch).
+    state.activeOrgId = state.orgs.find(o => o.id === savedOrg)?.id
+      || bestAdminOrgId(state.orgs)
+      || state.orgs[0]?.id || null;
 
     const savedGroup = sessionStorage.getItem(KEYS.group);
     state.activeGroupId = activeGroups().find(g => g.id === savedGroup)?.id || null;

@@ -121,8 +121,25 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
+		var explicitOrg = QueryValue(req, "organizationId");
 		var orgId = OrgFromQuery(req, ctx);
 		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, orgId);
+
+		// Multi-org: the Admin Backend bootstraps by calling this with NO org, so orgId
+		// defaults to the caller's home/token org. A person who is an admin only in a
+		// DIFFERENT org would resolve as a non-admin there and the page would 403/bounce.
+		// When no org was explicitly requested, fall back to their strongest admin
+		// membership so the page loads; the scope switcher then picks which org to manage.
+		if (string.IsNullOrWhiteSpace(explicitOrg)
+			&& (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin)))
+		{
+			var best = (await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId))
+				.Where(m => AdminLevels.AtLeast(m.AdminLevel, AdminLevels.EventAdmin))
+				.OrderByDescending(m => AdminLevels.RankOf(m.AdminLevel))
+				.FirstOrDefault();
+			if (best != null) { orgId = best.OrganizationId ?? best.TenantId; actor = best; }
+		}
+
 		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
 			return await Forbid(req);
 
