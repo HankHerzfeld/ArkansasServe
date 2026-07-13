@@ -42,6 +42,7 @@ const Auth = (() => {
   const KEYS = {
     lastLoginAt: 'as_last_login_at',
     adminLevel:  'as_admin_level',
+    displayName: 'as_display_name',
     impersonation: 'as_impersonation',
   };
 
@@ -265,21 +266,27 @@ const Auth = (() => {
     const adminLevel  = strongestLevel(tokenLevel, cachedLevel);
 
     return {
-      name:  claims.name || account.name || claims.preferred_username || 'User',
+      // The token's `name` claim can be stale/"unknown" and profile edits can't
+      // touch it, so prefer the displayName cached from /users/me when we have it.
+      name:  sessionStorage.getItem(KEYS.displayName) || claims.name || account.name || claims.preferred_username || 'User',
       adminLevel,
       email: claims.email || claims.preferred_username || account.username || '',
     };
   }
 
   function setResolvedLevelFromUser(user) {
-    if (!user || !user.adminLevel) return;
+    if (!user) return;
     // While impersonating, /users/me returns the TARGET — don't let that overwrite
-    // the real account's cached level (which would strand the super below SuperAdmin
-    // after exiting). The cached level always represents the real signed-in user.
+    // the real account's cached level/name (which would strand the super below
+    // SuperAdmin after exiting). The cache always represents the real signed-in user.
     if (getImpersonation()) return;
-    if (Object.hasOwn(ADMIN_RANK, user.adminLevel)) {
+    if (user.adminLevel && Object.hasOwn(ADMIN_RANK, user.adminLevel)) {
       sessionStorage.setItem(KEYS.adminLevel, user.adminLevel);
     }
+    // Cache the authoritative display name so the shell header + greeting show the
+    // person's real name instead of the token's `name` claim.
+    const displayName = (user.displayName || '').trim();
+    if (displayName) sessionStorage.setItem(KEYS.displayName, displayName);
   }
 
   function isAuthenticated() {

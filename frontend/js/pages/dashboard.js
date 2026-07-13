@@ -227,6 +227,10 @@
       try {
         const currentUser = await Api.Users.getMe();
         Auth.setResolvedLevelFromUser(currentUser);
+        // Re-set the greeting from the authoritative profile name; the initial paint
+        // used the token claim, which can be stale/"unknown".
+        const greetName = (currentUser.displayName || currentUser.firstName || profile.name || '').trim().split(' ')[0] || 'back';
+        document.getElementById('greeting').textContent = `Welcome, ${greetName}`;
         const adminLevel = toAdminLevel(currentUser);
 
         await UI.setupHeader('/dashboard.html', currentUser);
