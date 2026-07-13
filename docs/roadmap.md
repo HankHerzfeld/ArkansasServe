@@ -23,7 +23,10 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
 ### Admin tooling
 - **SuperAdmin: delete event & void approved service log.** Delete cascades registrations
   (keeps earned logs); Void hard-deletes an approved log (the only way to reverse one).
-  (PR #59 — open, pending deploy)
+  (PR #59, deployed & verified in prod)
+- **Finding 8 — cross-org cancel frees the counter.** Registrations record the event's
+  `OrganizationId` at sign-up; cancel uses it (fallback to `SchoolId`) to locate the event,
+  so the slot/shift `filled` counter decrements even for cross-org sign-ups. (PR #59, deployed)
 
 ### Earlier program work (see companion docs)
 - Volunteer self-registration, managed-volunteer adoption + service-log migration, role
@@ -36,10 +39,11 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
 ---
 
 ## 🐛 Open findings / follow-ups
-- **Finding 8 — cross-org cancel doesn't free the counter.** `CancelRegistration` locates
-  the event via `reg.SchoolId` (registrant's home tenant), which can differ from the
-  event's `OrganizationId`; when they differ the slot/shift `filled` is never decremented.
-  Affects multi-org users registering in a non-home org.
+- **Finding 9 — registration cancel checks token level, not membership.** `CancelRegistration`
+  gates "cancel only your own" on the token `adminLevel`, so a membership-based
+  OrganizationAdmin gets 403 ("Cannot cancel another user's registration") on a member's
+  registration. Fix: authorize via per-org membership (`ResolveActorInOrgAsync` +
+  OrganizationAdmin+ or the owner), like the void/delete endpoints.
 - **Finding 1 (likely by-design).** A role granted via Platform Admin → Roles doesn't apply
   on sign-in; the user must self-join the org to trigger adoption. No hint in the Roles UI.
 - **Finding 6 (UX).** An adopted membership is `selfJoined:false`, so Leave is refused (403)
