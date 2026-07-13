@@ -212,6 +212,7 @@
       const report = await Api.Reports.serviceHours({ from, to, schoolId: Scope.activeOrgId });
       lastReport = report;
       loading.style.display = 'none';
+      renderLogDetail(report.logs || []);
 
       const students = report.students || [];
       if (students.length === 0) {
@@ -247,6 +248,69 @@
       loading.style.display = 'none';
       empty.style.display = 'block';
       empty.textContent = 'Could not load the report. Please try again.';
+    }
+  }
+
+  // Per-log detail with a Void action (OrganizationAdmin+). Voiding hard-deletes an
+  // already-approved log — the only way to reverse an erroneous/duplicate entry, since
+  // Approvals can only reject items still pending. Rebuilt on each report load.
+  function renderLogDetail(logs) {
+    let box = document.getElementById('report-log-detail');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'report-log-detail';
+      box.style.cssText = 'margin-top:1.5rem;';
+      document.getElementById('report-content').appendChild(box);
+    }
+    box.innerHTML = '';
+    if (!logs.length) return;
+
+    const canVoid = Scope.isSuperAdmin
+      || Auth.adminRank(Scope.activeOrg()?.adminLevel) >= Auth.adminRank('OrganizationAdmin');
+
+    const heading = document.createElement('div');
+    heading.className = 'card-title';
+    heading.textContent = 'Approved logs';
+    box.appendChild(heading);
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width:100%;font-size:.9rem;';
+    const head = document.createElement('thead');
+    head.innerHTML = `<tr><th>Student</th><th>Event</th><th>Date</th><th>Hours</th>${canVoid ? '<th></th>' : ''}</tr>`;
+    table.appendChild(head);
+    const tbody = document.createElement('tbody');
+    logs.forEach(l => {
+      const tr = document.createElement('tr');
+      appendCell(tr, l.studentName, true);
+      appendCell(tr, l.eventTitle || '—');
+      appendCell(tr, new Date(l.serviceDate).toLocaleDateString());
+      appendCell(tr, Number(l.hoursLogged).toFixed(1));
+      if (canVoid) {
+        const td = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-danger btn-sm';
+        btn.textContent = 'Void';
+        btn.addEventListener('click', () => voidLog(l, btn));
+        td.appendChild(btn);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    box.appendChild(table);
+  }
+
+  async function voidLog(l, btn) {
+    if (!l.id || !l.studentId) { showBanner('This log cannot be voided (missing id).'); return; }
+    if (!window.confirm(`Void ${Number(l.hoursLogged).toFixed(1)}h for ${l.studentName} (${l.eventTitle})? This permanently removes the approved hours.`)) return;
+    btn.disabled = true; btn.textContent = 'Voiding…';
+    try {
+      await Api.ServiceLogs.voidLog(l.id, l.studentId);
+      showBanner(`Voided ${Number(l.hoursLogged).toFixed(1)}h for ${l.studentName}.`);
+      await loadReport();
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Void';
+      window.alert(err.message || 'Could not void this log. You may not have permission.');
     }
   }
 

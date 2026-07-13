@@ -24,6 +24,19 @@
     }
   }
 
+  // Hard-delete an event (and its sign-ups). Service logs already earned are kept.
+  async function deleteEvent(evt) {
+    const signups = evt.currentSlots || 0;
+    const warn = signups > 0 ? `\n\n${signups} volunteer sign-up(s) will also be removed.` : '';
+    if (!window.confirm(`Delete "${evt.title}"? This cannot be undone.${warn}`)) return;
+    try {
+      await Api.Events.delete(evt.id, evt.organizationId || Scope.activeOrgId);
+      await loadOrgEvents();
+    } catch (err) {
+      window.alert(err.message || 'Could not delete the event. You may not have permission.');
+    }
+  }
+
   function renderOrgEvents(events) {
     const list  = document.getElementById('events-list');
     const empty = document.getElementById('events-empty');
@@ -67,6 +80,18 @@
       logBtn.textContent = 'Log Hours';
       logBtn.addEventListener('click', () => openLogHours(evt.id, evt.title));
       actions.appendChild(logBtn);
+
+      // Delete is destructive, so it's gated to OrganizationAdmin+ in the active org
+      // (mirrors the backend); the backend enforces the real rule regardless.
+      const canDelete = Scope.isSuperAdmin
+        || Auth.adminRank(Scope.activeOrg()?.adminLevel) >= Auth.adminRank('OrganizationAdmin');
+      if (canDelete) {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn btn-danger btn-sm';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', () => deleteEvent(evt));
+        actions.appendChild(delBtn);
+      }
 
       card.appendChild(actions);
       list.appendChild(card);

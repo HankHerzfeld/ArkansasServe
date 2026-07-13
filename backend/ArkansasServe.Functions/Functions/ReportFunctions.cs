@@ -73,6 +73,8 @@ public class ReportFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 			.OrderBy(l => l.StudentName).ThenBy(l => l.ServiceDate)
 			.Select(l => new
 			{
+				id = l.Id,
+				studentId = l.StudentId,
 				studentName = l.StudentName,
 				eventTitle = l.EventTitle,
 				organizationName = l.OrganizationName,

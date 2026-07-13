@@ -123,6 +123,38 @@ public class ServiceLogFunctions(CosmosService cosmos, EmailService email, AuthC
 		return await HttpHelper.OkJson(req, log);
 	}
 
+	[Function("DeleteServiceLog")]
+	public async Task<HttpResponseData> DeleteLog(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "servicelogs/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		// studentId is the ServiceLogs partition key; required to locate the log.
+		var studentId = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["studentId"];
+		if (string.IsNullOrWhiteSpace(studentId))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "studentId is required");
+
+		var log = await cosmos.GetServiceLogAsync(id, studentId);
+		if (log == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Service log not found");
+
+		// Per-org: voiding a log is admin-only — same rule as reviewing it (OrganizationAdmin+
+		// in the log's school, or a global super).
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, log.SchoolId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot void logs for this school");
+
+		await cosmos.DeleteServiceLogAsync(id, studentId);
+		// Clear any lingering pending-approval pointer (harmless if the log was already reviewed).
+		try { await cosmos.DeletePendingApprovalByLogIdAsync(id, log.SchoolId); }
+		catch (Exception ex) { logger.LogWarning(ex, "Void: pending-approval cleanup failed for log {ServiceLogId}", id); }
+
+		logger.LogInformation("Voided service log {ServiceLogId} (student {StudentId}, {Hours}h) by {UserId}",
+			id, studentId, log.HoursLogged, ctx.UserId);
+		return await HttpHelper.OkJson(req, new { deleted = true, serviceLogId = id });
+	}
+
 	// Create the pending-approval pointer for a freshly-submitted log. Uses a deterministic
 	// pointer id so this is idempotent, and retries transient faults. A terminal failure is
 	// recoverable: the admin queue self-heals via reconciliation on read (see CosmosService.Reconciliation).

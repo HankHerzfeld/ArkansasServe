@@ -88,6 +88,7 @@ const Api = (() => {
     get:           (id, orgId)  => request('GET',  `/events/${encodeURIComponent(id)}${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
     create:        (data)       => request('POST', '/events', data),
     update:        (id, data)   => request('PUT',  `/events/${encodeURIComponent(id)}`, data),
+    delete:        (id, orgId)  => request('DELETE', `/events/${encodeURIComponent(id)}${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
     registrations: (id)         => request('GET',  `/events/${encodeURIComponent(id)}/registrations`),
     uploadToken:   (fileName)   => request('POST', '/events/upload-token', { fileName }),
     match:         (orgId, q)   => {
@@ -116,6 +117,7 @@ const Api = (() => {
     myLogs:   ()               => request('GET',   '/students/me/servicelogs'),
     bulkCreate: (data)         => request('POST',  '/manage/servicelogs/bulk', data),
     import:     (data)         => request('POST',  '/manage/servicelogs/import', data),
+    voidLog:  (id, studentId)  => request('DELETE', `/servicelogs/${encodeURIComponent(id)}?studentId=${encodeURIComponent(studentId)}`),
   };
 
   // ── Approvals ─────────────────────────────────────────────────────────────
