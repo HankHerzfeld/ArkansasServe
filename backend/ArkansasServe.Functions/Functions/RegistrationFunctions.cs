@@ -67,6 +67,9 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			UserId = ctx.UserId,
 			StudentName = ctx.DisplayName,
 			SchoolId = ctx.TenantId,
+			// The event's authoritative org (its partition key) — may differ from SchoolId
+			// on a cross-org sign-up; cancel needs it to find the event.
+			OrganizationId = evt.OrganizationId,
 			Status = "Registered",
 			ShiftId = evt.Shifts.Count > 0 ? body.ShiftId : null,
 			Answers = answers,
@@ -78,7 +81,7 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		var slotUpdateSucceeded = false;
 		for (var attempt = 0; attempt < maxRetries; attempt++)
 		{
-			var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(body.EventId, body.OrganizationId ?? string.Empty);
+			var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(body.EventId, evt.OrganizationId);
 			if (freshEvt == null) break;
 
 			if (freshEvt.MaxSlots > 0 && freshEvt.CurrentSlots >= freshEvt.MaxSlots)
@@ -154,7 +157,9 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		const int maxRetries = 5;
 		for (var attempt = 0; attempt < maxRetries; attempt++)
 		{
-			var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(reg.EventId, reg.SchoolId);
+			// Locate the event by its OWN org (partition key). Fall back to SchoolId for
+			// pre-existing registrations saved before OrganizationId was recorded.
+			var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(reg.EventId, reg.OrganizationId ?? reg.SchoolId);
 			if (freshEvt == null) break;
 
 			if (freshEvt.CurrentSlots > 0) freshEvt.CurrentSlots--;

@@ -314,6 +314,21 @@ public partial class CosmosService
         return results;
     }
 
+    // Hard-deletes an event and its (non-cancelled) registrations. Service logs are
+    // intentionally left untouched — those are the volunteer's earned record and must
+    // survive an event removal. Returns the number of registrations removed.
+    public async Task<int> DeleteEventCascadeAsync(string eventId, string orgId, CancellationToken cancellationToken = default)
+    {
+        var regs = await GetRegistrationsByEventAsync(eventId, cancellationToken);
+        foreach (var r in regs)
+        {
+            try { await Registrations.DeleteItemAsync<EventRegistration>(r.Id, new PartitionKey(eventId), cancellationToken: cancellationToken); }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) { /* already gone */ }
+        }
+        await Events.DeleteItemAsync<Event>(eventId, new PartitionKey(orgId), cancellationToken: cancellationToken);
+        return regs.Count;
+    }
+
     public async Task<EventRegistration> UpdateRegistrationAsync(EventRegistration reg, CancellationToken cancellationToken = default)
     {
         reg.UpdatedAt = DateTime.UtcNow;
@@ -369,6 +384,15 @@ public partial class CosmosService
         {
             return null;
         }
+    }
+
+    // Hard-deletes a service log (partitioned by studentId). Used by the admin "void"
+    // flow to reverse an erroneous/duplicate entry; the student's approved total is
+    // computed from the surviving logs, so no denormalized counter needs updating.
+    public async Task DeleteServiceLogAsync(string id, string studentId, CancellationToken cancellationToken = default)
+    {
+        try { await ServiceLogs.DeleteItemAsync<ServiceLog>(id, new PartitionKey(studentId), cancellationToken: cancellationToken); }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) { /* already gone */ }
     }
 
     public async Task<ServiceLog> UpdateServiceLogAsync(ServiceLog log, CancellationToken cancellationToken = default)

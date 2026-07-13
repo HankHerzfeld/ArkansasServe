@@ -78,6 +78,31 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		return await HttpHelper.OkJson(req, payload);
 	}
 
+	[Function("DeleteEvent")]
+	public async Task<HttpResponseData> DeleteEvent(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "events/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var orgId = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["organizationId"] ?? string.Empty;
+		var evt = await cosmos.GetEventAsync(id, orgId);
+		if (evt == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
+
+		// Per-org: deleting an event is destructive, so require OrganizationAdmin+ in the
+		// event's own org (a global super clears this everywhere). Authorize against the
+		// event's authoritative OrganizationId, not the query string.
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, evt.OrganizationId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You cannot delete events in this organization");
+
+		var registrationsRemoved = await cosmos.DeleteEventCascadeAsync(id, evt.OrganizationId);
+		logger.LogInformation("Deleted event {EventId} in org {OrgId} ({Count} registrations removed) by {UserId}",
+			id, evt.OrganizationId, registrationsRemoved, ctx.UserId);
+		return await HttpHelper.OkJson(req, new { deleted = true, eventId = id, registrationsRemoved });
+	}
+
 	[Function("CreateEvent")]
 	public async Task<HttpResponseData> CreateEvent(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events")] HttpRequestData req)
