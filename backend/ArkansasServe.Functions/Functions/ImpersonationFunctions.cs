@@ -13,8 +13,8 @@ namespace ArkansasServe.Functions.Functions;
 // effective (target) context from it per request. See the design doc.
 public class ImpersonationFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<ImpersonationFunctions> logger)
 {
-	// Phase 1 hard limits.
-	private const string Phase1Mode = "read-only";
+	private const string ModeReadOnly = "read-only";
+	private const string ModeReadWrite = "read-write";
 	private static readonly TimeSpan SessionLifetime = TimeSpan.FromMinutes(30);
 
 	[Function("StartImpersonation")]
@@ -43,6 +43,19 @@ public class ImpersonationFunctions(CosmosService cosmos, AuthConfig authConfig,
 		if (!target.IsDemoUser)
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Phase 1 allows impersonating demo users only");
 
+		// Mode: read-only by default. read-write is permitted ONLY against a demo target —
+		// demo records hold no real PII and are rebuilt by Reset Demo Users, so a write
+		// session cannot touch a real person's data. The design's read-only default exists
+		// to protect REAL users (court-involved youth records); it is not a demo constraint.
+		// Real-user impersonation (Phase 2) therefore stays read-only regardless of request.
+		var requestedMode = string.IsNullOrWhiteSpace(body.Mode)
+			? ModeReadOnly
+			: body.Mode.Trim().ToLowerInvariant();
+		if (requestedMode != ModeReadOnly && requestedMode != ModeReadWrite)
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"mode must be '{ModeReadOnly}' or '{ModeReadWrite}'");
+		if (requestedMode == ModeReadWrite && !target.IsDemoUser)
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "read-write impersonation is allowed for demo users only");
+
 		var effectiveLevel = !string.IsNullOrWhiteSpace(target.DemoUserType) ? target.DemoUserType! : target.AdminLevel;
 		var now = DateTime.UtcNow;
 		var session = new ImpersonationSession
@@ -58,7 +71,7 @@ public class ImpersonationFunctions(CosmosService cosmos, AuthConfig authConfig,
 			TargetAdminLevel = effectiveLevel,
 			TargetIsDemo = true,
 			Reason = body.Reason.Trim(),
-			Mode = Phase1Mode,
+			Mode = requestedMode,
 			StartedAt = now,
 			ExpiresAt = now.Add(SessionLifetime),
 		};
@@ -74,7 +87,7 @@ public class ImpersonationFunctions(CosmosService cosmos, AuthConfig authConfig,
 				SessionId = created.Id,
 				TargetUserId = target.Id,
 				Action = "impersonation.start",
-				Detail = $"{ctx.Email} → {target.DisplayName} ({effectiveLevel}, demo); reason: {session.Reason}",
+				Detail = $"{ctx.Email} → {target.DisplayName} ({effectiveLevel}, demo, {session.Mode}); reason: {session.Reason}",
 			});
 		}
 		catch (Exception ex)
@@ -135,5 +148,6 @@ public class ImpersonationFunctions(CosmosService cosmos, AuthConfig authConfig,
 	private Task<bool> IsGlobalSuperAsync(UserContext ctx) =>
 		cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel);
 
-	private sealed record StartRequest(string TargetUserId, string TargetTenantId, string Reason);
+	// Mode is optional; null/empty means read-only.
+	private sealed record StartRequest(string TargetUserId, string TargetTenantId, string Reason, string? Mode);
 }

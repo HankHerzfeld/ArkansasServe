@@ -161,7 +161,7 @@ SuperAdmin UI                     Functions                         Cosmos
 2. **No privilege escalation:** effective `AdminLevel` is the target's; `IsSuperAdmin` is false while impersonating a non-super.
 3. **No nested impersonation:** `POST /manage/impersonation` requires `IsGlobalSuper(realCtx)` **and** `!ctx.IsImpersonating`.
 4. **Elevation-proofing:** while impersonating, block endpoints that could grant the *target* (or the admin via the target) more power — e.g. reject `PATCH /manage/backend/users/{id}/access`, tenant create/update, demo-user reset, and the DB console (`manage/db/*`) when `ctx.IsImpersonating`. (Admins do those as themselves, not through a user.)
-5. **`read-only` mode (default):** middleware rejects all non-GET requests during the session — safest for "just show me what they see." `read-write` is opt-in per session, captured in the reason/audit, for when the admin must reproduce a mutating bug.
+5. **`read-only` mode (default):** middleware rejects all non-GET requests during the session — safest for "just show me what they see." `read-write` is opt-in per session, captured in the reason/audit, for when the admin must reproduce a mutating bug. **`read-write` is accepted only when the target is a demo user** (`isDemoUser:true`) — demo records hold no real PII and are rebuilt by Reset Demo Users, so a write session cannot reach a real person's data. Real-user targets are forced to `read-only` regardless of the requested mode; lifting that is Phase 3, not a config toggle.
 6. **Hard expiry** (≤30 min) + **explicit stop** + **kill-switch** (`revoked`), plus a global "end all sessions" for incident response.
 7. **Audit is mandatory:** if the `auditEvents` write for `impersonation.start` fails, the **start fails** (fail-closed) — no unlogged impersonation.
 
@@ -178,7 +178,14 @@ SuperAdmin UI                     Functions                         Cosmos
 
 ## 9 · Rollout plan (phased, lowest-risk first)
 
-- **Phase 1 — demo users only (MVP).** ✅ **Chosen as the launch scope (2026-07-09).** Impersonation restricted to `isDemoUser:true` targets. Delivers the onboarding/demo value with **zero real-PII exposure**, while proving the whole mechanism (session, banner, audit, guardrails). Low blast radius. No user notification (demo accounts).
+- **Phase 1 — demo users only (MVP).** ✅ **Chosen as the launch scope (2026-07-09).** Impersonation restricted to `isDemoUser:true` targets. Delivers the onboarding/demo value with **zero real-PII exposure**, while proving the whole mechanism (session, banner, audit, guardrails). Low blast radius. No user notification (demo accounts). **`read-write` is selectable per session for these demo targets** (§7.5) — the read-only default protects *real* users, and demo records are disposable, so forcing read-only here bought no safety and blocked the main testing use case.
+  **Demo fixtures (2026-07-14):** demo personas are parented to dedicated demo organizations —
+  `demo-org-alpha` (home) and `demo-org-beta` (secondary) — with the SuperAdmin personas left on
+  the `arkansas-serve-root` host org. Beta exists so a **secondary-org admin** is reproducible: the
+  cross-org persona is two `User` docs sharing one `externalId` (per the one-doc-per-org model), which
+  is the shape behind Findings 2/7/9 and is inexpressible with a single-org fixture set. Seeding is
+  now **global**, not per-org: `POST /manage/backend/demo-users/reset` asserts the demo orgs and
+  rebuilds every persona across them.
 - **Phase 2 — real users, `read-only`, behind a config flag.** Adds the support/debugging value. **Notifies the impersonated user** on start (decision §8).
 - **Phase 3 — `read-write` for real users**, opt-in per session, only if a concrete need emerges. May stay disabled indefinitely.
 

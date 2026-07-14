@@ -223,15 +223,20 @@ const UI = (() => {
       window.location.href = expired ? '/admin-backend.html?impersonation=expired' : '/admin-backend.html';
     }
 
+    // A write session is the more dangerous state, so it gets the louder colour; the
+    // label must always state the ACTUAL mode — never assume read-only.
+    const writable = String(imp.mode || 'read-only').toLowerCase() === 'read-write';
+
     const bar = document.createElement('div');
     bar.id = 'impersonation-banner';
-    bar.style.cssText = 'background:#b91c1c;color:#fff;padding:.5rem 1rem;display:flex;align-items:center;justify-content:center;gap:1rem;font-size:.9rem;font-weight:600;flex-wrap:wrap;';
+    bar.style.cssText = `background:${writable ? '#b91c1c' : '#b45309'};color:#fff;padding:.5rem 1rem;display:flex;align-items:center;justify-content:center;gap:1rem;font-size:.9rem;font-weight:600;flex-wrap:wrap;`;
 
     const label = document.createElement('span');
     const lvl = imp.adminLevel ? ` (${imp.adminLevel})` : '';
     const expiry = imp.expiresAt ? new Date(imp.expiresAt) : null;
     const expiryTxt = expiry ? ` — expires ${expiry.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-    label.textContent = `⚠ Viewing as ${imp.name}${lvl} — read-only session${expiryTxt}`;
+    const modeTxt = writable ? 'READ-WRITE session — changes are real' : 'read-only session';
+    label.textContent = `⚠ Viewing as ${imp.name}${lvl} — ${modeTxt}${expiryTxt}`;
     bar.appendChild(label);
 
     const exit = document.createElement('button');

@@ -257,13 +257,17 @@
 
   <div class="card" id="demo-users-card" style="display:none;">
     <div class="card-title">Demo Users (SuperAdmin Only)</div>
-    <p style="color:var(--gray-600);font-size:.9rem;">Two demo users per user type are available. Reset recreates all demo users in a clean state.</p>
+    <p style="color:var(--gray-600);font-size:.9rem;">
+      Demo personas live in the dedicated demo organizations (SuperAdmins stay on Arkansas Serve).
+      Reset recreates the demo organizations and all demo users in a clean state.
+    </p>
     <div style="display:flex;gap:.5rem;align-items:center;">
       <button class="btn btn-danger" id="btn-reset-demo-users">Reset Demo Users</button>
       <span id="demo-reset-status" style="font-size:.85rem;color:var(--gray-600);"></span>
     </div>
     <p style="color:var(--gray-600);font-size:.8rem;margin:.25rem 0 0;">
-      <strong>Act as</strong> opens a read-only session viewing the app exactly as that demo user.
+      <strong>Act as</strong> opens a session viewing the app exactly as that demo user. You choose
+      read-only (view) or read-write; writes are permitted against demo records only.
       Every session is time-boxed and audited. (Demo users only in this release.)
     </p>
     <table class="table" id="demo-users-table" style="margin-top:1rem;display:none;">
@@ -271,6 +275,7 @@
         <tr>
           <th>Name</th>
           <th>Type</th>
+          <th>Organization</th>
           <th>Email</th>
           <th>Remote access</th>
         </tr>

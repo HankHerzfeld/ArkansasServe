@@ -128,10 +128,16 @@ public partial class CosmosService
             .ToList();
     }
 
-    public async Task<List<User>> GetDemoUsersByTenantAsync(string tenantId, CancellationToken cancellationToken = default)
+    // ── Demo fixtures (#26) ────────────────────────────────────────────────────
+    // Demo users are a GLOBAL fixture set, not a per-org copy: they are parented to the
+    // dedicated demo organizations (plus the root org for the SuperAdmin personas), so
+    // seeding, listing and reset are cross-partition by design. The fixture set is small
+    // and SuperAdmin-only, so the cross-partition scan is not a hot path.
+    // See AdminFunctions.BuildDefaultDemoUsers for the persona shapes.
+
+    public async Task<List<User>> GetAllDemoUsersAsync(CancellationToken cancellationToken = default)
     {
-        var query = Users.GetItemLinqQueryable<User>(requestOptions: new QueryRequestOptions
-            { PartitionKey = new PartitionKey(tenantId) })
+        var query = Users.GetItemLinqQueryable<User>()
             .Where(u => u.IsDemoUser)
             .ToFeedIterator();
 
@@ -140,30 +146,40 @@ public partial class CosmosService
             results.AddRange(await query.ReadNextAsync(cancellationToken));
 
         return results
-            .OrderBy(u => u.AdminLevel)
+            .OrderBy(u => u.TenantId)
+            .ThenBy(u => u.AdminLevel)
             .ThenBy(u => u.DisplayName)
             .ToList();
     }
 
-    public async Task DeleteDemoUsersByTenantAsync(string tenantId, CancellationToken cancellationToken = default)
+    public async Task DeleteAllDemoUsersAsync(CancellationToken cancellationToken = default)
     {
-        var demoUsers = await GetDemoUsersByTenantAsync(tenantId, cancellationToken);
+        var demoUsers = await GetAllDemoUsersAsync(cancellationToken);
         foreach (var demoUser in demoUsers)
-            await Users.DeleteItemAsync<User>(demoUser.Id, new PartitionKey(tenantId), cancellationToken: cancellationToken);
+            await Users.DeleteItemAsync<User>(demoUser.Id, new PartitionKey(demoUser.TenantId), cancellationToken: cancellationToken);
     }
 
-    public async Task<List<User>> UpsertDemoUsersAsync(string tenantId, IEnumerable<User> demoUsers, CancellationToken cancellationToken = default)
+    // Each demo user carries its own TenantId (the fixtures span the demo orgs and the
+    // root org), so — unlike the previous per-tenant seeder — this must NOT overwrite it.
+    public async Task<List<User>> UpsertDemoUsersAsync(IEnumerable<User> demoUsers, CancellationToken cancellationToken = default)
     {
         var created = new List<User>();
         foreach (var demoUser in demoUsers)
         {
-            demoUser.TenantId = tenantId;
             demoUser.IsDemoUser = true;
             demoUser.Status = "active";
             created.Add(await UpsertUserAsync(demoUser, cancellationToken));
         }
 
         return created;
+    }
+
+    // Idempotent tenant write — demo orgs are re-asserted on every reset.
+    public async Task<Tenant> UpsertTenantAsync(Tenant tenant, CancellationToken cancellationToken = default)
+    {
+        tenant.UpdatedAt = DateTime.UtcNow;
+        var response = await Tenants.UpsertItemAsync(tenant, new PartitionKey(tenant.Id), cancellationToken: cancellationToken);
+        return response.Resource;
     }
 
     // ── Events ─────────────────────────────────────────────────────────────────

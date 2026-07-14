@@ -56,12 +56,28 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
 
 ## 🎯 Upcoming priorities
 
+### Platform & UX foundations
+- **AJAX everywhere for search/queries** — all search and query interactions should fetch
+  asynchronously (no full-page reloads); results update in place.
+- **DataTables for users & events** — integrate DataTables to power searching, sorting, and
+  filtering of the users and events lists. **Server-side processing** (paging/sorting/filtering
+  handled by the AJAX endpoints), driven by scale: schools reach **1,200+ users per org** and a
+  comparable event count after a few months, so shipping full datasets client-side is not viable.
+  Effective server-side search is essential.
+- **Responsive containment** — all content must stay well contained within the browser/app
+  viewport across display sizes. Several elements currently break out of the screen,
+  especially in the **header** and **modals**, which don't fit properly on smaller widths.
+
 ### Events & scheduling
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
   re-creating it each time.
 - **Live day-of check-in.** A generated **QR code** that redirects to a check-in flow, plus a
   built-in **org/EventAdmin check-in page** for the day of the event: check people in **by
-  shift** and **by user**, and **add walk-in volunteers on the spot**.
+  shift** and **by user**, and **add walk-in volunteers on the spot**. **Must work offline** —
+  this is the primary offline use case (updating events / checking in / authorizing volunteer
+  service at work sites without wifi), so it needs local caching + a queued-write/sync model
+  (PWA) scoped to a single event's roster. This is distinct from the online AJAX search work,
+  which requires connectivity by design and does not conflict with it.
 - **Group registration** — register multiple individuals for an event in one action.
 
 ### Discovery, search & maps
