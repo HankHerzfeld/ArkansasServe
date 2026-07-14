@@ -29,6 +29,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		{
 			var events = await cosmos.GetUpcomingEventsCompatAsync(effectiveSchoolId);
 			foreach (var e in events) SignEventPhoto(e);
+			await FillOrganizationNamesAsync(events);
 			return await HttpHelper.OkJson(req, events);
 		}
 		catch (CosmosException ex)
@@ -127,6 +128,17 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		body.CreatedByUserId = ctx.UserId;
 		body.Status = "Open";
 		body.CurrentSlots = 0;
+
+		// Denormalize the org name, as service logs already do (ServiceLogFunctions). It was
+		// never set here, so every event created through the app carried
+		// organizationName:"" — only crawled events had one (CrawlerService sets it). The
+		// events page then advertised "Search by name or organization" while the
+		// organization half could never match anything.
+		if (string.IsNullOrWhiteSpace(body.OrganizationName))
+		{
+			var org = await cosmos.GetTenantAsync(orgId);
+			if (org != null) body.OrganizationName = org.Name;
+		}
 
 		var created = await cosmos.CreateEventAsync(body);
 		return await HttpHelper.CreatedJson(req, created);
@@ -274,6 +286,44 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 	// pre-existing events don't need a data migration). External URLs (crawled events) and any
 	// signing failure leave the stored PhotoUrl untouched — a missing photo must never break
 	// event loading.
+	// Fill in organizationName for events that don't carry one, so existing records resolve
+	// without a data migration (the same approach SignEventPhoto takes for photos).
+	//
+	// CreateEvent never set it, so every app-created event has organizationName:"" — only
+	// crawled events had one. That left the events page offering "Search by name or
+	// organization" when the organization half could never match. CreateEvent now
+	// denormalizes it for new events; this covers everything already stored.
+	//
+	// Tenants are looked up once per DISTINCT org, not once per event: a page of events is
+	// typically a handful of orgs, and this runs on every events load.
+	private async Task FillOrganizationNamesAsync(List<Event> events)
+	{
+		var missing = events
+			.Where(e => string.IsNullOrWhiteSpace(e.OrganizationName) && !string.IsNullOrWhiteSpace(e.OrganizationId))
+			.ToList();
+		if (missing.Count == 0) return;
+
+		var names = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var orgId in missing.Select(e => e.OrganizationId!).Distinct(StringComparer.Ordinal))
+		{
+			try
+			{
+				var org = await cosmos.GetTenantAsync(orgId);
+				if (org != null && !string.IsNullOrWhiteSpace(org.Name)) names[orgId] = org.Name;
+			}
+			catch (Exception ex)
+			{
+				// Best-effort: a name we can't resolve must never break event loading.
+				logger.LogWarning(ex, "Could not resolve organization name for {OrgId} while listing events", orgId);
+			}
+		}
+
+		foreach (var e in missing)
+		{
+			if (names.TryGetValue(e.OrganizationId!, out var name)) e.OrganizationName = name;
+		}
+	}
+
 	private void SignEventPhoto(Event evt)
 	{
 		try
