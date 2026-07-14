@@ -208,15 +208,16 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		return await HttpHelper.CreatedJson(req, created);
 	}
 
-	// Self-service leave: drop a plain volunteer membership. Only a Student-level
-	// membership may be removed here; elevated memberships must be removed by an admin
-	// through the role matrix.
+	// Self-service leave: drop a membership the person added themselves. Only a
+	// self-joined Student membership may be removed here; elevated memberships must
+	// be removed by an admin through the role matrix.
 	//
-	// Finding 6: this used to also require SelfJoined, which refused an ADOPTED
-	// membership (adoption leaves selfJoined:false) even for a plain volunteer — someone
-	// added as a managed volunteer could never leave. The SelfJoined test was redundant
-	// for its stated purpose anyway: the Student-level check below is what actually keeps
-	// admin memberships from being dropped here.
+	// Finding 6 — BY DESIGN, decided 2026-07-14. An ADOPTED membership (adoption leaves
+	// selfJoined:false) is refused here on purpose: it was built by an org — e.g. a school
+	// adding a student to its roster — so the person may not remove themselves from it, and
+	// Leave hard-deletes the doc. They must ask an admin, who removes it via the role
+	// matrix. Only a membership the person opted into themselves is theirs to drop.
+	// Do not "fix" the SelfJoined test away; the 403 below is the intended answer.
 	[Function("LeaveOrg")]
 	public async Task<HttpResponseData> LeaveOrg(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "manage/me/memberships/{orgId}")] HttpRequestData req,
@@ -232,8 +233,16 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		if (membership == null)
 			return await HttpHelper.OkJson(req, new { removed = true });
 
+		// Split messages: the old single "cannot be removed here" gave no reason, which is
+		// the UX half of Finding 6 — the refusal is correct, but the person couldn't tell
+		// why or what to do next.
+		if (!membership.SelfJoined)
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden,
+				"This organization added you to their roster, so you can't remove yourself. Ask one of their administrators to remove you.");
+
 		if (!string.Equals(membership.AdminLevel, AdminLevels.Student, StringComparison.OrdinalIgnoreCase))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "This membership cannot be removed here");
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden,
+				"Roles above volunteer must be removed by an administrator.");
 
 		await cosmos.DeleteUserWithFallbackAsync(membership.Id, membership.TenantId);
 		return await HttpHelper.OkJson(req, new { removed = true });
