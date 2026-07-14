@@ -31,17 +31,37 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		{
 			var orgId = string.IsNullOrWhiteSpace(m.OrganizationId) ? m.TenantId : m.OrganizationId!;
 			var tenant = string.IsNullOrWhiteSpace(orgId) ? null : await cosmos.GetTenantAsync(orgId);
+
+			// A membership whose org no longer exists is unusable — you cannot scope to it,
+			// browse it, or leave it — so it is omitted rather than surfaced.
+			//
+			// This previously fell back to `tenant?.Name ?? orgId`, which rendered the raw
+			// tenant GUID as if it were an organization name (a chip reading
+			// "434cf17d-6ab5-48c3-be4a-5541ed0e74d0 · Super Admin" on the dashboard).
+			//
+			// Omitting is safe: GetTenantAsync only returns null on a genuine 404 (it catches
+			// NotFound specifically and lets every other Cosmos error throw), so null means
+			// the tenant is really gone — not that we failed to read it. Logged as a warning
+			// because an orphan is a data problem worth finding, not something to hide.
+			if (tenant == null)
+			{
+				logger.LogWarning(
+					"Orphaned membership {MembershipId} for user {UserId} references missing tenant {OrgId}; omitting from /manage/me/memberships",
+					m.Id, ctx.UserId, orgId);
+				continue;
+			}
+
 			result.Add(new
 			{
 				organizationId = orgId,
-				organizationName = tenant?.Name ?? orgId,
-				status = tenant?.Status,
-				rbacEnabled = tenant?.RbacEnabled,
-				allowGroupAdminAddVolunteers = tenant?.AllowGroupAdminAddVolunteers,
-				allowProfileSelfEdit = tenant?.AllowProfileSelfEdit,
+				organizationName = tenant.Name,
+				status = tenant.Status,
+				rbacEnabled = tenant.RbacEnabled,
+				allowGroupAdminAddVolunteers = tenant.AllowGroupAdminAddVolunteers,
+				allowProfileSelfEdit = tenant.AllowProfileSelfEdit,
 				adminLevel = m.AdminLevel,
 				groupIds = m.GroupIds,
-				groups = tenant?.Groups ?? new List<TenantGroup>(),
+				groups = tenant.Groups ?? new List<TenantGroup>(),
 			});
 		}
 
