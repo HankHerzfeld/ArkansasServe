@@ -65,13 +65,26 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   Re-enable once M2M auth is settled — app registration + `client_credentials` (mint a fresh
   token per run), a shared-secret header for that route, or a timer-triggered Function.
 
+- **Rotate Cosmos/Blob keys.** ✅ Done manually 2026-07-14.
+- **Scope Cosmos firewall.** ✅ Closed 2026-07-14 — **partial by necessity, not oversight.**
+  The Function App runs on **Consumption (Y1/Dynamic)**, which supports no VNet integration
+  and has no stable outbound IPs, so IP-allowlisting it against Cosmos is not viable — an
+  allowlist would work until the shared pool shifted, then fail silently. Public access is
+  restricted to selected networks with the **"Accept connections from within public Azure
+  datacenters"** exception, which is *required* on Y1. That blocks the public internet but
+  still admits any Azure-resident caller (key-gated). Real isolation needs **EP1 + VNet +
+  a Cosmos Private Endpoint** (~$150+/mo) — an open cost decision, not a config toggle.
+
 ### Still open
-- **Minor.** Per-org `displayName` differs across pages (per-org User doc); rotate
-  Cosmos/Blob keys; scope Cosmos firewall.
-- **Infra drift (P2).** The Bicep `what-if`/apply workflow has never successfully run — its
-  only runs were PR `what-if`s that failed at OIDC login. Live containers (incl.
-  `ImpersonationSessions`/`AuditEvents`) were created out-of-band, so Bicep is not the source
-  of truth for what exists.
+- **Minor.** Per-org `displayName` differs across pages (per-org User doc).
+- **Infra drift (P2) — now larger.** The Bicep `what-if`/apply workflow has never
+  successfully run; its only runs were PR `what-if`s that failed at OIDC login. Live
+  containers (incl. `ImpersonationSessions`/`AuditEvents`) were created out-of-band, and the
+  Cosmos firewall above is a third out-of-band change: `main.bicep` still declares
+  `publicNetworkAccess: 'Enabled'` with no `ipRules`/`networkAclBypass`, and sets
+  `CosmosDb__ConnectionString` from `listConnectionStrings()` (which returns **primary**).
+  So an apply today would **revert the firewall and overwrite the rotated key setting**.
+  Bicep is not the source of truth for what exists — reconcile before any apply.
 
 ---
 
