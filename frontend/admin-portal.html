@@ -50,21 +50,23 @@
     <div id="approvals-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
       No pending approvals. All caught up! ✅
     </div>
-    <table class="table" id="approvals-table" style="display:none;">
-      <thead>
-        <tr>
-          <th>Student</th>
-          <th>Event</th>
-          <th>Logged by</th>
-          <th>Service date</th>
-          <th>Submitted</th>
-          <th>Hours</th>
-          <th>Status</th>
-          <th>Decision</th>
-        </tr>
-      </thead>
-      <tbody id="approvals-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="approvals-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Event</th>
+            <th>Logged by</th>
+            <th>Service date</th>
+            <th>Submitted</th>
+            <th>Hours</th>
+            <th>Status</th>
+            <th>Decision</th>
+          </tr>
+        </thead>
+        <tbody id="approvals-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Service-hour report -->
@@ -106,18 +108,20 @@
           <button class="btn btn-primary btn-sm" id="report-print">Print / Save as PDF</button>
         </div>
       </div>
-      <table class="table" id="report-table">
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Grade</th>
-            <th>Approved Hours</th>
-            <th>Pending Hours</th>
-            <th>Events</th>
-          </tr>
-        </thead>
-        <tbody id="report-tbody"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="table" id="report-table">
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Grade</th>
+              <th>Approved Hours</th>
+              <th>Pending Hours</th>
+              <th>Events</th>
+            </tr>
+          </thead>
+          <tbody id="report-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>

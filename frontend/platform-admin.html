@@ -38,19 +38,21 @@
     <div id="tenants-empty" class="card" style="display:none;text-align:center;color:var(--gray-600);">
       No tenants yet. Add your first school or organization above.
     </div>
-    <table class="table" id="tenants-table" style="display:none;">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>SSO Domain</th>
-          <th>Status</th>
-          <th>Contract Start</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="tenants-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="tenants-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>SSO Domain</th>
+            <th>Status</th>
+            <th>Contract Start</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tenants-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- ── Approvals tab ───────────────────────────────────────────────── -->
@@ -59,19 +61,21 @@
     <div id="all-approvals-empty" style="display:none;color:var(--gray-600);font-size:.9rem;padding:.5rem 0;">
       No pending approvals across any school. ✅
     </div>
-    <table class="table" id="all-approvals-table" style="display:none;">
-      <thead>
-        <tr>
-          <th>Student</th>
-          <th>School</th>
-          <th>Event</th>
-          <th>Org</th>
-          <th>Date</th>
-          <th>Hours</th>
-        </tr>
-      </thead>
-      <tbody id="all-approvals-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="all-approvals-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>School</th>
+            <th>Event</th>
+            <th>Org</th>
+            <th>Date</th>
+            <th>Hours</th>
+          </tr>
+        </thead>
+        <tbody id="all-approvals-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- ── Roles tab ───────────────────────────────────────────────────── -->
@@ -103,18 +107,20 @@
     <div id="matrix-error" class="alert alert-error" style="display:none;margin-bottom:.75rem;"></div>
     <div id="matrix-loading" class="loading-state" style="display:none;"><div class="spinner"></div></div>
     <div id="matrix-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No assignments yet.</div>
-    <table class="table" id="matrix-table" style="display:none;">
-      <thead>
-        <tr>
-          <th>Person</th>
-          <th>Organization</th>
-          <th>Level</th>
-          <th>Groups</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="matrix-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="matrix-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>Person</th>
+            <th>Organization</th>
+            <th>Level</th>
+            <th>Groups</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="matrix-tbody"></tbody>
+      </table>
+    </div>
     <div id="matrix-loadmore-wrap" style="display:none;margin-top:.75rem;text-align:center;">
       <button class="btn btn-secondary btn-sm" id="matrix-loadmore">Load more</button>
     </div>

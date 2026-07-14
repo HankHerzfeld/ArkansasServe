@@ -98,9 +98,50 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   handled by the AJAX endpoints), driven by scale: schools reach **1,200+ users per org** and a
   comparable event count after a few months, so shipping full datasets client-side is not viable.
   Effective server-side search is essential.
-- **Responsive containment** — all content must stay well contained within the browser/app
-  viewport across display sizes. Several elements currently break out of the screen,
-  especially in the **header** and **modals**, which don't fit properly on smaller widths.
+- **Responsive containment** — ✅ **Done 2026-07-14 (audited at 375×812, measured not eyeballed).**
+  The audit overturned the assumption that the header and modals were each independently
+  broken. Both were innocent:
+  - **Header fits** at 375px — 0px overflow, no overflowing children, on every page checked.
+  - **Modal CSS was already correct** (`width:min(92vw,520px)`, `max-height:calc(100vh - 3rem)`,
+    `overflow-y:auto`, from the earlier "contain modals in frame" work).
+
+  There was **one shared root cause**: `.table` had no scroll container, and long unbreakable
+  strings (emails) plus cells holding selects/inputs pushed tables far past the viewport
+  (`#users-table` 981px wide at 375px). That made the *document* wider than the viewport —
+  and because `.modal-overlay` is `position:fixed;inset:0`, the overlay stretched to the
+  **document** width (630px) and centred the dialog off-screen at `left:143`. The modal was a
+  **symptom**, not a bug.
+
+  Fix: wrap all 12 tables in a `.table-scroll` (`overflow-x:auto`) container. Measured
+  alternatives were rejected — letting text wrap still left `#users-table` ~358px over (a
+  `<select>` can't wrap) and blew row height 88px → 624px; `table-layout:fixed` still left
+  ~49px. Only the scroll container both contains the page **and** keeps rows readable.
+  Result: page overflow 0 on every page; modals centre correctly for free.
+
+- **Phone header — pop-out drawer.** ✅ Done 2026-07-14. Separate from overflow: the header
+  never overflowed, it **wrapped**. A SuperAdmin's 7 tabs stacked into 3 rows, making a
+  **202px header — 25% of a 375×812 screen** — before any content. At ≤640px the tabs and the
+  bell/name/sign-out cluster now slide out as a drawer behind a hamburger; the bar stays one
+  60px row (**25% → 7%**). Backdrop, Esc, body scroll-lock, `aria-expanded`/`aria-controls`,
+  44px touch target, and `prefers-reduced-motion` are handled.
+  - *Note:* the drawer is `position:fixed;right:0`, so it **depends on the table fix above** —
+    while the document was wider than the viewport, `right:0` resolved to the document's right
+    edge, off-screen. They ship together.
+  - *Known, pre-existing:* between ~641px and ~1010px a SuperAdmin's 7 tabs still wrap to two
+    rows (74px bar). Left as-is: the drawer is deliberately phone-only, and tab count is
+    role-dependent (a Student has 3), so a higher breakpoint would give most users a drawer
+    they don't need. `height:60px` → `min-height:60px` means those wrapped tabs no longer
+    overflow a fixed-height bar.
+
+- **iOS safe area / Dynamic Island.** ✅ Assessed 2026-07-14 — **no current exposure, guarded
+  for later.** The viewport meta is `width=device-width, initial-scale=1.0` with **no
+  `viewport-fit=cover`**, so iOS letterboxes the page and nothing can slide under the island;
+  `display:standalone` + the default status-bar style keeps the PWA below the status bar too.
+  The header and drawer nevertheless pad with `env(safe-area-inset-*)` via `max()`, which
+  resolves to the plain padding today (insets are 0) and becomes correct automatically if the
+  app ever goes edge-to-edge. **Do not add `viewport-fit=cover` on its own** — that is what
+  would push the brand/hamburger row under the island; it requires auditing every
+  fixed/sticky element (navbar, drawer, modal overlay, notification pane) first.
 
 ### Events & scheduling
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than

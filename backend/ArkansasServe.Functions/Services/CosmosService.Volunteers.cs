@@ -27,6 +27,56 @@ public partial class CosmosService
         return results;
     }
 
+    // Propagate a person's NAME to their other org memberships.
+    //
+    // A person is one User doc per org, and each doc carried its own name — set from
+    // whatever that org's admin typed, or from the token claim (which can read "unknown").
+    // Editing your profile only ever wrote your home-org doc, so the same person rendered
+    // under different names depending on which org a page read. A person's name belongs to
+    // the person, not the org, so it is synced across all of their memberships.
+    //
+    // Deliberately NAME-ONLY. AdminLevel, GroupIds, EventAdminEventIds, TotalApprovedHours,
+    // BackgroundCheckStatus, Grade, Status and SelfJoined are genuinely per-org — copying
+    // those across orgs would corrupt roles and hours, so they are left untouched.
+    //
+    // Best-effort and non-transactional: callers must not let a failure here fail the
+    // profile save. Returns how many other memberships were updated.
+    public async Task<int> SyncNameAcrossMembershipsAsync(
+        string externalId,
+        string? firstName,
+        string? lastName,
+        string displayName,
+        string? skipTenantId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(externalId) || string.IsNullOrWhiteSpace(displayName)) return 0;
+
+        var memberships = await GetMembershipsByExternalIdAsync(externalId, cancellationToken);
+        var updated = 0;
+
+        foreach (var m in memberships)
+        {
+            // The caller has already written this one.
+            if (!string.IsNullOrWhiteSpace(skipTenantId)
+                && string.Equals(m.TenantId, skipTenantId, StringComparison.Ordinal))
+                continue;
+
+            // Skip no-op writes so a profile save doesn't churn every partition.
+            if (string.Equals(m.DisplayName, displayName, StringComparison.Ordinal)
+                && string.Equals(m.FirstName, firstName, StringComparison.Ordinal)
+                && string.Equals(m.LastName, lastName, StringComparison.Ordinal))
+                continue;
+
+            m.FirstName = firstName;
+            m.LastName = lastName;
+            m.DisplayName = displayName;
+            await UpsertUserWithPartitionFallbackAsync(m, cancellationToken);
+            updated++;
+        }
+
+        return updated;
+    }
+
     // A membership found by email within one org (email is unique per org).
     public async Task<User?> GetMembershipByEmailAsync(string email, string tenantId, CancellationToken cancellationToken = default)
     {

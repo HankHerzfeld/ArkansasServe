@@ -143,17 +143,19 @@
     <div class="modal-title">Log Attendance &amp; Hours</div>
     <p style="color:var(--gray-600);font-size:.85rem;margin-bottom:1rem;" id="log-event-name"></p>
     <div id="log-roster-loading" class="loading-state"><div class="spinner"></div></div>
-    <table class="table" id="log-roster-table" style="display:none;">
-      <thead>
-        <tr>
-          <th>Student</th>
-          <th>School</th>
-          <th>Attended?</th>
-          <th>Hours</th>
-        </tr>
-      </thead>
-      <tbody id="log-roster-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="log-roster-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>School</th>
+            <th>Attended?</th>
+            <th>Hours</th>
+          </tr>
+        </thead>
+        <tbody id="log-roster-tbody"></tbody>
+      </table>
+    </div>
     <div id="log-error" class="alert alert-error" style="display:none;margin-top:.75rem;"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="log-modal-cancel">Cancel</button>

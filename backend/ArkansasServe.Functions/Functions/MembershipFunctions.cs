@@ -193,13 +193,27 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 				return await HttpHelper.Error(req, HttpStatusCode.Conflict, "A member with this email already exists in this organization");
 		}
 
+		// Seed the name from the person's EXISTING membership, not the token claim. The
+		// "name" claim can be missing or read "unknown", and stamping that onto a fresh
+		// per-org doc is how display-name drift starts: the same person then renders
+		// differently depending on which org a page happens to read. Prefer their home-org
+		// doc (where profile edits land), then any named membership, and fall back to the
+		// claim only when this is their first membership.
+		var otherMemberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
+		var canonical =
+			otherMemberships.FirstOrDefault(m => string.Equals(m.TenantId, ctx.TenantId, StringComparison.Ordinal)
+												 && !string.IsNullOrWhiteSpace(m.DisplayName))
+			?? otherMemberships.FirstOrDefault(m => !string.IsNullOrWhiteSpace(m.DisplayName));
+
 		var membership = new User
 		{
 			ExternalId = ctx.UserId,
 			TenantId = orgId,
 			OrganizationId = orgId,
 			Email = email ?? string.Empty,
-			DisplayName = ctx.DisplayName,
+			FirstName = canonical?.FirstName,
+			LastName = canonical?.LastName,
+			DisplayName = canonical?.DisplayName ?? ctx.DisplayName,
 			AdminLevel = AdminLevels.Student,
 			Status = "active",
 			SelfJoined = true,
