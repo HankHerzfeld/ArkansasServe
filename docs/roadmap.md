@@ -282,11 +282,46 @@ island.
   with **documents uploaded by the organization**.
 - **Parental account oversight** — guardian oversight features that don't require up-front
   action every single time.
-- **Terms & Conditions and Privacy Policy pages** — plus a sign-up confirmation that records
-  the user's acceptance of the TOC and Privacy Policy.
+- **Terms & Conditions and Privacy Policy pages** — ✅ **Built 2026-07-14 (PR #66), pending
+  counsel review.** `/terms.html` + `/privacy.html`, linked from the landing footer and the
+  acceptance prompt. Anonymous-accessible via the existing `/*` route; no inline scripts, so
+  the CSP serves them unchanged.
+  - **The text is a draft and says so.** The privacy page's data inventory is written from the
+    fields the code actually persists, so it is accurate rather than boilerplate — but every
+    item that is a *legal decision* rather than an observable behaviour is left explicitly
+    blank under "Still to be completed": retention (**note: no TTL is configured anywhere, so
+    records persist until an admin deletes them**), data-subject rights, FERPA/COPPA, juvenile
+    -record confidentiality, breach notification, liability, termination, governing law.
+    Those need counsel; guessing would be worse than blank.
+  - **Acceptance is recorded at first login, not sign-up** — sign-up is Entra-hosted
+    (`prompt:'create'`), so there is no sign-up form of ours to put a checkbox on. It lives in
+    the existing first-login intake modal, which already gates required consent that way.
+  - **Recorded as a version, not a boolean** (`PolicyVersions.Current` +
+    `acceptedPolicyVersion`/`acceptedPolicyAt`). Re-issuing the documents therefore re-prompts
+    everyone — including the moment counsel signs off and the drafts stop being drafts. The
+    server validates the version it is sent (a stale tab gets a 400, not a false record) and
+    stamps the timestamp itself, since that timestamp is the evidence.
+  - ⚠️ **Still skippable** via "Skip for now". Blocking access until acceptance is a
+    product/legal call, and forcing agreement to an *unreviewed draft* would be wrong. Once
+    counsel approves and the version bumps, making it blocking is a one-line change.
+  - **When the text is approved:** update the wording, remove both draft banners, and bump the
+    version in all four places — `PolicyVersions.cs`, `dashboard.js`, `terms.html`,
+    `privacy.html`.
 
 ### UI & branding
-- **Dashboard tabs** — replace the organization-viewing dropdown with tabs.
+- **Org switcher tabs** — ✅ **Done 2026-07-14 (PR #66).** The organization dropdown is now a
+  tab strip, applied in `renderScopeBar` so every page using the shared shell gets it, not
+  just the dashboard.
+  - **Searchable, because of scale.** A SuperAdmin's list is *every tenant on the platform*
+    (`scope.js` init), not just their memberships — four orgs today, dozens once the schools
+    are on. So past 6 orgs the strip gains a filter box: tabs to browse when short,
+    type-to-find when long. Verified with 30 synthetic orgs: the bar stays a single 44px row,
+    the strip scrolls (5443px of tabs inside 718px) rather than wrapping, and page overflow
+    stays 0.
+  - The active org stays visible even when it doesn't match the filter, but deliberately does
+    **not** count as a match — otherwise a query matching nothing would leave one tab on
+    screen with no explanation and look broken rather than empty.
+  - The group selector remains a dropdown; only the org switcher changed.
 - **Per-school branding / customizable CSS** — schools choose a **logo and color palette** that
   applies to their assigned users; assignable to school-scoped accounts.
 

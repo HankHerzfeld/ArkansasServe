@@ -144,6 +144,17 @@
       </label>
     </div>
 
+    <!-- Terms & Privacy acceptance. Sign-up itself is hosted by Entra External ID, so this
+         is the first point in OUR application where consent can be shown and recorded. -->
+    <div style="border-top:1px solid var(--gray-200);margin-top:1rem;padding-top:1rem;">
+      <label style="display:flex;gap:.5rem;align-items:flex-start;font-size:.9rem;">
+        <input id="intake-policy" type="checkbox" style="margin-top:.2rem;">
+        <span>I have read and agree to the
+          <a href="/terms.html" target="_blank" rel="noopener">Terms &amp; Conditions</a> and
+          <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+      </label>
+    </div>
+
     <div id="intake-error" class="alert alert-error" style="display:none;"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="intake-later">Skip for now</button>

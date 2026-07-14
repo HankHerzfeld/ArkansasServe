@@ -327,6 +327,70 @@ const UI = (() => {
     return sel;
   }
 
+  // Org switcher as tabs rather than a dropdown. Tabs make the orgs you can act in
+  // visible at a glance, which a <select> hid behind a click.
+  //
+  // The catch is scale: a SuperAdmin's list is EVERY tenant on the platform (see
+  // scope.js init), not just their own memberships — fine at four orgs, unusable as a
+  // bare strip once every Arkansas school is on it. So past a threshold the strip gains
+  // a filter box: tabs to browse when the list is short, type-to-find when it is long.
+  // The strip itself scrolls horizontally rather than wrapping, so the bar can never
+  // grow into the multi-row block the phone header used to have.
+  const ORG_FILTER_THRESHOLD = 6;
+
+  function buildOrgTabs(snap) {
+    const box = el('div', { class: 'scope-orgs' });
+    const tabs = [];
+
+    const strip = el('div', { class: 'scope-tabs', role: 'group', 'aria-label': 'Choose organization' });
+    const noMatch = el('span', { class: 'scope-nomatch', text: 'No organizations match.' });
+    noMatch.style.display = 'none';
+
+    snap.orgs.forEach(o => {
+      const isActive = o.id === snap.activeOrgId;
+      const b = el('button', {
+        class: 'scope-tab' + (isActive ? ' active' : ''),
+        type: 'button',
+        text: o.name,
+        title: o.name,
+        onClick: () => Scope.setOrg(o.id),
+      });
+      // aria-current, not a tablist: these switch the data the page is scoped to, they
+      // don't reveal sibling panels.
+      if (isActive) b.setAttribute('aria-current', 'true');
+      tabs.push({ el: b, name: (o.name || '').toLowerCase() });
+      strip.appendChild(b);
+    });
+
+    if (snap.orgs.length > ORG_FILTER_THRESHOLD) {
+      const search = el('input', {
+        type: 'search',
+        class: 'scope-search',
+        placeholder: 'Filter organizations…',
+        'aria-label': 'Filter organizations',
+      });
+      search.addEventListener('input', () => {
+        const q = search.value.trim().toLowerCase();
+        let matched = 0;
+        tabs.forEach(t => {
+          const isMatch = !q || t.name.includes(q);
+          // The active org stays visible even when it doesn't match, so a filter can never
+          // hide what you're currently looking at. It deliberately does NOT count towards
+          // `matched`: otherwise a query matching nothing would still leave one tab on
+          // screen with no explanation, and the filter would look broken rather than empty.
+          t.el.style.display = (isMatch || t.el.classList.contains('active')) ? '' : 'none';
+          if (isMatch) matched++;
+        });
+        noMatch.style.display = matched ? 'none' : '';
+      });
+      box.appendChild(search);
+    }
+
+    box.appendChild(strip);
+    box.appendChild(noMatch);
+    return box;
+  }
+
   function renderScopeBar(container, snap, showGroups = true) {
     if (!container) return;
     container.innerHTML = '';
@@ -341,11 +405,7 @@ const UI = (() => {
     wrap.appendChild(label);
 
     if (snap.orgs.length > 1) {
-      wrap.appendChild(select(
-        snap.activeOrgId,
-        snap.orgs.map(o => ({ value: o.id, label: o.name })),
-        (v) => Scope.setOrg(v)
-      ));
+      wrap.appendChild(buildOrgTabs(snap));
     } else {
       const org = document.createElement('strong');
       org.textContent = snap.org.name;

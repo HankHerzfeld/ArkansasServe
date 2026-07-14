@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Arkansas Serve</title>
+  <meta name="description" content="How Arkansas Serve collects, uses, and protects personal information.">
+  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <ul class="navbar-links">
+    <li><a href="/terms.html">Terms</a></li>
+    <li><a href="/privacy.html">Privacy</a></li>
+  </ul>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1>Privacy Policy</h1>
+    <p>Version <strong id="policy-version">2026-07-14-draft</strong> · Last updated 14 July 2026</p>
+  </div>
+
+  <!-- ⚠️ REMOVE THIS BANNER ONLY WHEN COUNSEL HAS APPROVED THE TEXT BELOW.
+       See docs/roadmap.md — the acceptance flow keys on the version string above, so
+       bumping it after legal review automatically re-prompts everyone who accepted the
+       draft. -->
+  <div class="alert alert-error" id="draft-banner">
+    <strong>Draft — not yet reviewed by legal counsel.</strong>
+    This describes how the system actually behaves today, written from the source code so it
+    is accurate rather than boilerplate. It has <em>not</em> been reviewed by a lawyer and is
+    not a substitute for one. Arkansas Serve handles records for minors and
+    court-involved youth, which brings obligations (FERPA, COPPA, and Arkansas juvenile
+    record law among them) that must be assessed by counsel before this page is relied on.
+  </div>
+
+  <div class="card">
+    <div class="card-title">What this covers</div>
+    <p>Arkansas Serve is a service-hour tracking platform used by schools, juvenile
+    detention/court departments, and community organizations in Arkansas. This page explains
+    what personal information the platform stores, why, and who can see it.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Information we store</div>
+    <p class="card-meta">Taken from the fields the application actually persists.</p>
+
+    <p><strong>Account &amp; identity.</strong> Your name (first, last, and the display name
+    shown to others) and email address. Sign-in itself is handled by Microsoft Entra External
+    ID — Arkansas Serve never receives or stores your password.</p>
+
+    <p><strong>Profile.</strong> Whether you are a student or an adult volunteer, your date of
+    birth, phone number, and (for students) your grade.</p>
+
+    <p><strong>Guardian details, for users under 18.</strong> Guardian name, guardian email
+    and/or phone, and a record that guardian consent was given. Date of birth — not what you
+    select for yourself — determines whether these are required.</p>
+
+    <p><strong>Adult volunteers.</strong> Affiliation and emergency contact name and phone.</p>
+
+    <p><strong>Background-check status.</strong> Whether a check is recorded as pending or
+    cleared, and the date. This is set by an administrator, never self-reported, and the
+    platform does not store the background check itself.</p>
+
+    <p><strong>Service activity.</strong> Organizations you belong to and your role in each,
+    events you sign up for, answers to any sign-up questions an organizer asks, hours logged,
+    and whether those hours were approved.</p>
+
+    <p><strong>Uploads.</strong> Any verification documents or event photos you or an
+    organization upload.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Who can see your information</div>
+    <p>Arkansas Serve keeps a <strong>separate record of you in each organization you belong
+    to</strong>. An organization's administrators can see the record you have with
+    <em>them</em> — not your membership in unrelated organizations.</p>
+    <p>Administrators at a school or organization you belong to can see your profile, your
+    sign-ups, and your service hours in order to verify them. Platform administrators
+    (Arkansas Serve staff) can see records across organizations in order to operate and
+    support the service.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Administrator access to your account</div>
+    <p>A platform administrator can open a time-limited, audited session that shows them the
+    application as you see it, to diagnose a problem. Every such session records who did it,
+    who they viewed, when, and why, and every change made during one is logged. Sessions
+    expire automatically and can be revoked.</p>
+    <p><strong>Today this is limited to demonstration accounts only</strong> — it cannot be
+    used on a real person's account. If that ever changes, the person whose account is viewed
+    will be notified.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Where your information is held</div>
+    <p>Data is stored in Microsoft Azure (databases and file storage) in the United States.
+    Sign-in is provided by Microsoft Entra External ID. Notification emails, where enabled,
+    are sent through Azure Communication Services. Traffic is served over HTTPS.</p>
+  </div>
+
+  <!-- ⚠️ SECTIONS BELOW NEED COUNSEL INPUT — the answers are policy/legal decisions, not
+       facts that can be read out of the code. Do not invent them. -->
+  <div class="card">
+    <div class="card-title">Still to be completed</div>
+    <p class="card-meta">These require decisions from the operator and counsel, and are
+    deliberately left blank rather than guessed at.</p>
+    <ul style="margin-left:1.2rem;color:var(--gray-600);font-size:.9rem;">
+      <li><strong>Retention.</strong> How long records are kept after an account closes, and
+        what happens to service-hour history a school may need to retain. No automatic
+        deletion is configured today — records persist until removed by an administrator.</li>
+      <li><strong>Your rights.</strong> How to request a copy of your data, correct it, or ask
+        for deletion — and who to contact.</li>
+      <li><strong>Minors, FERPA and COPPA.</strong> How guardian consent is obtained and
+        recorded, and how school-held education records are treated.</li>
+      <li><strong>Court-involved youth.</strong> Any additional confidentiality obligations
+        that apply to juvenile records under Arkansas law.</li>
+      <li><strong>Breach notification.</strong> Who is told, and how quickly.</li>
+      <li><strong>Contact.</strong> The person or office responsible for privacy questions.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Questions</div>
+    <p>Contact <a href="mailto:contact@arkansasserve.com">contact@arkansasserve.com</a>.</p>
+  </div>
+</div>
+
+<footer style="background:var(--gray-800);color:rgba(255,255,255,.6);text-align:center;padding:2rem;font-size:.85rem;">
+  <p>© 2025 Arkansas Serve · <a href="/terms.html" style="color:inherit;">Terms</a> ·
+     <a href="/privacy.html" style="color:inherit;">Privacy</a> ·
+     <a href="mailto:contact@arkansasserve.com" style="color:inherit;">contact@arkansasserve.com</a></p>
+</footer>
+
+</body>
+</html>

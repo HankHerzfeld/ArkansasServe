@@ -200,6 +200,22 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 				if (Has("emergencyContactName")) user.EmergencyContactName = GetStr("emergencyContactName");
 				if (Has("emergencyContactPhone")) user.EmergencyContactPhone = GetStr("emergencyContactPhone");
 
+				// Terms & Privacy acceptance. The client proposes a version; only the version
+				// actually in force is recorded, so a stale tab can't register consent to
+				// wording it never displayed, and a crafted request can't invent one. The
+				// timestamp is the server's — it is the evidence of when consent was given.
+				// Acceptance is never revoked here: an absent field leaves the record alone.
+				if (Has("acceptedPolicyVersion"))
+				{
+					var proposed = GetStr("acceptedPolicyVersion");
+					if (!PolicyVersions.IsCurrent(proposed))
+						return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
+							"Unrecognised terms version. Reload the page and try again.");
+
+					user.AcceptedPolicyVersion = PolicyVersions.Current;
+					user.AcceptedPolicyAt = DateTime.UtcNow;
+				}
+
 				user.ProfileComplete = IntakeValidation.IsComplete(user);
 
 				var updated = await cosmos.UpsertUserWithPartitionFallbackAsync(user);

@@ -26,6 +26,19 @@
     };
     const prettyLevel = (lvl) => LEVEL_LABEL[lvl] || lvl || 'Volunteer';
 
+    // Must match PolicyVersions.Current on the server and the version rendered in
+    // terms.html / privacy.html. Bump all four together when the documents change —
+    // notably when counsel signs off and they stop being drafts.
+    //
+    // Drift here fails safe rather than silently: the server validates the version it is
+    // sent and rejects anything that isn't current, so a stale cached copy of this file
+    // cannot record consent to wording nobody was shown — it gets a "reload the page" 400.
+    const POLICY_VERSION = '2026-07-14-draft';
+
+    // Acceptance is recorded as a version, not a flag, so re-issuing the documents
+    // re-prompts everyone who only accepted the older text.
+    const needsPolicyAcceptance = (user) => user?.acceptedPolicyVersion !== POLICY_VERSION;
+
     function renderProfile(user, memberships) {
       const name = user.displayName || profile.name || user.email || '';
       document.getElementById('profile-card').style.display = 'block';
@@ -167,6 +180,12 @@
       intakeDob.value = user.dateOfBirth ? String(user.dateOfBirth).slice(0, 10) : '';
       intakeType.value = user.personType || '';
       document.getElementById('intake-grade').value = user.grade || '';
+      // Never pre-tick consent: it must be an action the person takes each time the
+      // documents change. Only hide the block once they've accepted THIS version.
+      const policyRow = document.getElementById('intake-policy').closest('div');
+      const accepted = needsPolicyAcceptance(user) === false;
+      policyRow.style.display = accepted ? 'none' : 'block';
+      document.getElementById('intake-policy').checked = false;
       syncIntakeSections();
       document.getElementById('intake-error').style.display = 'none';
       document.getElementById('intake-modal').classList.add('open');
@@ -198,6 +217,11 @@
         if (!val('intake-emergency-name')) missing.push('emergency contact name');
         if (!val('intake-emergency-phone')) missing.push('emergency contact phone');
       }
+      // Required whenever it's on screen — i.e. until they've accepted this version.
+      const policyPending = needsPolicyAcceptance(profileUser);
+      if (policyPending && !document.getElementById('intake-policy').checked) {
+        missing.push('agreement to the Terms & Privacy Policy');
+      }
       if (missing.length) {
         err.textContent = `Please provide: ${missing.join(', ')}.`;
         err.style.display = 'block';
@@ -207,6 +231,9 @@
       btn.disabled = true; btn.textContent = 'Saving…'; err.style.display = 'none';
       try {
         const payload = { firstName: first, lastName: last, personType, dateOfBirth: dob };
+        // Only sent when they actually ticked it now. The server stamps the timestamp and
+        // rejects any version that isn't the one in force.
+        if (policyPending) payload.acceptedPolicyVersion = POLICY_VERSION;
         if (minor) {
           Object.assign(payload, {
             guardianName: val('intake-guardian-name'),
@@ -255,8 +282,13 @@
         profileMemberships = memberships;
         renderProfile(currentUser, memberships);
 
-        // First-login: prompt to complete intake when the profile isn't complete.
-        if (currentUser.profileComplete === false) openIntake(currentUser);
+        // First-login: prompt to complete intake when the profile isn't complete, and also
+        // whenever the Terms/Privacy version they accepted isn't the one in force — that's
+        // what makes re-issuing the documents (e.g. once counsel signs off on the drafts)
+        // re-prompt existing users rather than only catching new ones.
+        if (currentUser.profileComplete === false || needsPolicyAcceptance(currentUser)) {
+          openIntake(currentUser);
+        }
 
         // First-login onboarding: a self-registered student not yet in any organization is
         // guided to join one. Skip the (necessarily empty) stats + log history.
