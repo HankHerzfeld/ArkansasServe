@@ -187,11 +187,17 @@ island.
 ### Platform & UX foundations
 - **AJAX everywhere for search/queries** — all search and query interactions should fetch
   asynchronously (no full-page reloads); results update in place.
-- **DataTables for users & events** — integrate DataTables to power searching, sorting, and
-  filtering of the users and events lists. **Server-side processing** (paging/sorting/filtering
-  handled by the AJAX endpoints), driven by scale: schools reach **1,200+ users per org** and a
-  comparable event count after a few months, so shipping full datasets client-side is not viable.
-  Effective server-side search is essential.
+- **DataTables for users & events — phase 1: client-side, first look.** *(Re-scoped by the
+  owner 2026-07-14.)* Wire DataTables onto the users and events tables for searching, sorting
+  and filtering **assuming under ~100 rows**, so the feature can be seen and shaped now. At
+  that size the whole dataset ships in one response and DataTables does the work in the
+  browser: no protocol contract, no paging maths, no Cosmos work. Live data today is ~18 user
+  docs, so this is comfortably within range.
+  - **This is explicitly a stepping stone, not the final answer.** The moment an org
+    approaches four figures, shipping every row becomes the wrong shape and phase 2 below
+    takes over. The upgrade is confined to how the table gets its rows (`data:` → `ajax:` +
+    `serverSide: true`); the columns, filters and markup carry over.
+  - Scale work is deliberately deferred — see **DataTables phase 2** at the end of this file.
 - **Responsive containment** — ✅ **Done 2026-07-14 (audited at 375×812, measured not eyeballed).**
   The audit overturned the assumption that the header and modals were each independently
   broken. Both were innocent:
@@ -324,6 +330,36 @@ island.
   - The group selector remains a dropdown; only the org switcher changed.
 - **Per-school branding / customizable CSS** — schools choose a **logo and color palette** that
   applies to their assigned users; assignable to school-scoped accounts.
+
+---
+
+## 🔚 Deferred to last — scale work
+
+_Moved to the back of the list by the owner (2026-07-14): get the features shaped first, then
+make them scale. Nothing else depends on these, so they can be picked up whenever real data
+volume starts to arrive — but they must land **before** any single org gets near four figures._
+
+### DataTables phase 2 — server-side processing at 1,200+ rows
+Phase 1 (above) ships every row and lets the browser search it, which is fine at tens of rows
+and wrong at thousands. Phase 2 moves paging, sorting and filtering to the server.
+
+- **Design the query contract.** DataTables' server-side protocol expects `draw`,
+  `recordsTotal`, `recordsFiltered` and one page of rows, and sends `start`/`length`, a global
+  `search[value]`, per-column filters and `order[]`. The endpoint shape should be designed to
+  that protocol from the start rather than retrofitted.
+- **Solve Cosmos paging + counting — the actual hard part.** The protocol assumes offset
+  paging and an exact filtered count; Cosmos gives neither cheaply. It pages with
+  **continuation tokens**, not `OFFSET`, and an exact `COUNT` over a filtered cross-partition
+  query costs a full scan — so `recordsFiltered` is the expensive field, on every keystroke.
+  Options to weigh: map page numbers to cached continuation tokens; bound the count (`TOP N` +
+  "1000+"); or drive search from a service better suited to it. **Decide this before writing
+  the endpoints** — it dictates their shape.
+- Once solved, phase 1 upgrades by swapping `data:` for `ajax:` + `serverSide: true`; columns,
+  filters and markup are unaffected.
+
+### AJAX for the remaining query surfaces
+Extend the async in-place pattern to the other search/query surfaces once the users/events
+pair has proven it.
 
 ---
 

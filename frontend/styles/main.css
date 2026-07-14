@@ -61,7 +61,9 @@ body {
 .nav-toggle { display: none; }
 .nav-backdrop { display: none; }
 .navbar-brand { font-size: 1.2rem; font-weight: 700; text-decoration: none; color: inherit; white-space: nowrap; }
-.navbar-links { display: flex; gap: 1.5rem; align-items: center; list-style: none; }
+/* margin-left:auto keeps these right-aligned now that they sit inside .nav-menu
+   (which is flex:1) rather than being a direct child of the space-between navbar. */
+.navbar-links { display: flex; gap: 1.5rem; align-items: center; list-style: none; margin-left: auto; }
 .navbar-links a { color: rgba(255,255,255,.85); text-decoration: none; font-size: .9rem; }
 .navbar-links a:hover { color: #fff; }
 
@@ -247,6 +249,51 @@ body {
 .table td { padding: .6rem .75rem; border-bottom: 1px solid var(--gray-200); }
 .table tr:hover td { background: var(--gray-100); }
 
+/* ── DataTables reconciliation ───────────────────────────────────────────────
+   The vendored DataTables stylesheet is loaded BEFORE this file, but its selectors
+   (table.dataTable — 0,1,1) outrank ours (.table — 0,1,0), so it would win on load
+   order alone. These rules match its specificity to keep the app's table look and
+   restyle its controls to match, rather than letting a second visual language in.
+   Only paging is rendered by DataTables (see js/datatables.js) — the pages keep their
+   own search box and "n of m" count. */
+table.table.dataTable { border-collapse: collapse; font-size: .9rem; width: 100%; }
+table.table.dataTable > thead > tr > th {
+  text-align: left;
+  padding: .6rem .75rem;
+  background: var(--gray-100);
+  border-bottom: 2px solid var(--gray-200);
+}
+table.table.dataTable > tbody > tr > td { padding: .6rem .75rem; border-bottom: 1px solid var(--gray-200); }
+table.table.dataTable > tbody > tr:hover > td { background: var(--gray-100); }
+/* DataTables tints the sorted column; the app doesn't stripe or tint, so drop it. */
+table.table.dataTable > tbody > tr > td.sorting_1 { background: inherit; }
+
+/* Sort affordance on sortable headers. */
+table.table.dataTable > thead > tr > th.dt-orderable-asc,
+table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
+
+.dt-container { width: 100%; }
+.dt-paging { margin-top: .75rem; display: flex; justify-content: flex-end; }
+.dt-paging .dt-paging-button {
+  background: transparent;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  color: var(--gray-600);
+  font-family: var(--font);
+  font-size: .8rem;
+  padding: .25rem .6rem;
+  margin-left: .25rem;
+  cursor: pointer;
+}
+.dt-paging .dt-paging-button:hover:not(.disabled) { background: var(--gray-200); color: var(--gray-800); }
+.dt-paging .dt-paging-button.current {
+  background: var(--green-pale);
+  border-color: var(--green-light);
+  color: var(--green);
+  font-weight: 600;
+}
+.dt-paging .dt-paging-button.disabled { opacity: .45; cursor: not-allowed; }
+
 /* ── Status badges ───────────────────────────────────────────────────────── */
 .status { display: inline-block; font-size: .75rem; padding: .2rem .7rem; border-radius: 20px; font-weight: 600; }
 .status-pending  { background: var(--amber-pale);  color: var(--amber); }
@@ -340,7 +387,22 @@ body {
      SuperAdmin's 7 tabs into 3 rows — a 202px header eating 25% of a 375x812
      screen before any content. */
   .navbar { flex-wrap: nowrap; gap: .5rem; padding-right: max(1rem, env(safe-area-inset-right)); padding-left: max(1rem, env(safe-area-inset-left)); }
-  .navbar-links { gap: 1rem; }
+
+  /* The pre-login nav (index.html) rides the same drawer. Without this it stayed a single
+     nowrap row and pushed Sign In / Create Account clean off a 375px screen — the two
+     things a new visitor most needs. It used to survive on .navbar{flex-wrap:wrap}, which
+     the drawer removed. */
+  .navbar-links {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: .5rem;
+    margin-left: 0;
+  }
+  .navbar-links a { padding: .7rem .75rem; font-size: 1rem; border-radius: var(--radius); }
+  .navbar-links a:hover { background: rgba(255,255,255,.12); }
+  /* Full-width tap targets for the two CTAs. */
+  .navbar-links .btn { width: 100%; padding: .6rem 1rem; }
 
   .nav-toggle {
     display: inline-flex;
