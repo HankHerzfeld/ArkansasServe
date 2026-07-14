@@ -90,6 +90,65 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   currently zero non-active users, so those predate the cascade or were removed
   out-of-band — but it would have caused the same class of orphan later.
 
+### Still open — next two, in this order
+
+**① Org-less users land in the Entra directory as if it were an organization.**
+`AuthMiddleware` resolves `TenantId = extension_OrganizationId ?? extension_SchoolId ??
+extension_TenantId ?? Claim("tid")`. That last fallback is the **Entra directory id** — the
+same GUID hardcoded as `TENANT_ID` in `frontend/js/auth.js`. A directory is not an
+organization, so any user whose token carries no org claim is bootstrapped into a pseudo-org
+that has no `Tenant` doc and never will. Live data matches exactly: every real user doc in
+that partition is `status:"active"` with a real `externalId` — real sign-ins, not legacy
+junk — and **`unknown-tenant` holds zero docs**, i.e. the intended fallback in
+`ResolveTenantId` has never once been reached because `tid` always fills the slot first.
+This reproduces on every such sign-in.
+
+*Decided approach:* treat it as **"no assigned or joined organization"** rather than
+inventing an org. Drop the `tid` fallback; keep a reserved, explicit partition as the
+person's profile home (never presented as an org — PR #65 already omits it from the
+memberships list, since it has no `Tenant` doc); and give the dashboard a real empty state
+that hides itself once an org is present. Also remove the client-side
+`organizationName || organizationId` fallback in `dashboard.js`, which would print a raw id
+regardless of what the API returns.
+
+**② Edge-to-edge (`viewport-fit=cover`) vs. the current letterboxed setup — decide.**
+
+*Where we are.* The viewport meta is `width=device-width, initial-scale=1.0` — **no
+`viewport-fit=cover`** — so iOS confines the page to the safe area and nothing can be hidden
+by the Dynamic Island, the notch or the home indicator. There is **no current exposure**;
+the risk only appears if we opt in. The navbar and drawer already pad via
+`max(…, env(safe-area-inset-*))`, which resolves to plain padding today (insets are 0) and
+would become correct automatically the moment we did opt in.
+
+*The finding that decides it.* `theme-color`, `manifest.background_color` and the navbar's
+`--green` are **all `#2d6a4f`**. In an installed PWA iOS fills the status-bar region with
+`theme-color` — which is already exactly the navbar's green. **The top of the app already
+looks seamless.** The main visual payoff of going edge-to-edge (a coloured bar bleeding into
+the status-bar area instead of a mismatched strip) is therefore *already achieved* by the
+colour match, at zero risk.
+
+*What opting in would cost.* `viewport-fit=cover` is global. Every fixed/sticky element has
+to be audited and padded or it slips under the island / home indicator: the navbar (the
+brand + hamburger row — i.e. the exact "top items" concern), the nav drawer, `.modal-overlay`,
+the notification pane, and the sticky header itself. Landscape adds
+`safe-area-inset-left/right` on notched devices. Get one wrong and the failure is invisible
+on a desktop browser and only shows on real hardware.
+
+*What it would buy.* Genuine full-bleed under the island; slightly more vertical room; a more
+native feel. **Only in the installed PWA** — in a Safari/Chrome tab the browser's own chrome
+occupies that space and `viewport-fit` changes nothing at all.
+
+*Recommendation: stay letterboxed for now.* This is a volunteer/hours tool whose users are
+overwhelmingly in a browser tab, where edge-to-edge is a no-op; the one place it would show
+(installed PWA) already looks right because of the colour match; and the cost is a
+whole-app audit whose failure mode is precisely the occluded header we set out to avoid.
+Revisit **if** installed-PWA usage becomes a real goal — the `env()` guards are already in
+place, so switching later is cheap and mostly mechanical.
+
+*Do not opt in halfway.* Adding `viewport-fit=cover` **without** auditing every fixed/sticky
+element is strictly worse than today: it is what pushes the brand and hamburger under the
+island.
+
 ### Still open
 - **Orphaned membership data (needs an owner decision).** A small number of membership rows
   still point at a tenant that no longer exists (one admin-level, the rest test accounts), all
