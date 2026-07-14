@@ -30,6 +30,12 @@ const DT = (() => {
     searching: true,    // engine on; its built-in input is suppressed via `layout` below
     ordering: true,
     autoWidth: false,
+    // DataTables owns the horizontal scroll, not the page's .table-scroll wrapper.
+    // Otherwise the wrapper scrolls DataTables' whole container — pager included — so
+    // scrolling right to reach a column also drags the pagination off to the side.
+    // scrollX keeps the pager outside the scrolling region. (Verified against the live
+    // users table: header and body stay aligned, which is the usual scrollX pitfall.)
+    scrollX: true,
     // DataTables 2 layout API. Only paging is rendered; everything else is ours.
     layout: {
       topStart: null,
@@ -78,6 +84,14 @@ const DT = (() => {
     if (typeof opts.rowFilter === 'function') rowFilters.set(tableId, opts.rowFilter);
     else rowFilters.delete(tableId);
 
+    // Hand the horizontal scroll to DataTables (scrollX above) by switching off the
+    // page's own .table-scroll wrapper for this table. Flagged with a class rather than
+    // a :has() selector so the behaviour is explicit and doesn't depend on selector
+    // support. The wrapper stays in the markup and resumes its job on destroy — it is
+    // still what contains the table for every non-DataTables table on the page.
+    const wrap = el.closest('.table-scroll');
+    if (wrap) wrap.classList.add('table-scroll-dt');
+
     const config = Object.assign({}, HOUSE_DEFAULTS, opts.dataTables || {});
     return new DataTable('#' + tableId, config);
   }
@@ -88,6 +102,8 @@ const DT = (() => {
     if (DataTable.isDataTable('#' + tableId)) {
       new DataTable('#' + tableId).destroy();
     }
+    const wrap = el.closest('.table-scroll');
+    if (wrap) wrap.classList.remove('table-scroll-dt');
     rowFilters.delete(tableId);
   }
 
