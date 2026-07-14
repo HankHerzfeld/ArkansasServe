@@ -144,9 +144,31 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		var reg = await cosmos.GetRegistrationAsync(id, eventId);
 		if (reg == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Registration not found");
 
-		// A non-admin may only cancel their own registration.
-		if (ctx.IsStudentLevel && reg.UserId != ctx.UserId)
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot cancel another user's registration");
+		// Authorize per-org, never by the token level (Finding 9). You may always cancel your
+		// own registration; cancelling someone else's needs EventAdmin+ IN THE EVENT'S OWN ORG
+		// (a global super clears this everywhere).
+		//
+		// EventAdmin — not OrganizationAdmin — because whoever runs an event is the one who
+		// clears no-shows on the day (decided 2026-07-14). This matches CreateEvent's level;
+		// it is deliberately lower than delete-event/void-log, which are destructive and stay
+		// at OrganizationAdmin+.
+		//
+		// The previous check keyed on ctx.IsStudentLevel, which was wrong in both directions:
+		//   • a membership-based OrganizationAdmin carries no admin claim on their token, so
+		//     they read as Student and were refused on their own member's registration;
+		//   • a token-level admin from an UNRELATED org skipped the check entirely and could
+		//     cancel any registration in any org.
+		if (reg.UserId != ctx.UserId)
+		{
+			// The event's own org, with the same legacy SchoolId fallback used below to
+			// locate the event itself.
+			var regOrgId = string.IsNullOrWhiteSpace(reg.OrganizationId) ? reg.SchoolId : reg.OrganizationId;
+			var actor = string.IsNullOrWhiteSpace(regOrgId)
+				? null
+				: await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, regOrgId);
+			if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.EventAdmin))
+				return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot cancel another user's registration");
+		}
 
 		if (reg.Status == "Cancelled")
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Registration is already cancelled");

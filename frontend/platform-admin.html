@@ -78,6 +78,13 @@
   <div id="tab-roles" style="display:none;">
     <div class="card" style="margin-bottom:1rem;">
       <div class="card-title">Assign a role</div>
+      <p style="color:var(--gray-600);font-size:.85rem;margin:0 0 .75rem;">
+        A role assigned here takes effect once the person is a member of that organization.
+        It is picked up automatically on their next sign-in <strong>only if it is their home
+        organization</strong>. For any other organization the person must add it themselves
+        (Organizations → Join) before the role applies — until then, assigning a role here
+        will look like it had no effect.
+      </p>
       <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;">
         <div class="form-group" style="margin:0;min-width:13rem;"><label>Email</label><input id="assign-email" type="email"></div>
         <div class="form-group" style="margin:0;min-width:10rem;"><label>Name (new person)</label><input id="assign-name" type="text"></div>

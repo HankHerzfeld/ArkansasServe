@@ -39,18 +39,52 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
 ---
 
 ## 🐛 Open findings / follow-ups
-- **Finding 9 — registration cancel checks token level, not membership.** `CancelRegistration`
-  gates "cancel only your own" on the token `adminLevel`, so a membership-based
-  OrganizationAdmin gets 403 ("Cannot cancel another user's registration") on a member's
-  registration. Fix: authorize via per-org membership (`ResolveActorInOrgAsync` +
-  OrganizationAdmin+ or the owner), like the void/delete endpoints.
-- **Finding 1 (likely by-design).** A role granted via Platform Admin → Roles doesn't apply
-  on sign-in; the user must self-join the org to trigger adoption. No hint in the Roles UI.
-- **Finding 6 (UX).** An adopted membership is `selfJoined:false`, so Leave is refused (403)
-  even for a plain volunteer.
-- **Minor.** Per-org `displayName` differs across pages (per-org User doc); stale ".NET 10"
-  doc (actual `net8.0`); rotate Cosmos/Blob keys; scope Cosmos firewall; fix Daily Event
-  Crawler workflow (failing).
+
+### Resolved 2026-07-14 (PR #62)
+- **Finding 9 — registration cancel checked token level, not membership.** ✅ Fixed.
+  `CancelRegistration` now authorizes per-org via `ResolveActorInOrgAsync`: you may always
+  cancel your own; cancelling another's needs **EventAdmin+ in the event's own org**
+  (decided — whoever runs an event clears no-shows on the day; deliberately lower than the
+  destructive delete/void, which stay at OrganizationAdmin+). The old token check was wrong
+  both ways: it refused membership-based admins *and* let a token-level admin from an
+  unrelated org cancel anything anywhere.
+- **Finding 1 — role granted via Roles doesn't apply.** ✅ Hint added. Verified mechanism:
+  `GetMe` **does** adopt at sign-in, but only within the person's **token/home org**; a role
+  granted in any *other* org needs a self-join. The Roles UI now says so.
+- **Finding 6 — adopted membership can't Leave.** ✅ **By design, decided 2026-07-14.** An
+  adopted membership was built by an org (e.g. a school's roster), so the person may not
+  remove themselves — Leave hard-deletes the doc. They must ask an admin, who removes it via
+  the role matrix. Only a membership someone opted into themselves is theirs to drop. The
+  UX half *was* real and is fixed: the 403 now explains why and what to do next.
+- **Stale ".NET 10" doc.** ✅ Fixed (README + copilot-instructions, which was actively
+  telling agents to target `net10.0`). Staying on **.NET 8 LTS** is deliberate; the "decide
+  8 vs 10" action is closed.
+- **Daily Event Crawler.** ✅ Schedule **disabled** (manual `workflow_dispatch` only).
+  Not merely a missing secret: the endpoint validates an **Entra JWT**, and those expire in
+  ~1h, so a static `CRAWLER_SERVICE_TOKEN` in a GitHub secret can never drive a daily job.
+  Re-enable once M2M auth is settled — app registration + `client_credentials` (mint a fresh
+  token per run), a shared-secret header for that route, or a timer-triggered Function.
+
+- **Rotate Cosmos/Blob keys.** ✅ Done manually 2026-07-14.
+- **Scope Cosmos firewall.** ✅ Closed 2026-07-14 — **partial by necessity, not oversight.**
+  The Function App runs on **Consumption (Y1/Dynamic)**, which supports no VNet integration
+  and has no stable outbound IPs, so IP-allowlisting it against Cosmos is not viable — an
+  allowlist would work until the shared pool shifted, then fail silently. Public access is
+  restricted to selected networks with the **"Accept connections from within public Azure
+  datacenters"** exception, which is *required* on Y1. That blocks the public internet but
+  still admits any Azure-resident caller (key-gated). Real isolation needs **EP1 + VNet +
+  a Cosmos Private Endpoint** (~$150+/mo) — an open cost decision, not a config toggle.
+
+### Still open
+- **Minor.** Per-org `displayName` differs across pages (per-org User doc).
+- **Infra drift (P2) — now larger.** The Bicep `what-if`/apply workflow has never
+  successfully run; its only runs were PR `what-if`s that failed at OIDC login. Live
+  containers (incl. `ImpersonationSessions`/`AuditEvents`) were created out-of-band, and the
+  Cosmos firewall above is a third out-of-band change: `main.bicep` still declares
+  `publicNetworkAccess: 'Enabled'` with no `ipRules`/`networkAclBypass`, and sets
+  `CosmosDb__ConnectionString` from `listConnectionStrings()` (which returns **primary**).
+  So an apply today would **revert the firewall and overwrite the rotated key setting**.
+  Bicep is not the source of truth for what exists — reconcile before any apply.
 
 ---
 

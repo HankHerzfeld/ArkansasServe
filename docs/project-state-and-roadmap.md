@@ -363,9 +363,10 @@ PlatformAdmin
 - `backend/ArkansasServe.Functions/ArkansasServe.Functions.csproj` targets `net8.0`
 - `frontend/staticwebapp.config.json` sets `apiRuntime: dotnet-isolated:8.0`
 - `.github/workflows/azure-static-web-apps.yml` installs `.NET 8.0.x`
-- **Action:** Decide: stay on .NET 8 (supported LTS) or upgrade to .NET 10.
-  - If .NET 10: update `csproj`, `staticwebapp.config.json`, and both workflow files.
-  - Recommendation: stay on .NET 8 until SWA managed API officially supports .NET 10 runtime.
+- **Decided (2026-07-14): stay on .NET 8 LTS.** Nothing to change — `csproj`,
+  `staticwebapp.config.json` and both workflows already agree on 8. The ".NET 10" claim was
+  stale doc only (README + copilot-instructions), now corrected. Revisit only when the SWA
+  managed API officially supports a newer runtime.
 
 #### ② Resolve CI/CD Deployment Path Mismatch
 

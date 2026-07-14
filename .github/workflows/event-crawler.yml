@@ -1,25 +1,33 @@
 name: Daily Event Crawler
 
-# Pulls Arkansas volunteer events from external sources daily at 11:00 UTC
-# and once a week on Sunday at 12:00 UTC for a fuller pull.
-# (GitHub Actions cron uses UTC and does not adjust for daylight saving time.)
+# ⚠️ SCHEDULE DISABLED (2026-07-14) — manual runs only.
 #
-# The scheduled crawl is driven by this workflow calling the crawler's HTTP endpoint
-# rather than a timer-triggered Azure Function. This keeps the Consumption Function App
-# free of an always-on timer/scheduler and puts the schedule in one visible place.
-# (Note: this is a Functions-host/cost choice, not a Static Web App tier limitation —
-# the SWA is Standard.)
+# Why: the crawl endpoint (/manage/events/crawl) authenticates through
+# AuthMiddleware.ValidateRequest, i.e. it expects a real **Entra JWT**. Entra access
+# tokens expire in about an hour, so CRAWLER_SERVICE_TOKEN — a static value pasted into
+# a GitHub secret — cannot drive a daily job: it would 401 by the next morning even once
+# set. The secret was never set, so every scheduled run failed at the validate step
+# ("CRAWLER_SERVICE_TOKEN secret is not set"), mailing a failure daily for no benefit.
+#
+# The schedule stays off until machine-to-machine auth is settled. The real options are
+# an Entra app registration + client_credentials (mint a fresh token per run; needs
+# AuthMiddleware to accept app tokens), a dedicated shared-secret header for this one
+# route, or moving the schedule into a timer-triggered Function. Re-enable the cron
+# below once one is in place — the job body itself is fine and unchanged.
+#
+# workflow_dispatch still works for a one-off run IF a currently-valid token is supplied.
 #
 # Prerequisites (set in GitHub repo Settings → Secrets and variables → Actions):
 #   CRAWLER_ENDPOINT_URL  — e.g. https://your-swa.azurestaticapps.net/api
-#   CRAWLER_SERVICE_TOKEN — ****** for a PlatformAdmin/SuperAdmin account
+#   CRAWLER_SERVICE_TOKEN — a bearer token for a PlatformAdmin/SuperAdmin account
+#                           (see the expiry caveat above)
 
 on:
-  schedule:
-    # Daily at 11:00 UTC (6 AM CT)
-    - cron: '0 11 * * *'
-    # Extra full-pull on Sundays at 12:00 UTC (7 AM CT)
-    - cron: '0 12 * * 0'
+  # schedule:
+  #   # Daily at 11:00 UTC (6 AM CT)
+  #   - cron: '0 11 * * *'
+  #   # Extra full-pull on Sundays at 12:00 UTC (7 AM CT)
+  #   - cron: '0 12 * * 0'
   workflow_dispatch:
     inputs:
       sources:
