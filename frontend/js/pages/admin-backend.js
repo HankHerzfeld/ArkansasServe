@@ -74,13 +74,6 @@
     return td;
   }
 
-  // Shared name/email substring match used by both table filters.
-  function matchesQuery(user, q) {
-    if (!q) return true;
-    const hay = `${user.displayName || ''} ${user.firstName || ''} ${user.lastName || ''} ${user.email || ''}`.toLowerCase();
-    return hay.includes(q);
-  }
-
   function showAdminSections() {
     document.getElementById('tenant-settings-card').style.display = 'block';
     document.getElementById('groups-card').style.display = 'block';
@@ -213,12 +206,19 @@
     renderVolunteers();
   }
 
+  // Rows are rendered ONCE, in full, and DataTables does the searching/sorting/paging.
+  // Previously this re-rendered the tbody on every keystroke; with DataTables mounted over
+  // the live DOM that would tear out the very nodes it is managing, so filtering now goes
+  // through its API (applyVolunteerFilters) and this function only runs when the
+  // underlying data changes.
   function renderVolunteers() {
     const table = document.getElementById('volunteers-table');
     const empty = document.getElementById('volunteers-empty');
     const tbody = document.getElementById('volunteers-tbody');
     const panel = document.getElementById('log-service-panel');
     const count = document.getElementById('volf-count');
+
+    DT.destroy('volunteers-table');
     clearChildren(tbody);
 
     const all = state.vols || [];
@@ -231,28 +231,10 @@
       return;
     }
     panel.style.display = 'block';
-
-    const q = (document.getElementById('volf-search').value || '').trim().toLowerCase();
-    const type = document.getElementById('volf-type').value;
-    const status = document.getElementById('volf-status').value;
-    const rows = all.filter(v => {
-      if (type && (v.personType || '') !== type) return false;
-      if (status === 'managed' && !v.isManaged) return false;
-      if (status === 'active' && v.isManaged) return false;
-      return matchesQuery(v, q);
-    });
-
-    count.textContent = `${rows.length} of ${all.length}`;
-    if (!rows.length) {
-      table.style.display = 'none';
-      empty.style.display = 'block';
-      empty.textContent = 'No volunteers match your filters.';
-      return;
-    }
     table.style.display = 'table';
     empty.style.display = 'none';
 
-    rows.forEach(v => {
+    all.forEach(v => {
       const tr = document.createElement('tr');
       const tdChk = document.createElement('td');
       const chk = document.createElement('input');
@@ -268,6 +250,52 @@
       tr.appendChild(createTextCell(v.isManaged ? 'managed (no login yet)' : 'active'));
       tbody.appendChild(tr);
     });
+
+    DT.mount('volunteers-table', {
+      // Type and status aren't plain cell text (type is a label, status is derived from
+      // isManaged), so they're matched against the source record by row index — rows are
+      // appended in `all` order, so dataIndex maps straight onto it.
+      rowFilter: (dataIndex) => {
+        const v = all[dataIndex];
+        if (!v) return true;
+        const type = document.getElementById('volf-type').value;
+        const status = document.getElementById('volf-status').value;
+        if (type && (v.personType || '') !== type) return false;
+        if (status === 'managed' && !v.isManaged) return false;
+        if (status === 'active' && v.isManaged) return false;
+        return true;
+      },
+      dataTables: {
+        // Checkbox column: nothing to sort, nothing to search.
+        columnDefs: [{ targets: 0, orderable: false, searchable: false }],
+        order: [[1, 'asc']], // name
+      },
+    });
+
+    // DataTables re-renders on every draw (search, sort, page), so the count is updated
+    // from the same event rather than computed alongside a manual filter pass.
+    const dt = DT.instance('volunteers-table');
+    if (dt) {
+      dt.on('draw', () => updateVolunteerCount(all.length));
+      updateVolunteerCount(all.length);
+    }
+    applyVolunteerFilters();
+  }
+
+  function updateVolunteerCount(total) {
+    const count = document.getElementById('volf-count');
+    const shown = DT.visibleCount('volunteers-table');
+    count.textContent = `${shown} of ${total}`;
+    const empty = document.getElementById('volunteers-empty');
+    empty.style.display = shown ? 'none' : 'block';
+    if (!shown) empty.textContent = 'No volunteers match your filters.';
+  }
+
+  function applyVolunteerFilters() {
+    const dt = DT.instance('volunteers-table');
+    if (!dt) return;
+    const q = (document.getElementById('volf-search').value || '').trim();
+    dt.search(q).draw();
   }
 
   async function loadGroups() {
@@ -302,11 +330,21 @@
     renderUsers();
   }
 
+  // Same shape as renderVolunteers: render every row once, let DataTables search/sort/page
+  // them, and route the filter controls through its API instead of re-rendering.
+  //
+  // This grid is the awkward case for DataTables — each row carries a live <select> and
+  // two inputs — because DataTables reads cell TEXT, and a <select>'s text is the
+  // concatenation of all its options. Sorting or searching those columns would therefore
+  // be nonsense, so they are marked non-orderable/non-searchable below and the level
+  // filter is matched against the source record instead.
   function renderUsers() {
     const table = document.getElementById('users-table');
     const empty = document.getElementById('users-empty');
     const tbody = document.getElementById('users-tbody');
     const count = document.getElementById('users-count');
+
+    DT.destroy('users-table');
     clearChildren(tbody);
 
     const all = state.users || [];
@@ -318,27 +356,10 @@
       return;
     }
 
-    const q = (document.getElementById('users-search').value || '').trim().toLowerCase();
-    const type = document.getElementById('users-filter-type').value;
-    const level = document.getElementById('users-filter-level').value;
-    const rows = all.filter(u => {
-      if (type && (u.personType || '') !== type) return false;
-      if (level && (u.adminLevel || 'Student') !== level) return false;
-      return matchesQuery(u, q);
-    });
-
-    count.textContent = `${rows.length} of ${all.length}`;
-    if (!rows.length) {
-      table.style.display = 'none';
-      empty.style.display = 'block';
-      empty.textContent = 'No users match your filters.';
-      return;
-    }
-
     table.style.display = 'table';
     empty.style.display = 'none';
 
-    rows.forEach(user => {
+    all.forEach(user => {
       const tr = document.createElement('tr');
       tr.appendChild(createNameCell(user));
       tr.appendChild(createTextCell(user.email || ''));
@@ -397,6 +418,49 @@
 
       tbody.appendChild(tr);
     });
+
+    DT.mount('users-table', {
+      // personType isn't a column at all, and adminLevel lives in a <select> whose text is
+      // every option — so both are matched against the source record by row index.
+      rowFilter: (dataIndex) => {
+        const u = all[dataIndex];
+        if (!u) return true;
+        const type = document.getElementById('users-filter-type').value;
+        const level = document.getElementById('users-filter-level').value;
+        if (type && (u.personType || '') !== type) return false;
+        if (level && (u.adminLevel || 'Student') !== level) return false;
+        return true;
+      },
+      dataTables: {
+        // Columns 2–5 hold controls (select, two inputs, Save). Their text is meaningless
+        // to a sort or a search, so DataTables is told to leave them alone.
+        columnDefs: [{ targets: [2, 3, 4, 5], orderable: false, searchable: false }],
+        order: [[0, 'asc']], // user name
+      },
+    });
+
+    const dt = DT.instance('users-table');
+    if (dt) {
+      dt.on('draw', () => updateUserCount(all.length));
+      updateUserCount(all.length);
+    }
+    applyUserFilters();
+  }
+
+  function updateUserCount(total) {
+    const count = document.getElementById('users-count');
+    const shown = DT.visibleCount('users-table');
+    count.textContent = `${shown} of ${total}`;
+    const empty = document.getElementById('users-empty');
+    empty.style.display = shown ? 'none' : 'block';
+    if (!shown) empty.textContent = 'No users match your filters.';
+  }
+
+  function applyUserFilters() {
+    const dt = DT.instance('users-table');
+    if (!dt) return;
+    const q = (document.getElementById('users-search').value || '').trim();
+    dt.search(q).draw();
   }
 
   // Populate the level filter once and wire both table toolbars to re-render.
@@ -408,10 +472,13 @@
       opt.textContent = level;
       levelSel.appendChild(opt);
     });
+    // Filters drive the DataTables API rather than re-rendering the tbody — rebuilding
+    // rows under a mounted DataTable would tear out the nodes it manages (and the row
+    // controls' listeners with them). The render functions now run only on data reload.
     ['users-search', 'users-filter-type', 'users-filter-level'].forEach(id =>
-      document.getElementById(id).addEventListener('input', renderUsers));
+      document.getElementById(id).addEventListener('input', applyUserFilters));
     ['volf-search', 'volf-type', 'volf-status'].forEach(id =>
-      document.getElementById(id).addEventListener('input', renderVolunteers));
+      document.getElementById(id).addEventListener('input', applyVolunteerFilters));
   })();
 
   async function loadDemoUsers() {
