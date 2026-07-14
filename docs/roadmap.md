@@ -75,7 +75,101 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   still admits any Azure-resident caller (key-gated). Real isolation needs **EP1 + VNet +
   a Cosmos Private Endpoint** (~$150+/mo) — an open cost decision, not a config toggle.
 
+### Resolved 2026-07-14 (PR #65)
+- **Raw org id rendered as an organization name.** ✅ Fixed. The dashboard showed a membership
+  chip whose organization name was the raw tenant id. Cause: `GetMyMemberships` did
+  `organizationName = tenant?.Name ?? orgId`, so a membership whose tenant no longer exists
+  fell back to printing the raw partition key. Such a membership is **unusable** — you cannot
+  scope to it, browse it, or leave it — so it is now omitted and logged as a warning rather
+  than surfaced. (Omitting is safe: `GetTenantAsync` returns null only on a genuine 404.)
+- **Latent: tenant teardown could not remove inactive members.** ✅ Fixed.
+  `DeleteTenantCascadeAsync` deleted members via `GetUsersByTenantAsync`, which filters
+  `status == "active"` — correct as a roster query, wrong for a teardown, since a
+  suspended/inactive member would survive and be orphaned against a deleted tenant. It now
+  uses an unfiltered partition read. *Not* the cause of the orphans above — there are
+  currently zero non-active users, so those predate the cascade or were removed
+  out-of-band — but it would have caused the same class of orphan later.
+
+### Still open — next two, in this order
+
+**① Org-less users land in the Entra directory as if it were an organization.**
+`AuthMiddleware` resolves `TenantId = extension_OrganizationId ?? extension_SchoolId ??
+extension_TenantId ?? Claim("tid")`. That last fallback is the **Entra directory id** — the
+same GUID hardcoded as `TENANT_ID` in `frontend/js/auth.js`. A directory is not an
+organization, so any user whose token carries no org claim is bootstrapped into a pseudo-org
+that has no `Tenant` doc and never will. Live data matches exactly: every real user doc in
+that partition is `status:"active"` with a real `externalId` — real sign-ins, not legacy
+junk — and **`unknown-tenant` holds zero docs**, i.e. the intended fallback in
+`ResolveTenantId` has never once been reached because `tid` always fills the slot first.
+This reproduces on every such sign-in.
+
+*Resolved 2026-07-14 (PR #65).* Treated as **"no assigned or joined organization"** rather
+than inventing an org:
+- `AuthMiddleware` no longer falls back to `tid`. A directory is not an organization.
+- `ResolveTenantId` now resolves an org-less token to the reserved **`unassigned`**
+  partition (`TenantIds.Unassigned`) — a holding place for the person's own profile/intake
+  answers, never presented as an org. It has no `Tenant` doc, so it is omitted from
+  `/manage/me/memberships` by the same guard that hides orphans. (`unknown-tenant` is gone;
+  it held zero docs, so the rename was free.)
+- **First join migrates and cleans up:** `JoinOrg` folds the holding profile
+  (person-owned fields only — never `AdminLevel`/`GroupIds`/hours/background-check) into the
+  new org document and deletes the holding record, best-effort so it can't fail the join.
+- **`GetMe` prefers a real membership** over the holding partition. Self-joining does not
+  change a person's Entra claims, so without this every later sign-in would re-create an
+  `unassigned` profile beside the real one and silently undo the migration.
+- **Both client-side GUID fallbacks removed** — `dashboard.js` *and* `scope.js` each did
+  `organizationName || organizationId`, so a raw id could reach the UI (and the org
+  switcher) regardless of what the API returned. The dashboard now shows a real
+  "No assigned or joined organization" empty state, which hides itself once an org exists.
+
+**② Edge-to-edge (`viewport-fit=cover`) vs. the current letterboxed setup — OPEN.**
+*Status 2026-07-14: deliberately left open by the owner; not decided.* No action needed to
+stay safe — the current setup has no exposure. Read the note below when picking it up.
+
+*Where we are.* The viewport meta is `width=device-width, initial-scale=1.0` — **no
+`viewport-fit=cover`** — so iOS confines the page to the safe area and nothing can be hidden
+by the Dynamic Island, the notch or the home indicator. There is **no current exposure**;
+the risk only appears if we opt in. The navbar and drawer already pad via
+`max(…, env(safe-area-inset-*))`, which resolves to plain padding today (insets are 0) and
+would become correct automatically the moment we did opt in.
+
+*The finding that decides it.* `theme-color`, `manifest.background_color` and the navbar's
+`--green` are **all `#2d6a4f`**. In an installed PWA iOS fills the status-bar region with
+`theme-color` — which is already exactly the navbar's green. **The top of the app already
+looks seamless.** The main visual payoff of going edge-to-edge (a coloured bar bleeding into
+the status-bar area instead of a mismatched strip) is therefore *already achieved* by the
+colour match, at zero risk.
+
+*What opting in would cost.* `viewport-fit=cover` is global. Every fixed/sticky element has
+to be audited and padded or it slips under the island / home indicator: the navbar (the
+brand + hamburger row — i.e. the exact "top items" concern), the nav drawer, `.modal-overlay`,
+the notification pane, and the sticky header itself. Landscape adds
+`safe-area-inset-left/right` on notched devices. Get one wrong and the failure is invisible
+on a desktop browser and only shows on real hardware.
+
+*What it would buy.* Genuine full-bleed under the island; slightly more vertical room; a more
+native feel. **Only in the installed PWA** — in a Safari/Chrome tab the browser's own chrome
+occupies that space and `viewport-fit` changes nothing at all.
+
+*Recommendation: stay letterboxed for now.* This is a volunteer/hours tool whose users are
+overwhelmingly in a browser tab, where edge-to-edge is a no-op; the one place it would show
+(installed PWA) already looks right because of the colour match; and the cost is a
+whole-app audit whose failure mode is precisely the occluded header we set out to avoid.
+Revisit **if** installed-PWA usage becomes a real goal — the `env()` guards are already in
+place, so switching later is cheap and mostly mechanical.
+
+*Do not opt in halfway.* Adding `viewport-fit=cover` **without** auditing every fixed/sticky
+element is strictly worse than today: it is what pushes the brand and hamburger under the
+island.
+
 ### Still open
+- **Orphaned membership data (needs an owner decision).** A small number of membership rows
+  still point at a tenant that no longer exists (one admin-level, the rest test accounts), all
+  `status:"active"`. The fix above hides them from the UI; the rows remain. Deleting
+  production user records was deliberately **not** done unattended. Removing the admin row is
+  safe for access — the `arkansas-serve-root` SuperAdmin membership is independent — but it is
+  still a destructive write on real data. Identifiers are deliberately not recorded here: this
+  repository is public. See the session notes / Cosmos for the specific rows.
 - **Minor.** Per-org `displayName` differs across pages (per-org User doc).
 - **Infra drift (P2) — now larger.** The Bicep `what-if`/apply workflow has never
   successfully run; its only runs were PR `what-if`s that failed at OIDC login. Live

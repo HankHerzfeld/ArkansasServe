@@ -97,7 +97,14 @@ public static class AuthMiddleware
             var userContext = new UserContext
             {
                 UserId      = Claim("oid") ?? Claim("sub") ?? string.Empty,
-                TenantId    = Claim("extension_OrganizationId") ?? Claim("extension_SchoolId") ?? Claim("extension_TenantId") ?? Claim("tid") ?? string.Empty,
+                // NOTE: deliberately does NOT fall back to the "tid" claim. `tid` is the Entra
+                // DIRECTORY id (the same GUID hardcoded as TENANT_ID in frontend/js/auth.js) —
+                // it identifies the identity provider, not an organization on this platform.
+                // Using it as a TenantId bootstrapped every user whose token carried no org
+                // claim into a pseudo-org that has no Tenant doc and never would, which then
+                // rendered as a raw GUID wherever memberships are listed. Leaving this empty is
+                // what lets ResolveTenantId report "no assigned or joined organization".
+                TenantId    = Claim("extension_OrganizationId") ?? Claim("extension_SchoolId") ?? Claim("extension_TenantId") ?? string.Empty,
                 // The token still carries the legacy 4-role claim; translate it once,
                 // here, into the 5-level adminLevel used everywhere downstream.
                 AdminLevel  = AdminLevels.FromLegacyRole(Claim("extension_Role") ?? roleFromRolesClaim),
