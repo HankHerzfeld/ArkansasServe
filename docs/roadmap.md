@@ -76,8 +76,8 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   a Cosmos Private Endpoint** (~$150+/mo) — an open cost decision, not a config toggle.
 
 ### Resolved 2026-07-14 (PR #65)
-- **Raw org GUID rendered as an organization name.** ✅ Fixed. The dashboard showed a chip
-  reading `434cf17d-6ab5-48c3-be4a-5541ed0e74d0 · Super Admin`. Cause: `GetMyMemberships` did
+- **Raw org id rendered as an organization name.** ✅ Fixed. The dashboard showed a membership
+  chip whose organization name was the raw tenant id. Cause: `GetMyMemberships` did
   `organizationName = tenant?.Name ?? orgId`, so a membership whose tenant no longer exists
   fell back to printing the raw partition key. Such a membership is **unusable** — you cannot
   scope to it, browse it, or leave it — so it is now omitted and logged as a warning rather
@@ -91,13 +91,13 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   out-of-band — but it would have caused the same class of orphan later.
 
 ### Still open
-- **Orphaned membership data (needs an owner decision).** Three memberships still point at
-  the deleted tenant `434cf17d-6ab5-48c3-be4a-5541ed0e74d0`, all `status:"active"`: the
-  owner's own SuperAdmin membership plus two test accounts (`Hank H`, `HH Test 123gmail`).
-  The fix above hides them from the UI; the rows remain. Deleting production user records was
-  deliberately **not** done unattended. Removing the owner's row is safe for access (their
-  `arkansas-serve-root` SuperAdmin membership is independent), but it is still a destructive
-  write on real data.
+- **Orphaned membership data (needs an owner decision).** A small number of membership rows
+  still point at a tenant that no longer exists (one admin-level, the rest test accounts), all
+  `status:"active"`. The fix above hides them from the UI; the rows remain. Deleting
+  production user records was deliberately **not** done unattended. Removing the admin row is
+  safe for access — the `arkansas-serve-root` SuperAdmin membership is independent — but it is
+  still a destructive write on real data. Identifiers are deliberately not recorded here: this
+  repository is public. See the session notes / Cosmos for the specific rows.
 - **Minor.** Per-org `displayName` differs across pages (per-org User doc).
 - **Infra drift (P2) — now larger.** The Bicep `what-if`/apply workflow has never
   successfully run; its only runs were PR `what-if`s that failed at OIDC login. Live
