@@ -208,9 +208,15 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		return await HttpHelper.CreatedJson(req, created);
 	}
 
-	// Self-service leave: drop a membership the person added themselves. Only a
-	// self-joined Student membership may be removed here; elevated memberships must
-	// be removed by an admin through the role matrix.
+	// Self-service leave: drop a plain volunteer membership. Only a Student-level
+	// membership may be removed here; elevated memberships must be removed by an admin
+	// through the role matrix.
+	//
+	// Finding 6: this used to also require SelfJoined, which refused an ADOPTED
+	// membership (adoption leaves selfJoined:false) even for a plain volunteer — someone
+	// added as a managed volunteer could never leave. The SelfJoined test was redundant
+	// for its stated purpose anyway: the Student-level check below is what actually keeps
+	// admin memberships from being dropped here.
 	[Function("LeaveOrg")]
 	public async Task<HttpResponseData> LeaveOrg(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "manage/me/memberships/{orgId}")] HttpRequestData req,
@@ -226,7 +232,7 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		if (membership == null)
 			return await HttpHelper.OkJson(req, new { removed = true });
 
-		if (!membership.SelfJoined || !string.Equals(membership.AdminLevel, AdminLevels.Student, StringComparison.OrdinalIgnoreCase))
+		if (!string.Equals(membership.AdminLevel, AdminLevels.Student, StringComparison.OrdinalIgnoreCase))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "This membership cannot be removed here");
 
 		await cosmos.DeleteUserWithFallbackAsync(membership.Id, membership.TenantId);

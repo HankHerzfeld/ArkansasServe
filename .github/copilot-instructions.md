@@ -45,7 +45,7 @@ schools and juvenile detention/court departments.
 
 | Layer | Technology |
 |---|---|
-| Backend | C# / .NET 10, Azure Functions v4 (isolated worker model) |
+| Backend | C# / .NET 8 (LTS), Azure Functions v4 (isolated worker model) |
 | Database | Azure Cosmos DB for NoSQL (free tier, shared throughput) |
 | File storage | Azure Blob Storage (Standard LRS) |
 | Auth | Microsoft Entra External ID (external tenant, PKCE flow) |
@@ -88,10 +88,11 @@ for the frontend.
 
 ---
 
-## ⚙️ C# / .NET 10 Requirements
+## ⚙️ C# / .NET 8 Requirements
 
 ### General
-- Target `net10.0` with the **isolated worker model** exclusively
+- Target `net8.0` with the **isolated worker model** exclusively — staying on .NET 8 LTS is a
+  deliberate decision (SWA managed API runtime support), not drift; do not "upgrade" it
 - Use `FunctionsApplication.CreateBuilder(args)` — never `new HostBuilder()`
 - Register all services as **singletons** (CosmosClient, BlobServiceClient, CosmosService, BlobService)
 - Use **primary constructors** and **constructor injection** throughout

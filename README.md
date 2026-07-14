@@ -21,7 +21,7 @@ and secure.
 
 | Layer | Technology |
 |---|---|
-| Backend | C# / .NET 10, Azure Functions v4 (isolated worker model) |
+| Backend | C# / .NET 8 (LTS), Azure Functions v4 (isolated worker model) |
 | Database | Azure Cosmos DB for NoSQL |
 | File storage | Azure Blob Storage |
 | Auth | Microsoft Entra External ID (PKCE flow) |
@@ -36,7 +36,7 @@ and secure.
 ArkansasServe/
 ├── docs/                       Setup guide and data-flow documentation
 ├── backend/
-│   └── ArkansasServe.Functions/   Azure Functions app (.NET 10, isolated worker)
+│   └── ArkansasServe.Functions/   Azure Functions app (.NET 8, isolated worker)
 │       ├── Models/                Cosmos DB document models
 │       ├── Middleware/            Auth middleware (token + role validation)
 │       ├── Services/              CosmosService, BlobService
