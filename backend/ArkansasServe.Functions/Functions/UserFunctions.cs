@@ -191,6 +191,23 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 				user.ProfileComplete = IntakeValidation.IsComplete(user);
 
 				var updated = await cosmos.UpsertUserWithPartitionFallbackAsync(user);
+
+				// A person's name belongs to the person, not the org. This write only touches
+				// their HOME-org doc, so without this the same person keeps rendering under a
+				// stale name in every other org they belong to. Best-effort: the profile save
+				// has already succeeded and must not be failed by a sync problem.
+				try
+				{
+					var synced = await cosmos.SyncNameAcrossMembershipsAsync(
+						ctx.UserId, updated.FirstName, updated.LastName, updated.DisplayName, updated.TenantId);
+					if (synced > 0)
+						logger.LogInformation("Synced display name to {Count} other membership(s) for {UserId}", synced, ctx.UserId);
+				}
+				catch (Exception ex)
+				{
+					logger.LogError(ex, "Failed to sync display name across memberships for {UserId}", ctx.UserId);
+				}
+
 				return await HttpHelper.OkJson(req, updated);
 			}
 			catch (CosmosException ex)

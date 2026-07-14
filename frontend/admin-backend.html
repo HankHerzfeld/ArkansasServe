@@ -101,16 +101,18 @@
       </div>
       <button class="btn btn-primary" id="btn-add-group">Add Group</button>
     </div>
-    <table class="table" id="groups-table" style="margin-top:1rem;display:none;">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Id</th>
-        </tr>
-      </thead>
-      <tbody id="groups-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="groups-table" style="margin-top:1rem;display:none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Id</th>
+          </tr>
+        </thead>
+        <tbody id="groups-tbody"></tbody>
+      </table>
+    </div>
     <div id="groups-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No groups yet.</div>
   </div>
 
@@ -129,19 +131,21 @@
       </select>
       <span id="users-count" style="font-size:.8rem;color:var(--gray-600);"></span>
     </div>
-    <table class="table" id="users-table" style="display:none;">
-      <thead>
-        <tr>
-          <th>User</th>
-          <th>Email</th>
-          <th>Admin Level</th>
-          <th>Group IDs (CSV)</th>
-          <th>Event IDs (CSV)</th>
-          <th>Save</th>
-        </tr>
-      </thead>
-      <tbody id="users-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="users-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Email</th>
+            <th>Admin Level</th>
+            <th>Group IDs (CSV)</th>
+            <th>Event IDs (CSV)</th>
+            <th>Save</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div>
     <div id="users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No users in scope.</div>
   </div>
 
@@ -192,19 +196,21 @@
       </select>
       <span id="volf-count" style="font-size:.8rem;color:var(--gray-600);"></span>
     </div>
-    <table class="table" id="volunteers-table" style="margin-top:.5rem;display:none;">
-      <thead>
-        <tr>
-          <th style="width:2rem;"></th>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Email</th>
-          <th>Groups</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="volunteers-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="volunteers-table" style="margin-top:.5rem;display:none;">
+        <thead>
+          <tr>
+            <th style="width:2rem;"></th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Email</th>
+            <th>Groups</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="volunteers-tbody"></tbody>
+      </table>
+    </div>
     <div id="volunteers-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No volunteers yet.</div>
 
     <div id="log-service-panel" style="display:none;margin-top:1rem;border-top:1px solid var(--gray-200);padding-top:1rem;">
@@ -270,18 +276,20 @@
       read-only (view) or read-write; writes are permitted against demo records only.
       Every session is time-boxed and audited. (Demo users only in this release.)
     </p>
-    <table class="table" id="demo-users-table" style="margin-top:1rem;display:none;">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Organization</th>
-          <th>Email</th>
-          <th>Remote access</th>
-        </tr>
-      </thead>
-      <tbody id="demo-users-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="table" id="demo-users-table" style="margin-top:1rem;display:none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Organization</th>
+            <th>Email</th>
+            <th>Remote access</th>
+          </tr>
+        </thead>
+        <tbody id="demo-users-tbody"></tbody>
+      </table>
+    </div>
     <div id="demo-users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No demo users found.</div>
   </div>
 
@@ -333,21 +341,23 @@
         Review each event imported from an external source. Published events are visible to students
         and always display an attribution credit linking back to where they came from.
       </p>
-      <table class="table" id="crawler-queue-table" style="display:none;">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Source</th>
-            <th>Date</th>
-            <th>Location</th>
-            <th>Organization</th>
-            <th>Contact</th>
-            <th>Attribution</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="crawler-queue-tbody"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="table" id="crawler-queue-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Source</th>
+              <th>Date</th>
+              <th>Location</th>
+              <th>Organization</th>
+              <th>Contact</th>
+              <th>Attribution</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="crawler-queue-tbody"></tbody>
+        </table>
+      </div>
       <div id="crawler-queue-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">
         No draft events in queue. Run a crawl or all events have already been reviewed.
       </div>

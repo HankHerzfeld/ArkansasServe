@@ -160,6 +160,26 @@ body {
 .form-group textarea { min-height: 90px; resize: vertical; }
 
 /* ── Table ──────────────────────────────────────────────────────────────── */
+/* Tables are intrinsically wide — long unbreakable emails, and cells holding
+   selects/inputs that have their own min-widths — so they must scroll inside their
+   own container instead of pushing the page sideways. Wrap every .table in this.
+
+   Measured alternatives, both rejected: letting the text wrap
+   (overflow-wrap:anywhere) still left the users table ~358px past a 375px viewport,
+   because a <select> can't wrap, and it blew row height from 88px to 624px;
+   table-layout:fixed still left ~49px over. Only a scroll container both contains
+   the page and keeps rows readable.
+
+   This also fixes off-centre modals: .modal-overlay is position:fixed;inset:0, but
+   while the document was wider than the viewport the overlay stretched to the
+   DOCUMENT width (630px at 375px viewport) and centred the dialog off-screen. The
+   dialog's own sizing was always correct — the page overflow was the cause. */
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
 .table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .table th { text-align: left; padding: .6rem .75rem; background: var(--gray-100); border-bottom: 2px solid var(--gray-200); }
 .table td { padding: .6rem .75rem; border-bottom: 1px solid var(--gray-200); }

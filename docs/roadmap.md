@@ -98,9 +98,25 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   handled by the AJAX endpoints), driven by scale: schools reach **1,200+ users per org** and a
   comparable event count after a few months, so shipping full datasets client-side is not viable.
   Effective server-side search is essential.
-- **Responsive containment** — all content must stay well contained within the browser/app
-  viewport across display sizes. Several elements currently break out of the screen,
-  especially in the **header** and **modals**, which don't fit properly on smaller widths.
+- **Responsive containment** — ✅ **Done 2026-07-14 (audited at 375×812, measured not eyeballed).**
+  The audit overturned the assumption that the header and modals were each independently
+  broken. Both were innocent:
+  - **Header fits** at 375px — 0px overflow, no overflowing children, on every page checked.
+  - **Modal CSS was already correct** (`width:min(92vw,520px)`, `max-height:calc(100vh - 3rem)`,
+    `overflow-y:auto`, from the earlier "contain modals in frame" work).
+
+  There was **one shared root cause**: `.table` had no scroll container, and long unbreakable
+  strings (emails) plus cells holding selects/inputs pushed tables far past the viewport
+  (`#users-table` 981px wide at 375px). That made the *document* wider than the viewport —
+  and because `.modal-overlay` is `position:fixed;inset:0`, the overlay stretched to the
+  **document** width (630px) and centred the dialog off-screen at `left:143`. The modal was a
+  **symptom**, not a bug.
+
+  Fix: wrap all 12 tables in a `.table-scroll` (`overflow-x:auto`) container. Measured
+  alternatives were rejected — letting text wrap still left `#users-table` ~358px over (a
+  `<select>` can't wrap) and blew row height 88px → 624px; `table-layout:fixed` still left
+  ~49px. Only the scroll container both contains the page **and** keeps rows readable.
+  Result: page overflow 0 on every page; modals centre correctly for free.
 
 ### Events & scheduling
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
