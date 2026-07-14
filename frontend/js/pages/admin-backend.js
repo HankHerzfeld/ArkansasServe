@@ -17,6 +17,15 @@
   const PERSON_TYPE_LABEL = { Student: 'Student', AdultVolunteer: 'Adult volunteer', Staff: 'Staff' };
   const personTypeLabel = (t) => PERSON_TYPE_LABEL[t] || '';
 
+  // Demo personas span the demo orgs plus the root org (#26). Labelled from the known
+  // fixture ids so the table needs no extra tenant fetch; unknown ids show the raw id.
+  const DEMO_ORG_LABEL = {
+    'arkansas-serve-root': 'Arkansas Serve',
+    'demo-org-alpha': 'Demo Alpha (home)',
+    'demo-org-beta': 'Demo Beta (secondary)',
+  };
+  const demoOrgLabel = (id) => DEMO_ORG_LABEL[id] || id || '';
+
   function splitCsv(text) {
     return text
       .split(',')
@@ -425,6 +434,7 @@
       const tr = document.createElement('tr');
       tr.appendChild(createTextCell(user.displayName || ''));
       tr.appendChild(createTextCell(user.demoUserType || user.adminLevel || ''));
+      tr.appendChild(createTextCell(demoOrgLabel(user.tenantId)));
       tr.appendChild(createTextCell(user.email || ''));
 
       const actTd = document.createElement('td');
@@ -439,15 +449,27 @@
     });
   }
 
-  // #26 Phase 1: start a read-only "act as" session for a demo user.
+  // #26 Phase 1: start an "act as" session for a demo user.
   async function startImpersonation(user) {
     const reason = window.prompt(`Act as demo user "${user.displayName}"?\n\nEnter a reason (recorded in the audit log):`, 'Demo / walkthrough');
     if (reason == null || !reason.trim()) return;
+
+    // Writes are allowed against demo records only (they hold no real PII and are
+    // rebuilt by Reset Demo Users), so offer the choice rather than forcing read-only.
+    const readWrite = window.confirm(
+      'Allow WRITES during this session?\n\n' +
+      'OK — read-write: sign-ups, cancels, check-ins etc. really change this demo record.\n' +
+      'Cancel — read-only: view only (safest).'
+    );
+
     try {
       const res = await Api.Impersonation.start({
         targetUserId: user.id,
-        targetTenantId: state.tenantId,
+        // The demo personas live in the demo orgs, NOT the admin's current scope —
+        // always target the org the demo user actually belongs to.
+        targetTenantId: user.tenantId,
         reason: reason.trim(),
+        mode: readWrite ? 'read-write' : 'read-only',
       });
       Auth.setImpersonation({
         sid: res.sessionId,
@@ -455,6 +477,7 @@
         email: res.target.email,
         adminLevel: res.target.adminLevel,
         expiresAt: res.expiresAt,
+        mode: res.mode,
       });
       // Land on the dashboard, now viewing as the demo user.
       window.location.href = '/dashboard.html';

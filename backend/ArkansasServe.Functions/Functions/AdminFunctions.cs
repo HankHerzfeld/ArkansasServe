@@ -14,6 +14,10 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 {
 	private const string RootTenantId = "arkansas-serve-root";
 
+	// Demo organizations (#26) — parents for the demo personas. See BuildDemoOrganizations.
+	private const string DemoOrgAlphaId = "demo-org-alpha";
+	private const string DemoOrgBetaId = "demo-org-beta";
+
 	[Function("GetTenants")]
 	public async Task<HttpResponseData> GetTenants(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/tenants")] HttpRequestData req)
@@ -320,11 +324,9 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (ctx == null) return authError!;
 		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
-		var orgId = OrgFromQuery(req, ctx);
-		if (string.IsNullOrWhiteSpace(orgId))
-			return await HttpHelper.OkJson(req, Array.Empty<User>());
-
-		var demoUsers = await cosmos.GetDemoUsersByTenantAsync(orgId);
+		// Demo fixtures are global (they live in the demo orgs + the root org), so they are
+		// listed regardless of the caller's current org scope.
+		var demoUsers = await cosmos.GetAllDemoUsersAsync();
 		return await HttpHelper.OkJson(req, demoUsers);
 	}
 
@@ -336,12 +338,13 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (ctx == null) return authError!;
 		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
-		var orgId = OrgFromQuery(req, ctx);
-		if (string.IsNullOrWhiteSpace(orgId))
-			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Tenant scope not found");
+		// Global fixture rebuild: assert the demo orgs exist, then recreate every demo
+		// persona across them. Not scoped to the caller's current org.
+		foreach (var org in BuildDemoOrganizations())
+			await cosmos.UpsertTenantAsync(org);
 
-		await cosmos.DeleteDemoUsersByTenantAsync(orgId);
-		var created = await cosmos.UpsertDemoUsersAsync(orgId, BuildDefaultDemoUsers(orgId));
+		await cosmos.DeleteAllDemoUsersAsync();
+		var created = await cosmos.UpsertDemoUsersAsync(BuildDefaultDemoUsers());
 		return await HttpHelper.OkJson(req, created);
 	}
 
@@ -422,28 +425,82 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 	private static Task<HttpResponseData> Forbid(HttpRequestData req)
 		=> HttpHelper.Error(req, HttpStatusCode.Forbidden, "Forbidden");
 
-	private static List<User> BuildDefaultDemoUsers(string tenantId)
-	{
-		var levels = new[] { AdminLevels.SuperAdmin, AdminLevels.OrganizationAdmin, AdminLevels.GroupAdmin, AdminLevels.EventAdmin, AdminLevels.Student };
-		var users = new List<User>();
-		foreach (var level in levels)
+	// The demo organizations that parent the demo personas. Alpha is the "home" org;
+	// Beta exists so a secondary-org admin is reproducible — that shape (admin in a
+	// non-home org) is what Findings 2/7/9 are about, and a single-org fixture set
+	// cannot express it. SuperAdmin personas stay on the Arkansas Serve root org.
+	private static List<Tenant> BuildDemoOrganizations() =>
+	[
+		new Tenant
 		{
+			Id = DemoOrgAlphaId,
+			Type = "Organization",
+			Name = "Demo Community Organization (Alpha)",
+			Description = "Seeded demo organization — home org for the demo personas. Safe to reset.",
+			ContactEmail = "demo.alpha@arkansasserve.local",
+			Status = "active",
+		},
+		new Tenant
+		{
+			Id = DemoOrgBetaId,
+			Type = "Organization",
+			Name = "Demo Partner Organization (Beta)",
+			Description = "Seeded demo organization — secondary org for the cross-org demo persona. Safe to reset.",
+			ContactEmail = "demo.beta@arkansasserve.local",
+			Status = "active",
+		},
+	];
+
+	// Demo personas.
+	//
+	// A person is one User doc PER ORG, keyed by a shared externalId — so the cross-org
+	// persona below is two docs with the SAME externalId. That is what makes
+	// ResolveActorInOrgAsync see both memberships and lets a single "Act as" session
+	// exercise secondary-org admin behaviour.
+	private static List<User> BuildDefaultDemoUsers()
+	{
+		var users = new List<User>();
+
+		static User Demo(string id, string tenantId, string level, string name, string? externalId = null) => new()
+		{
+			Id = id,
+			// Shared externalId ⇒ same person across orgs; defaults to the doc id.
+			ExternalId = externalId ?? id,
+			TenantId = tenantId,
+			OrganizationId = tenantId,
+			AdminLevel = level,
+			DemoUserType = level,
+			DisplayName = name,
+			Email = $"{id}@arkansasserve.local",
+			IsDemoUser = true,
+		};
+
+		// SuperAdmin — stays on the Arkansas Serve host org.
+		for (var i = 1; i <= 2; i++)
+			users.Add(Demo($"demo-superadmin-{i}", RootTenantId, AdminLevels.SuperAdmin, $"Demo SuperAdmin {i}"));
+
+		// Org / Group / Event admins — parented to the Alpha demo org.
+		foreach (var level in new[] { AdminLevels.OrganizationAdmin, AdminLevels.GroupAdmin, AdminLevels.EventAdmin })
 			for (var i = 1; i <= 2; i++)
-			{
-				users.Add(new User
-				{
-					Id = $"demo-{level.ToLowerInvariant()}-{i}",
-					ExternalId = $"demo-{level.ToLowerInvariant()}-{i}",
-					TenantId = tenantId,
-					OrganizationId = tenantId,
-					AdminLevel = level,
-					DisplayName = $"Demo {level} {i}",
-					Email = $"demo.{level.ToLowerInvariant()}.{i}@arkansasserve.local",
-					IsDemoUser = true,
-					DemoUserType = level,
-				});
-			}
-		}
+				users.Add(Demo($"demo-{level.ToLowerInvariant()}-{i}", DemoOrgAlphaId, level, $"Demo {level} {i}"));
+
+		// Students — parented to Alpha. The two differ only in SelfJoined, which is the
+		// A/B for Finding 6: a self-joined membership may Leave, an adopted one is refused.
+		var selfJoined = Demo("demo-student-1", DemoOrgAlphaId, AdminLevels.Student, "Demo Student 1 (self-joined)");
+		selfJoined.SelfJoined = true;
+		users.Add(selfJoined);
+
+		var adopted = Demo("demo-student-2", DemoOrgAlphaId, AdminLevels.Student, "Demo Student 2 (adopted)");
+		adopted.SelfJoined = false;
+		users.Add(adopted);
+
+		// Cross-org persona: ONE person (shared externalId), volunteer in their home org
+		// (Alpha) and OrganizationAdmin in a secondary org (Beta). Reproduces Findings 2/7/9.
+		const string crossOrgExternalId = "demo-crossorg-1";
+		users.Add(Demo("demo-crossorg-1-alpha", DemoOrgAlphaId, AdminLevels.Student,
+			"Demo Cross-Org 1 (volunteer in Alpha)", crossOrgExternalId));
+		users.Add(Demo("demo-crossorg-1-beta", DemoOrgBetaId, AdminLevels.OrganizationAdmin,
+			"Demo Cross-Org 1 (admin in Beta)", crossOrgExternalId));
 
 		return users;
 	}
