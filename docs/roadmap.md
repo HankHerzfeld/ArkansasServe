@@ -103,15 +103,28 @@ junk — and **`unknown-tenant` holds zero docs**, i.e. the intended fallback in
 `ResolveTenantId` has never once been reached because `tid` always fills the slot first.
 This reproduces on every such sign-in.
 
-*Decided approach:* treat it as **"no assigned or joined organization"** rather than
-inventing an org. Drop the `tid` fallback; keep a reserved, explicit partition as the
-person's profile home (never presented as an org — PR #65 already omits it from the
-memberships list, since it has no `Tenant` doc); and give the dashboard a real empty state
-that hides itself once an org is present. Also remove the client-side
-`organizationName || organizationId` fallback in `dashboard.js`, which would print a raw id
-regardless of what the API returns.
+*Resolved 2026-07-14 (PR #65).* Treated as **"no assigned or joined organization"** rather
+than inventing an org:
+- `AuthMiddleware` no longer falls back to `tid`. A directory is not an organization.
+- `ResolveTenantId` now resolves an org-less token to the reserved **`unassigned`**
+  partition (`TenantIds.Unassigned`) — a holding place for the person's own profile/intake
+  answers, never presented as an org. It has no `Tenant` doc, so it is omitted from
+  `/manage/me/memberships` by the same guard that hides orphans. (`unknown-tenant` is gone;
+  it held zero docs, so the rename was free.)
+- **First join migrates and cleans up:** `JoinOrg` folds the holding profile
+  (person-owned fields only — never `AdminLevel`/`GroupIds`/hours/background-check) into the
+  new org document and deletes the holding record, best-effort so it can't fail the join.
+- **`GetMe` prefers a real membership** over the holding partition. Self-joining does not
+  change a person's Entra claims, so without this every later sign-in would re-create an
+  `unassigned` profile beside the real one and silently undo the migration.
+- **Both client-side GUID fallbacks removed** — `dashboard.js` *and* `scope.js` each did
+  `organizationName || organizationId`, so a raw id could reach the UI (and the org
+  switcher) regardless of what the API returned. The dashboard now shows a real
+  "No assigned or joined organization" empty state, which hides itself once an org exists.
 
-**② Edge-to-edge (`viewport-fit=cover`) vs. the current letterboxed setup — decide.**
+**② Edge-to-edge (`viewport-fit=cover`) vs. the current letterboxed setup — OPEN.**
+*Status 2026-07-14: deliberately left open by the owner; not decided.* No action needed to
+stay safe — the current setup has no exposure. Read the note below when picking it up.
 
 *Where we are.* The viewport meta is `width=device-width, initial-scale=1.0` — **no
 `viewport-fit=cover`** — so iOS confines the page to the safe area and nothing can be hidden

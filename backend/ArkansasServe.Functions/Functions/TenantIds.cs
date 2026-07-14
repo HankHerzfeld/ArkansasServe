@@ -1,0 +1,29 @@
+namespace ArkansasServe.Functions.Functions;
+
+// Reserved tenant (organization) partition keys. These are NOT organizations anyone can
+// join or browse — they are fixed partitions the platform relies on, so they are named
+// here once rather than spelled out at each call site.
+public static class TenantIds
+{
+	// The platform's own host organization. Real, seeded, and has a Tenant doc.
+	public const string Root = "arkansas-serve-root";
+
+	// Where a signed-in person's profile lives while they have NO assigned or joined
+	// organization. Deliberately NOT a real org: it has no Tenant doc, so it is omitted
+	// from /manage/me/memberships and can never be scoped to, browsed, or joined — the
+	// UI reports "no assigned or joined organization" instead.
+	//
+	// This exists because a person's profile document is partitioned BY organization, so
+	// someone with no org still needs somewhere to keep their name and intake answers
+	// until they join one. On their first join the profile is migrated into the new org's
+	// document and this one is deleted (see MembershipFunctions.JoinOrg).
+	//
+	// It replaces the old behaviour of falling back to the Entra directory id ("tid"),
+	// which silently invented an organization out of the identity provider's own GUID.
+	public const string Unassigned = "unassigned";
+
+	// True for any partition that is not a joinable organization.
+	public static bool IsReserved(string? tenantId) =>
+		string.Equals(tenantId, Root, StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(tenantId, Unassigned, StringComparison.OrdinalIgnoreCase);
+}

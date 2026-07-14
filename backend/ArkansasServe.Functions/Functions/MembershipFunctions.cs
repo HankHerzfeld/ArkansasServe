@@ -225,20 +225,63 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 												 && !string.IsNullOrWhiteSpace(m.DisplayName))
 			?? otherMemberships.FirstOrDefault(m => !string.IsNullOrWhiteSpace(m.DisplayName));
 
+		// The pre-join profile, if this person had no organization until now. The reserved
+		// Unassigned partition is only a holding place for their own answers (intake,
+		// contact, guardian) — those belong in the org document being created here, and the
+		// holding doc is dropped below so nobody keeps a second, invisible profile forever.
+		var unassigned = otherMemberships.FirstOrDefault(m =>
+			string.Equals(m.TenantId, TenantIds.Unassigned, StringComparison.OrdinalIgnoreCase));
+
+		// Person-owned fields carry over; org-owned ones deliberately do not. AdminLevel,
+		// GroupIds, TotalApprovedHours, BackgroundCheckStatus and SelfJoined are this org's
+		// business and are set fresh below.
+		var profile = unassigned ?? canonical;
+
 		var membership = new User
 		{
 			ExternalId = ctx.UserId,
 			TenantId = orgId,
 			OrganizationId = orgId,
 			Email = email ?? string.Empty,
-			FirstName = canonical?.FirstName,
-			LastName = canonical?.LastName,
-			DisplayName = canonical?.DisplayName ?? ctx.DisplayName,
+			FirstName = profile?.FirstName,
+			LastName = profile?.LastName,
+			DisplayName = profile?.DisplayName ?? ctx.DisplayName,
+			PersonType = profile?.PersonType,
+			Phone = profile?.Phone,
+			Grade = profile?.Grade,
+			DateOfBirth = profile?.DateOfBirth,
+			GuardianName = profile?.GuardianName,
+			GuardianEmail = profile?.GuardianEmail,
+			GuardianPhone = profile?.GuardianPhone,
+			GuardianConsent = profile?.GuardianConsent ?? false,
+			Affiliation = profile?.Affiliation,
+			EmergencyContactName = profile?.EmergencyContactName,
+			EmergencyContactPhone = profile?.EmergencyContactPhone,
 			AdminLevel = AdminLevels.Student,
 			Status = "active",
 			SelfJoined = true,
 		};
+		membership.ProfileComplete = IntakeValidation.IsComplete(membership);
+
 		var created = await cosmos.CreateManagedVolunteerAsync(membership);
+
+		// Best-effort: the join has already succeeded, and a leftover holding doc is
+		// invisible (no Tenant doc ⇒ omitted from /manage/me/memberships), so failing to
+		// remove it must never fail the join. GetMe also prefers a real membership over the
+		// holding partition, so a stray can't resurrect itself into the UI.
+		if (unassigned != null)
+		{
+			try
+			{
+				await cosmos.DeleteUserWithFallbackAsync(unassigned.Id, unassigned.TenantId);
+				logger.LogInformation("Migrated pre-join profile into org {OrgId} for {UserId} and removed the holding record", orgId, ctx.UserId);
+			}
+			catch (Exception ex)
+			{
+				logger.LogError(ex, "Failed to remove the holding profile record for {UserId} after joining {OrgId}", ctx.UserId, orgId);
+			}
+		}
+
 		return await HttpHelper.CreatedJson(req, created);
 	}
 

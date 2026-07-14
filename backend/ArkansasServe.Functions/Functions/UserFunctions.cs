@@ -31,6 +31,18 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 
 		try
 		{
+			// A token with no org claim resolves to Unassigned — but the person may have since
+			// JOINED an org, and self-joining does not change their Entra claims. Without this,
+			// every sign-in would report them as org-less and re-create an Unassigned profile
+			// beside the real membership (undoing the migration JoinOrg performs). Only costs a
+			// lookup for genuinely org-less tokens.
+			if (string.Equals(tenantId, TenantIds.Unassigned, StringComparison.OrdinalIgnoreCase))
+			{
+				var joined = (await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId))
+					.FirstOrDefault(m => !string.Equals(m.TenantId, TenantIds.Unassigned, StringComparison.OrdinalIgnoreCase));
+				if (joined != null) tenantId = joined.TenantId;
+			}
+
 			var user = await cosmos.GetUserByExternalIdAsync(ctx.UserId, tenantId);
 			if (user == null)
 			{
@@ -266,12 +278,19 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 		return user;
 	}
 
+	// Which organization partition this person's profile belongs in.
+	//
+	// Before, an empty TenantId was unreachable: AuthMiddleware fell back to the Entra
+	// directory id ("tid"), so this always returned that GUID and the branches below never
+	// ran. With that fallback gone, a token carrying no org claim lands here honestly and
+	// resolves to the reserved Unassigned partition — "no assigned or joined organization" —
+	// instead of a fabricated org.
 	private static string ResolveTenantId(UserContext ctx)
 	{
 		if (!string.IsNullOrWhiteSpace(ctx.TenantId)) return ctx.TenantId;
 		return ctx.Email.EndsWith(ArkansasServeEmailDomain, StringComparison.OrdinalIgnoreCase)
-			? "arkansas-serve-root"
-			: "unknown-tenant";
+			? TenantIds.Root
+			: TenantIds.Unassigned;
 	}
 
 	// Best-effort structured name from token claims: prefer given_name/family_name,

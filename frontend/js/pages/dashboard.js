@@ -69,10 +69,25 @@
         memberships.forEach(m => {
           const chip = document.createElement('span');
           chip.className = 'event-badge';
-          chip.textContent = `${m.organizationName || m.organizationId} · ${prettyLevel(m.adminLevel)}`;
+          // Name only — never fall back to organizationId. That fallback is what rendered a
+          // raw tenant GUID as if it were an organization name. The API omits memberships
+          // whose org no longer exists, so anything reaching here has a real name.
+          chip.textContent = `${m.organizationName} · ${prettyLevel(m.adminLevel)}`;
           list.appendChild(chip);
         });
         orgsWrap.appendChild(list);
+      } else {
+        // No assigned or joined organization. Say so plainly and point somewhere useful —
+        // this state used to render nothing at all.
+        const empty = document.createElement('div');
+        empty.style.cssText = 'color:var(--gray-600);font-size:.8rem;';
+        empty.textContent = 'No assigned or joined organization. ';
+        const link = document.createElement('a');
+        link.href = '/organizations.html';
+        link.textContent = 'Browse organizations';
+        link.style.cssText = 'color:var(--green);font-weight:600;';
+        empty.appendChild(link);
+        orgsWrap.appendChild(empty);
       }
 
       // Editable if you're an org admin, or your org allows self-edit (backend

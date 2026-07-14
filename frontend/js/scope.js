@@ -109,7 +109,10 @@ const Scope = (() => {
         }
         return {
           id: m.organizationId,
-          name: m.organizationName || m.organizationId,
+          // Name only — never fall back to organizationId, which would put a raw tenant
+          // GUID in the org switcher. The API omits memberships whose org no longer
+          // exists, so anything reaching here has a real name.
+          name: m.organizationName,
           groups,
           adminLevel: m.adminLevel,
           // Minimal tenant record for admin-backend's settings form.
