@@ -93,6 +93,18 @@ public class User : CosmosDocument
     [JsonPropertyName("backgroundCheckCompletedAt")]
     public string? BackgroundCheckCompletedAt { get; set; } // ISO date
 
+    // ── Terms & Privacy acceptance ───────────────────────────────────────────
+    // The version of the Terms/Privacy documents this person accepted, and when.
+    // Stored as the version string rather than a bool so that re-issuing the documents
+    // re-prompts everyone (see PolicyVersions). AcceptedPolicyAt is stamped by the server
+    // on acceptance — never taken from the client, since it is the evidence that consent
+    // was given at a particular time.
+    [JsonPropertyName("acceptedPolicyVersion")]
+    public string? AcceptedPolicyVersion { get; set; }
+
+    [JsonPropertyName("acceptedPolicyAt")]
+    public DateTime? AcceptedPolicyAt { get; set; }
+
     [JsonPropertyName("status")]
     public string Status { get; set; } = "active";
 
