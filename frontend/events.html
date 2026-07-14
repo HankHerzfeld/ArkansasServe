@@ -42,6 +42,19 @@
     No upcoming events found. Check back soon!
   </div>
   <div class="event-grid" id="events-grid" style="display:none;"></div>
+
+  <!-- Search index (never shown).
+       Events stay CARDS — a card carries the image, date, org and spare places far better
+       than a table row for someone browsing opportunities. But the search itself needs to
+       cope with many options, so DataTables indexes this hidden mirror of the events and
+       the grid above renders whatever survives the filter. DataTables is the engine here,
+       not the view: no pager, no ordering, nothing rendered. -->
+  <table id="events-index" style="display:none;" aria-hidden="true">
+    <thead>
+      <tr><th>Title</th><th>Organization</th><th>Category</th><th>Location</th></tr>
+    </thead>
+    <tbody id="events-index-body"></tbody>
+  </table>
 </div>
 
 <!-- Sign-up confirmation modal -->
@@ -58,6 +71,12 @@
 </div>
 
 <script src="/js/vendor/msal-browser.min.js"></script>
+<!-- DataTables powers event SEARCH only (see the #events-index table above); the grid
+     stays cards. Vendored because the CSP allows script-src 'self'. -->
+<script src="/js/vendor/jquery.min.js"></script>
+<script src="/js/vendor/dataTables.min.js"></script>
+<script src="/js/vendor/dataTables.dataTables.min.js"></script>
+<script src="/js/datatables.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/scope.js"></script>

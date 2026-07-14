@@ -16,11 +16,69 @@
     try {
       allEvents = await Api.Events.list();
       document.getElementById('events-loading').style.display = 'none';
+      buildSearchIndex(allEvents);
       renderEvents(allEvents);
     } catch (err) {
       document.getElementById('events-loading').innerHTML =
         `<div class="alert alert-error">Could not load events. Please refresh.</div>`;
     }
+  }
+
+  // ── Search index ───────────────────────────────────────────────────────────
+  // Events stay cards; DataTables just does the searching. It indexes a hidden mirror of
+  // the events (#events-index) and the grid renders whatever survives the filter, so the
+  // card layout is untouched while the search gets DataTables' behaviour — notably its
+  // "smart" search, which matches all whitespace-separated terms in any order and across
+  // any column. The old filter was a single substring test over title/org, so
+  // "tutoring little rock" found nothing unless it appeared verbatim in one field.
+  //
+  // Row order mirrors allEvents, so a row index maps straight back to an event.
+  function buildSearchIndex(events) {
+    DT.destroy('events-index');
+    const body = document.getElementById('events-index-body');
+    body.innerHTML = '';
+
+    events.forEach(e => {
+      const tr = document.createElement('tr');
+      [e.title, e.organizationName, e.category, e.location].forEach(v => {
+        const td = document.createElement('td');
+        td.textContent = v || '';
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+
+    DT.mount('events-index', {
+      // Category is a dropdown, not free text — an exact match, so it's checked against
+      // the source record rather than folded into the text search.
+      rowFilter: (dataIndex) => {
+        const evt = allEvents[dataIndex];
+        if (!evt) return true;
+        const category = document.getElementById('filter-category').value;
+        return !category || evt.category === category;
+      },
+      dataTables: {
+        // Engine only: nothing of DataTables is rendered on this page.
+        paging: false,
+        ordering: false,
+        scrollX: false,
+        info: false,
+        layout: { topStart: null, topEnd: null, bottomStart: null, bottomEnd: null },
+      },
+    });
+
+    const dt = DT.instance('events-index');
+    if (dt) dt.on('draw', renderMatchingEvents);
+  }
+
+  // Re-render the grid from whatever the index currently matches.
+  function renderMatchingEvents() {
+    const dt = DT.instance('events-index');
+    if (!dt) return renderEvents(allEvents);
+    const matched = dt.rows({ search: 'applied' }).indexes().toArray()
+      .map(i => allEvents[i])
+      .filter(Boolean);
+    renderEvents(matched);
   }
 
   function renderEvents(events) {
@@ -97,15 +155,12 @@
     });
   }
 
-  // Filter
+  // Filter — both controls now drive the DataTables index, which redraws the grid.
   ['filter-search', 'filter-category'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', () => {
-      const search   = document.getElementById('filter-search').value.toLowerCase();
-      const category = document.getElementById('filter-category').value;
-      renderEvents(allEvents.filter(e =>
-        (!search   || e.title.toLowerCase().includes(search) || e.organizationName.toLowerCase().includes(search)) &&
-        (!category || e.category === category)
-      ));
+      const dt = DT.instance('events-index');
+      if (!dt) return;
+      dt.search(document.getElementById('filter-search').value.trim()).draw();
     });
   });
 

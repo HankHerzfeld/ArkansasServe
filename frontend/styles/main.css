@@ -273,6 +273,12 @@ table.table.dataTable > thead > tr > th.dt-orderable-asc,
 table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
 
 .dt-container { width: 100%; }
+/* Set by DT.mount: DataTables owns this table's horizontal scroll (scrollX), so the
+   page's wrapper must stop owning it — otherwise the wrapper scrolls DataTables'
+   whole container and drags the pager off-screen with the columns. Removed again on
+   destroy, so the wrapper resumes its normal job. */
+.table-scroll.table-scroll-dt { overflow-x: visible; }
+.dt-scroll-body { -webkit-overflow-scrolling: touch; }
 .dt-paging { margin-top: .75rem; display: flex; justify-content: flex-end; }
 .dt-paging .dt-paging-button {
   background: transparent;
