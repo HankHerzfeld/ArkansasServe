@@ -152,16 +152,67 @@ const UI = (() => {
       if (t.href === current) { a.classList.add('active'); a.setAttribute('aria-current', 'page'); }
       tabs.appendChild(a);
     });
-    nav.appendChild(tabs);
 
     const right = el('div', { class: 'nav-right' });
     right.appendChild(buildBell());
     right.appendChild(el('a', { class: 'navbar-user', href: '/dashboard.html', title: 'Go to your dashboard', text: profile?.name || '' }));
     right.appendChild(el('button', { class: 'btn btn-secondary btn-sm', onClick: () => Auth.logout(), text: 'Sign Out' }));
-    nav.appendChild(right);
+
+    // Tabs + right cluster share one container so the phone breakpoint can slide the
+    // whole lot out as a drawer. On desktop this is just a flex row and nothing moves:
+    // a SuperAdmin sees 7 tabs, which wrapped to 3 rows and ate 202px — a quarter of a
+    // 375x812 screen — before content began.
+    const menu = el('div', { class: 'nav-menu', id: 'nav-menu' }, tabs, right);
+
+    const toggle = el('button', {
+      class: 'nav-toggle',
+      type: 'button',
+      'aria-label': 'Open menu',
+      'aria-expanded': 'false',
+      'aria-controls': 'nav-menu',
+      onClick: () => setMenuOpen(nav, !nav.classList.contains('nav-open')),
+    });
+    // Three bars, drawn not typed, so it never depends on an emoji font.
+    for (let i = 0; i < 3; i++) toggle.appendChild(el('span', { class: 'nav-toggle-bar' }));
+
+    const backdrop = el('div', { class: 'nav-backdrop', onClick: () => setMenuOpen(nav, false) });
+
+    nav.appendChild(toggle);
+    nav.appendChild(menu);
+    nav.appendChild(backdrop);
+
+    // Any navigation or action inside the drawer should close it — otherwise the
+    // drawer stays open over the page it just navigated to.
+    menu.addEventListener('click', (e) => {
+      if (e.target.closest('a, button') && !e.target.closest('.notif')) setMenuOpen(nav, false);
+    });
 
     return nav;
   }
+
+  // Single place that owns drawer open/close, so the button's aria state, the
+  // backdrop and the body scroll lock can never drift apart.
+  function setMenuOpen(nav, open) {
+    nav.classList.toggle('nav-open', open);
+    const toggle = nav.querySelector('.nav-toggle');
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    }
+    // Stop the page scrolling under an open drawer.
+    document.body.style.overflow = open ? 'hidden' : '';
+    if (open) {
+      const first = nav.querySelector('.nav-menu a, .nav-menu button');
+      if (first) first.focus();
+    }
+  }
+
+  // Escape closes the drawer from anywhere, matching the backdrop click.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const nav = document.querySelector('.navbar.nav-open');
+    if (nav) { setMenuOpen(nav, false); const t = nav.querySelector('.nav-toggle'); if (t) t.focus(); }
+  });
 
   // Renders the whole shell (header + scope bar). Kept named `setupHeader` so the
   // existing page calls keep working. `current` is this page's href.

@@ -35,13 +35,31 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem;
-  height: 60px;
+  /* Safe-area aware. These env() values are 0 today because the viewport meta does
+     NOT set viewport-fit=cover, so iOS letterboxes the page and nothing can slide
+     under the Dynamic Island / notch — max() therefore resolves to the plain
+     padding and nothing changes. They exist so that IF the app ever opts into
+     edge-to-edge, the bar pads itself instead of hiding its top row behind the
+     island. Do not add viewport-fit=cover without auditing every fixed/sticky
+     element the same way. */
+  padding-top: env(safe-area-inset-top);
+  padding-right: max(1.5rem, env(safe-area-inset-right));
+  padding-bottom: 0;
+  padding-left: max(1.5rem, env(safe-area-inset-left));
+  min-height: 60px;
   box-shadow: 0 2px 6px rgba(0,0,0,.2);
   position: sticky;
   top: 0;
   z-index: 100;
 }
+
+/* Tabs + right cluster travel together so the phone breakpoint can slide the whole
+   set out as a drawer. On desktop this is an ordinary flex row — nothing moves. */
+.nav-menu { display: flex; align-items: center; flex: 1; min-width: 0; }
+
+/* Hamburger + backdrop exist only at the phone breakpoint. */
+.nav-toggle { display: none; }
+.nav-backdrop { display: none; }
 .navbar-brand { font-size: 1.2rem; font-weight: 700; text-decoration: none; color: inherit; white-space: nowrap; }
 .navbar-links { display: flex; gap: 1.5rem; align-items: center; list-style: none; }
 .navbar-links a { color: rgba(255,255,255,.85); text-decoration: none; font-size: .9rem; }
@@ -273,12 +291,79 @@ body {
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .navbar { flex-wrap: wrap; height: auto; padding: .5rem 1rem; gap: .5rem; }
+  /* The bar stays one 60px row and the tabs move into a drawer. Previously it
+     wrapped instead (flex-wrap:wrap + width:100% tabs), which stacked a
+     SuperAdmin's 7 tabs into 3 rows — a 202px header eating 25% of a 375x812
+     screen before any content. */
+  .navbar { flex-wrap: nowrap; gap: .5rem; padding-right: max(1rem, env(safe-area-inset-right)); padding-left: max(1rem, env(safe-area-inset-left)); }
   .navbar-links { gap: 1rem; }
-  .nav-tabs { margin: 0; order: 3; width: 100%; }
+
+  .nav-toggle {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    /* 44px is the minimum comfortable touch target. */
+    width: 44px; height: 44px;
+    margin-left: auto;
+    padding: 0 10px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .nav-toggle-bar { display: block; height: 2px; background: #fff; border-radius: 2px; }
+
+  .nav-menu {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: min(82vw, 300px);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+    background: var(--green);
+    box-shadow: -4px 0 20px rgba(0,0,0,.3);
+    transform: translateX(100%);
+    transition: transform .22s ease;
+    overflow-y: auto;
+    z-index: 300;
+    /* Pad past the island at the top and the home indicator at the bottom. Both are
+       0 today (see .navbar) — present so the drawer stays correct edge-to-edge. */
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: 1rem;
+  }
+  .navbar.nav-open .nav-menu { transform: translateX(0); }
+
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .22s ease;
+    z-index: 250;
+  }
+  .navbar.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
+
+  /* Inside the drawer the tabs are a vertical list with real touch targets. */
+  .nav-tabs { flex: 0 0 auto; flex-direction: column; align-items: stretch; width: 100%; margin: 0; gap: .15rem; flex-wrap: nowrap; }
+  .nav-tab { padding: .7rem .75rem; font-size: 1rem; }
+
+  /* Bell / name / sign-out sit at the bottom of the drawer. */
+  .nav-right { flex-direction: column; align-items: stretch; gap: .75rem; width: 100%; margin-top: auto; }
+  .navbar-user { white-space: normal; }
+  .notif { justify-content: flex-start; }
+  .notif-pane { position: fixed; right: 1rem; left: 1rem; top: auto; width: auto; max-width: none; }
+
   .hero h1 { font-size: 1.8rem; }
   .stats-row { flex-direction: column; }
   .event-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-menu, .nav-backdrop { transition: none; }
 }
 
 /* ── Print (Service-Hour Report → Save as PDF) ──────────────────────────────

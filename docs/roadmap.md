@@ -118,6 +118,31 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
   ~49px. Only the scroll container both contains the page **and** keeps rows readable.
   Result: page overflow 0 on every page; modals centre correctly for free.
 
+- **Phone header — pop-out drawer.** ✅ Done 2026-07-14. Separate from overflow: the header
+  never overflowed, it **wrapped**. A SuperAdmin's 7 tabs stacked into 3 rows, making a
+  **202px header — 25% of a 375×812 screen** — before any content. At ≤640px the tabs and the
+  bell/name/sign-out cluster now slide out as a drawer behind a hamburger; the bar stays one
+  60px row (**25% → 7%**). Backdrop, Esc, body scroll-lock, `aria-expanded`/`aria-controls`,
+  44px touch target, and `prefers-reduced-motion` are handled.
+  - *Note:* the drawer is `position:fixed;right:0`, so it **depends on the table fix above** —
+    while the document was wider than the viewport, `right:0` resolved to the document's right
+    edge, off-screen. They ship together.
+  - *Known, pre-existing:* between ~641px and ~1010px a SuperAdmin's 7 tabs still wrap to two
+    rows (74px bar). Left as-is: the drawer is deliberately phone-only, and tab count is
+    role-dependent (a Student has 3), so a higher breakpoint would give most users a drawer
+    they don't need. `height:60px` → `min-height:60px` means those wrapped tabs no longer
+    overflow a fixed-height bar.
+
+- **iOS safe area / Dynamic Island.** ✅ Assessed 2026-07-14 — **no current exposure, guarded
+  for later.** The viewport meta is `width=device-width, initial-scale=1.0` with **no
+  `viewport-fit=cover`**, so iOS letterboxes the page and nothing can slide under the island;
+  `display:standalone` + the default status-bar style keeps the PWA below the status bar too.
+  The header and drawer nevertheless pad with `env(safe-area-inset-*)` via `max()`, which
+  resolves to the plain padding today (insets are 0) and becomes correct automatically if the
+  app ever goes edge-to-edge. **Do not add `viewport-fit=cover` on its own** — that is what
+  would push the brand/hamburger row under the island; it requires auditing every
+  fixed/sticky element (navbar, drawer, modal overlay, notification pane) first.
+
 ### Events & scheduling
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
   re-creating it each time.
