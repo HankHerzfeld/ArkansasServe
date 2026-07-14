@@ -61,7 +61,9 @@ body {
 .nav-toggle { display: none; }
 .nav-backdrop { display: none; }
 .navbar-brand { font-size: 1.2rem; font-weight: 700; text-decoration: none; color: inherit; white-space: nowrap; }
-.navbar-links { display: flex; gap: 1.5rem; align-items: center; list-style: none; }
+/* margin-left:auto keeps these right-aligned now that they sit inside .nav-menu
+   (which is flex:1) rather than being a direct child of the space-between navbar. */
+.navbar-links { display: flex; gap: 1.5rem; align-items: center; list-style: none; margin-left: auto; }
 .navbar-links a { color: rgba(255,255,255,.85); text-decoration: none; font-size: .9rem; }
 .navbar-links a:hover { color: #fff; }
 
@@ -340,7 +342,22 @@ body {
      SuperAdmin's 7 tabs into 3 rows — a 202px header eating 25% of a 375x812
      screen before any content. */
   .navbar { flex-wrap: nowrap; gap: .5rem; padding-right: max(1rem, env(safe-area-inset-right)); padding-left: max(1rem, env(safe-area-inset-left)); }
-  .navbar-links { gap: 1rem; }
+
+  /* The pre-login nav (index.html) rides the same drawer. Without this it stayed a single
+     nowrap row and pushed Sign In / Create Account clean off a 375px screen — the two
+     things a new visitor most needs. It used to survive on .navbar{flex-wrap:wrap}, which
+     the drawer removed. */
+  .navbar-links {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: .5rem;
+    margin-left: 0;
+  }
+  .navbar-links a { padding: .7rem .75rem; font-size: 1rem; border-radius: var(--radius); }
+  .navbar-links a:hover { background: rgba(255,255,255,.12); }
+  /* Full-width tap targets for the two CTAs. */
+  .navbar-links .btn { width: 100%; padding: .6rem 1rem; }
 
   .nav-toggle {
     display: inline-flex;

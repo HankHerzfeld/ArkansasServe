@@ -12,16 +12,29 @@
 </head>
 <body>
 
-<!-- Navigation -->
+<!-- Navigation.
+     Mirrors the signed-in shell's drawer (ui.js buildNav): brand + hamburger, with the
+     links sliding out at phone widths. This nav is static rather than built by ui.js —
+     the landing page deliberately doesn't load the whole app shell — so the toggle
+     markup is written out here and wired up in index.js. -->
 <nav class="navbar">
   <a class="navbar-brand" href="/">Arkansas Serve</a>
-  <ul class="navbar-links">
-    <li><a href="#how-it-works">How It Works</a></li>
-    <li><a href="#for-schools">For Schools</a></li>
-    <li><a href="#for-orgs">For Organizations</a></li>
-    <li><button class="btn btn-secondary btn-sm" id="btn-login">Sign In</button></li>
-    <li><button class="btn btn-primary btn-sm" id="btn-signup">Create Account</button></li>
-  </ul>
+  <button class="nav-toggle" type="button" id="btn-nav-toggle"
+          aria-label="Open menu" aria-expanded="false" aria-controls="nav-menu">
+    <span class="nav-toggle-bar"></span>
+    <span class="nav-toggle-bar"></span>
+    <span class="nav-toggle-bar"></span>
+  </button>
+  <div class="nav-menu" id="nav-menu">
+    <ul class="navbar-links">
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#for-schools">For Schools</a></li>
+      <li><a href="#for-orgs">For Organizations</a></li>
+      <li><button class="btn btn-secondary btn-sm" id="btn-login">Sign In</button></li>
+      <li><button class="btn btn-primary btn-sm" id="btn-signup">Create Account</button></li>
+    </ul>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
 </nav>
 
 <!-- Hero -->
