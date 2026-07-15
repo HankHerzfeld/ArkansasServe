@@ -113,6 +113,57 @@
         <input type="tel" id="evt-contact-phone">
       </div>
     </div>
+    <!-- Recurrence. Hidden entirely when editing: a series is created once and its
+         occurrences are then ordinary events, so re-expanding on edit would be a different
+         (and much larger) feature. -->
+    <div class="form-group" id="evt-recurrence-group">
+      <label>
+        <input type="checkbox" id="evt-repeat"> Repeat this event on a schedule
+      </label>
+      <div id="evt-recurrence-fields" style="display:none;margin-top:.5rem;padding:.75rem;border:1px solid var(--gray-200);border-radius:var(--radius);">
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+          <div class="form-group" style="flex:1;min-width:9rem;">
+            <label for="evt-repeat-freq">Repeats</label>
+            <select id="evt-repeat-freq">
+              <option value="daily">Daily</option>
+              <option value="weekly" selected>Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;min-width:9rem;">
+            <label for="evt-repeat-endmode">Ends</label>
+            <select id="evt-repeat-endmode">
+              <option value="count" selected>After a number of times</option>
+              <option value="until">On a date</option>
+            </select>
+          </div>
+          <div class="form-group" id="evt-repeat-count-wrap" style="flex:1;min-width:7rem;">
+            <label for="evt-repeat-count">Times (max 100)</label>
+            <input type="number" id="evt-repeat-count" min="1" max="100" value="4">
+          </div>
+          <div class="form-group" id="evt-repeat-until-wrap" style="flex:1;min-width:9rem;display:none;">
+            <label for="evt-repeat-until">Last date (inclusive)</label>
+            <input type="date" id="evt-repeat-until">
+          </div>
+        </div>
+        <div class="form-group" id="evt-repeat-days-wrap">
+          <label>On these days</label>
+          <div id="evt-repeat-days" style="display:flex;gap:.5rem;flex-wrap:wrap;"></div>
+          <small style="color:var(--gray-600);">The start date's own day is always included.</small>
+        </div>
+        <div class="form-group" id="evt-repeat-monthly-wrap" style="display:none;">
+          <label for="evt-repeat-monthly-mode">Each month</label>
+          <select id="evt-repeat-monthly-mode">
+            <option value="dayofmonth" selected>On the same date</option>
+            <option value="nthweekday">On the same weekday</option>
+          </select>
+          <small style="display:block;color:var(--gray-600);margin-top:.2rem;">
+            Months without that date are skipped — no 31st in February, and not every month has a 5th Saturday.
+          </small>
+        </div>
+        <div id="evt-repeat-preview" style="font-size:.85rem;color:var(--gray-600);margin-top:.5rem;"></div>
+      </div>
+    </div>
     <div class="form-group">
       <label>Shifts (optional — volunteers pick one when signing up)</label>
       <div id="evt-shifts" style="display:flex;flex-direction:column;gap:.5rem;"></div>
