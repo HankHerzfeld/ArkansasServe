@@ -105,6 +105,44 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		return await HttpHelper.OkJson(req, new { deleted = true, eventId = id, registrationsRemoved });
 	}
 
+	// ── POST /api/events/preview-recurrence ───────────────────────────────────
+
+	/// <summary>
+	/// Returns the dates a rule would generate, without creating anything.
+	///
+	/// Exists so the form can show real dates before an admin commits to them. Deliberately
+	/// server-side: the alternative is reimplementing the expander in JavaScript, which would
+	/// mean two implementations of the DST handling that is the entire difficulty here — and
+	/// the one the admin is shown would be the one that never runs. This way the preview IS
+	/// the generator.
+	///
+	/// Pure computation over the submitted body: no reads, no writes, nothing org-specific to
+	/// leak, so it needs a signed-in caller and nothing more.
+	/// </summary>
+	[Function("PreviewRecurrence")]
+	public async Task<HttpResponseData> PreviewRecurrence(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events/preview-recurrence")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var body = await HttpHelper.ReadBody<Event>(req);
+		if (body == null || body.StartDateTime == default)
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "A start date and time is required");
+		if (body.Recurrence == null)
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "A recurrence rule is required");
+
+		var (starts, error) = RecurrenceExpander.Expand(body.StartDateTime, body.Recurrence);
+		if (error != null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, error);
+
+		var duration = body.EndDateTime > body.StartDateTime ? body.EndDateTime - body.StartDateTime : TimeSpan.Zero;
+		return await HttpHelper.OkJson(req, new
+		{
+			count = starts!.Count,
+			occurrences = starts.Select(s => new { startDateTime = s, endDateTime = s + duration }),
+		});
+	}
+
 	// ── DELETE /api/events/series/{seriesId} ──────────────────────────────────
 
 	/// <summary>

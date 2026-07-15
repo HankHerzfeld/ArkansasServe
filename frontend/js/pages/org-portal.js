@@ -210,9 +210,147 @@
     document.getElementById('evt-questions').innerHTML = '';
     (evt?.signupQuestions || []).forEach(buildQuestionRow);
 
+    // Recurrence is a create-time choice only. An occurrence is an ordinary event once it
+    // exists, and editing one never re-expands its series (decided), so offering these
+    // controls on edit would promise something the server does not do.
+    resetRecurrenceForm(!evt);
+
     document.getElementById('event-form-error').style.display = 'none';
     document.getElementById('event-modal').classList.add('open');
   }
+
+  // ── Recurrence controls ───────────────────────────────────────────────────
+
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  function resetRecurrenceForm(isCreate) {
+    const group = document.getElementById('evt-recurrence-group');
+    group.style.display = isCreate ? '' : 'none';
+    document.getElementById('evt-repeat').checked = false;
+    document.getElementById('evt-recurrence-fields').style.display = 'none';
+    document.getElementById('evt-repeat-freq').value = 'weekly';
+    document.getElementById('evt-repeat-endmode').value = 'count';
+    document.getElementById('evt-repeat-count').value = '4';
+    document.getElementById('evt-repeat-until').value = '';
+    document.getElementById('evt-repeat-monthly-mode').value = 'dayofmonth';
+    document.getElementById('evt-repeat-preview').textContent = '';
+    buildDayCheckboxes();
+    syncRecurrenceVisibility();
+  }
+
+  function buildDayCheckboxes() {
+    const wrap = document.getElementById('evt-repeat-days');
+    wrap.innerHTML = '';
+    DAY_LABELS.forEach((label, i) => {
+      const l = document.createElement('label');
+      l.style.cssText = 'display:flex;align-items:center;gap:.25rem;font-size:.85rem;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.className = 'evt-repeat-day'; cb.value = String(i);
+      cb.addEventListener('change', refreshRecurrencePreview);
+      l.appendChild(cb);
+      l.appendChild(document.createTextNode(label));
+      wrap.appendChild(l);
+    });
+    syncStartDayChecked();
+  }
+
+  // The start's own weekday is always an occurrence (the server rejects a rule that excludes
+  // it), so it is ticked and locked rather than left as a trap the admin springs on submit.
+  function syncStartDayChecked() {
+    const startVal = document.getElementById('evt-start').value;
+    if (!startVal) return;
+    const dow = new Date(startVal).getDay();
+    document.querySelectorAll('.evt-repeat-day').forEach(cb => {
+      const isStartDay = Number(cb.value) === dow;
+      if (isStartDay) { cb.checked = true; cb.disabled = true; cb.title = "The start date's own day"; }
+      else if (cb.disabled) { cb.disabled = false; cb.title = ''; }
+    });
+  }
+
+  function syncRecurrenceVisibility() {
+    const on = document.getElementById('evt-repeat').checked;
+    document.getElementById('evt-recurrence-fields').style.display = on ? '' : 'none';
+    const freq = document.getElementById('evt-repeat-freq').value;
+    document.getElementById('evt-repeat-days-wrap').style.display = freq === 'weekly' ? '' : 'none';
+    document.getElementById('evt-repeat-monthly-wrap').style.display = freq === 'monthly' ? '' : 'none';
+    const endmode = document.getElementById('evt-repeat-endmode').value;
+    document.getElementById('evt-repeat-count-wrap').style.display = endmode === 'count' ? '' : 'none';
+    document.getElementById('evt-repeat-until-wrap').style.display = endmode === 'until' ? '' : 'none';
+  }
+
+  // Builds the rule exactly as the server expects it, so the preview and the create send the
+  // same object. Returns null when repeat is off.
+  function readRecurrence() {
+    if (!document.getElementById('evt-repeat').checked) return null;
+    const freq = document.getElementById('evt-repeat-freq').value;
+    const rule = { frequency: freq };
+
+    if (freq === 'weekly') {
+      rule.daysOfWeek = [...document.querySelectorAll('.evt-repeat-day')]
+        .filter(cb => cb.checked).map(cb => Number(cb.value));
+    }
+    if (freq === 'monthly') {
+      rule.byNthWeekday = document.getElementById('evt-repeat-monthly-mode').value === 'nthweekday';
+    }
+    if (document.getElementById('evt-repeat-endmode').value === 'count') {
+      rule.count = Number(document.getElementById('evt-repeat-count').value) || 0;
+    } else {
+      const d = document.getElementById('evt-repeat-until').value;
+      // Send an instant at midday local, not midnight: the server compares `until` on the
+      // local calendar day, and a midnight-local value is the safest thing to round-trip
+      // through a date input either way. Midday keeps it unambiguous in every zone.
+      rule.until = d ? new Date(`${d}T12:00:00`).toISOString() : null;
+    }
+    return rule;
+  }
+
+  let previewTimer = null;
+  function refreshRecurrencePreview() {
+    syncRecurrenceVisibility();
+    syncStartDayChecked();
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(doPreview, 250);
+  }
+
+  async function doPreview() {
+    const out = document.getElementById('evt-repeat-preview');
+    const rule = readRecurrence();
+    const start = document.getElementById('evt-start').value;
+    if (!rule) { out.textContent = ''; return; }
+    if (!start) { out.textContent = 'Pick a start date and time to preview the dates.'; return; }
+
+    out.textContent = 'Working out the dates…';
+    try {
+      const res = await Api.Events.previewRecurrence({
+        startDateTime: new Date(start).toISOString(),
+        endDateTime: new Date(document.getElementById('evt-end').value || start).toISOString(),
+        recurrence: rule,
+      });
+      out.innerHTML = '';
+      const head = document.createElement('div');
+      head.style.cssText = 'font-weight:600;color:var(--green);margin-bottom:.25rem;';
+      head.textContent = `${res.count} date${res.count === 1 ? '' : 's'}:`;
+      out.appendChild(head);
+      const list = document.createElement('div');
+      list.style.cssText = 'max-height:8rem;overflow-y:auto;';
+      res.occurrences.forEach(o => {
+        const d = document.createElement('div');
+        // Rendered in the viewer's own zone from the real UTC instants the server will
+        // store — so a DST shift would be visible here, before anything is created.
+        d.textContent = new Date(o.startDateTime).toLocaleString([], { dateStyle: 'full', timeStyle: 'short' });
+        list.appendChild(d);
+      });
+      out.appendChild(list);
+    } catch (err) {
+      out.textContent = err.message || 'Could not work out those dates.';
+    }
+  }
+
+  ['evt-repeat', 'evt-repeat-freq', 'evt-repeat-endmode', 'evt-repeat-count',
+   'evt-repeat-until', 'evt-repeat-monthly-mode', 'evt-start', 'evt-end'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', refreshRecurrencePreview);
+    document.getElementById(id)?.addEventListener('input', refreshRecurrencePreview);
+  });
 
   async function openEdit(eventId) {
     const evt = orgEvents.find(e => e.id === eventId);
@@ -274,8 +412,15 @@
     const btn = document.getElementById('event-modal-save');
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      if (editId) await Api.Events.update(editId, { ...payload, organizationId: orgId });
-      else        await Api.Events.create({ ...payload, organizationId: Scope.activeOrgId });
+      if (editId) {
+        // Never sent on update: editing one occurrence must not re-expand its series.
+        await Api.Events.update(editId, { ...payload, organizationId: orgId });
+      } else {
+        // A series responds with a summary rather than a single event; the caller does not
+        // need it, since loadOrgEvents() below shows the created dates in the list — which
+        // is this page's existing idiom (it has no toast).
+        await Api.Events.create({ ...payload, organizationId: Scope.activeOrgId, recurrence: readRecurrence() });
+      }
       document.getElementById('event-modal').classList.remove('open');
       loadOrgEvents();
     } catch (err) {
