@@ -363,6 +363,18 @@ public partial class CosmosService
         return regs.Count;
     }
 
+    /// <summary>
+    /// Hard-deletes one registration. Used to undo a partially written group registration,
+    /// where a Cancelled row would be wrong — those people were never signed up, so leaving a
+    /// tombstone claiming they were and then cancelled would misreport what happened.
+    /// A missing row is success: the goal is that it is gone.
+    /// </summary>
+    public async Task DeleteRegistrationAsync(string id, string eventId, CancellationToken cancellationToken = default)
+    {
+        try { await Registrations.DeleteItemAsync<EventRegistration>(id, new PartitionKey(eventId), cancellationToken: cancellationToken); }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) { /* already gone */ }
+    }
+
     public async Task<EventRegistration> UpdateRegistrationAsync(EventRegistration reg, CancellationToken cancellationToken = default)
     {
         reg.UpdatedAt = DateTime.UtcNow;

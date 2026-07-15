@@ -268,14 +268,27 @@ island.
     dropped once every row carries a memberId. This also closes a **latent collision**: keying
     on `UserId` would give every accountless registrant the key `""`, so the first would read
     as "already registered" and block all the rest.
-  - **② Group backend — not started.** `POST /registrations/group`, EventAdmin+ **in the
-    event's own org** (the level Finding 9 set for cancel). **All-or-nothing** on overflow
-    (owner decision): 8 people into 5 spots is refused with "only 5 spots left", writing
-    nothing. Reserve **first**, write second — one ETag'd `CurrentSlots += N` /
-    `shift.Filled += N`, then the N docs. This inverts today's order, which writes the doc
-    first and, if the reserve fails, "compensates" by flipping it to `Cancelled` — which is
-    why full events leave cancelled litter, and which at N people would mean N docs plus N
-    compensating writes.
+  - **② Group backend — ✅ done.** `POST /registrations/group`.
+    - **Authorized on the REGISTRANTS' org, not the event's** — corrected during the build.
+      The plan said "EventAdmin+ in the event's own org", copying Finding 9's cancel rule, but
+      that rule is about clearing no-shows at *your own* event. The use case here is a
+      school's admin signing students up for a **community org's** event, where they hold no
+      role in the hosting org at all — the original rule would have refused the only case that
+      matters. Now: EventAdmin+ in the org the registrants belong to, and every registrant
+      must be in that same org. It grants nothing new, since each of those people could
+      self-register individually; it only does it in bulk.
+    - **All-or-nothing** on overflow (owner decision): 8 people into 5 spots is refused with
+      "Only 5 spots left", writing nothing.
+    - **Reserve first, write second** — `AdjustSlotsAsync` moves `CurrentSlots` and
+      `shift.Filled` by ±N in one ETag'd update. This inverts the single-registration path,
+      which still writes the doc first and, if the reserve fails, "compensates" by flipping it
+      to `Cancelled` — which is why full events accumulate cancelled rows, and which at N
+      people would have meant N wasted docs plus N compensating writes.
+    - **Rollback removes the rows rather than cancelling them:** those people were never
+      signed up, so a Cancelled tombstone would misreport what happened. If the release itself
+      fails the event is over-counted — wrongly turning people away, never over-booking, which
+      is the safe direction.
+    - Required questions are validated **per person**, naming who is missing which answer.
   - **③ Group UI — not started.** Roster multi-select, then a **per-person × per-question
     answer grid in a popup** (owner decision), so an admin fills in each volunteer's own
     answers in one pass rather than sharing one answer set across everybody.
