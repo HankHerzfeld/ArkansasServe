@@ -141,8 +141,106 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 			if (org != null) body.OrganizationName = org.Name;
 		}
 
-		var created = await cosmos.CreateEventAsync(body);
-		return await HttpHelper.CreatedJson(req, created);
+		// One-off event: unchanged.
+		if (body.Recurrence == null)
+		{
+			body.SeriesId = null;
+			var created = await cosmos.CreateEventAsync(body);
+			return await HttpHelper.CreatedJson(req, created);
+		}
+
+		// ── Recurring series ────────────────────────────────────────────────────
+		var (starts, ruleError) = RecurrenceExpander.Expand(body.StartDateTime, body.Recurrence);
+		if (ruleError != null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, ruleError);
+
+		var seriesId = Guid.NewGuid().ToString();
+		var duration = body.EndDateTime - body.StartDateTime;
+		// Shifts carry ABSOLUTE datetimes, so each occurrence's shifts have to move with it.
+		// Offsetting from the template's own start keeps each shift at the same point within
+		// the day (a 1:08pm shift on day 1 is 1:08pm on day 8), which is the only reading that
+		// survives the series being generated on the local calendar.
+		var shiftOffsets = body.Shifts.Select(s => new
+		{
+			Template = s,
+			StartOffset = s.StartDateTime.HasValue ? s.StartDateTime.Value - body.StartDateTime : (TimeSpan?)null,
+			EndOffset = s.EndDateTime.HasValue ? s.EndDateTime.Value - body.StartDateTime : (TimeSpan?)null,
+		}).ToList();
+
+		var occurrences = new List<Event>();
+		foreach (var start in starts!)
+		{
+			occurrences.Add(new Event
+			{
+				OrganizationId = body.OrganizationId,
+				OrganizationName = body.OrganizationName,
+				Title = body.Title,
+				Description = body.Description,
+				Location = body.Location,
+				StartDateTime = start,
+				EndDateTime = start + duration,
+				SeriesId = seriesId,
+				Recurrence = body.Recurrence,
+				MaxSlots = body.MaxSlots,
+				// Every occurrence starts empty — capacity is per occurrence, never shared.
+				CurrentSlots = 0,
+				Shifts = shiftOffsets.Select(s => new EventShift
+				{
+					// Fresh id per occurrence: a shift is a distinct thing on each date, and
+					// reusing one id across twelve dates would make "shift 3" ambiguous the
+					// moment anything reports across a series.
+					Id = Guid.NewGuid().ToString(),
+					Label = s.Template.Label,
+					StartDateTime = s.StartOffset.HasValue ? start + s.StartOffset.Value : null,
+					EndDateTime = s.EndOffset.HasValue ? start + s.EndOffset.Value : null,
+					Capacity = s.Template.Capacity,
+					Filled = 0,
+				}).ToList(),
+				SignupQuestions = body.SignupQuestions,
+				HoursValue = body.HoursValue,
+				Status = "Open",
+				EligibleSchoolIds = body.EligibleSchoolIds,
+				PhotoBlobName = body.PhotoBlobName,
+				PhotoUrl = body.PhotoUrl,
+				Category = body.Category,
+				Tags = body.Tags,
+				Requirements = body.Requirements,
+				ExternalUrl = body.ExternalUrl,
+				ContactName = body.ContactName,
+				ContactEmail = body.ContactEmail,
+				ContactPhone = body.ContactPhone,
+				ContactUrl = body.ContactUrl,
+				GroupId = body.GroupId,
+				Visibility = body.Visibility,
+				CreatedByUserId = ctx.UserId,
+			});
+		}
+
+		var saved = new List<Event>();
+		try
+		{
+			foreach (var occ in occurrences) saved.Add(await cosmos.CreateEventAsync(occ));
+		}
+		catch (Exception ex)
+		{
+			// A half-written series is worse than none: the admin sees "created" and only
+			// finds the gaps weeks later. Remove what landed and report the failure. Nothing
+			// can have been registered yet — these ids are seconds old and unpublished.
+			logger.LogError(ex, "[Recurrence] Failed writing series {SeriesId}; removing {Count} occurrence(s) already created", seriesId, saved.Count);
+			foreach (var s in saved)
+			{
+				try { await cosmos.DeleteEventCascadeAsync(s.Id, s.OrganizationId); }
+				catch (Exception cleanupEx) { logger.LogError(cleanupEx, "[Recurrence] Could not remove partial occurrence {EventId}", s.Id); }
+			}
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError, "Could not create the series. No events were created.");
+		}
+
+		logger.LogInformation("[Recurrence] Created series {SeriesId} with {Count} occurrence(s) in org {OrgId}", seriesId, saved.Count, orgId);
+		return await HttpHelper.CreatedJson(req, new
+		{
+			seriesId,
+			created = saved.Count,
+			occurrences = saved,
+		});
 	}
 
 	[Function("UpdateEvent")]
