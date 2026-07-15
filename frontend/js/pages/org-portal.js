@@ -210,6 +210,12 @@
     document.getElementById('evt-questions').innerHTML = '';
     (evt?.signupQuestions || []).forEach(buildQuestionRow);
 
+    // Categories come from the shared vocabulary — the same list an org's service category
+    // uses. Filled here rather than hardcoded in the HTML, which is how three copies of this
+    // list drifted apart in the first place.
+    Taxonomy.fillSelect(document.getElementById('evt-category'),
+      Taxonomy.SERVICE_CATEGORIES, evt?.category || '');
+
     // Recurrence is a create-time choice only. An occurrence is an ordinary event once it
     // exists, and editing one never re-expands its series (decided), so offering these
     // controls on edit would promise something the server does not do.

@@ -9,6 +9,11 @@
     profile = p;
     if (!profile) return;
     UI.setupHeader('/events.html');
+    // The filter list is filled from the shared vocabulary rather than hardcoded, so it can
+    // never offer a category that events cannot be created with — a filter that matches
+    // nothing looks like broken search, not a stale list.
+    Taxonomy.fillSelect(document.getElementById('filter-category'),
+      Taxonomy.SERVICE_CATEGORIES, '', 'All categories');
     loadEvents();
   });
 

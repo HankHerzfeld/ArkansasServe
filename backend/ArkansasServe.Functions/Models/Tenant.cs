@@ -4,8 +4,39 @@ namespace ArkansasServe.Functions.Models;
 
 public class Tenant : CosmosDocument
 {
+	/// <summary>
+	/// The org's STYLE — level 1 of the taxonomy. See <see cref="OrgTypes"/>; canonical casing
+	/// is Capitalized, but read it through <c>OrgTypes.IsOrganization</c> rather than comparing
+	/// directly, because live data predates that decision.
+	/// </summary>
 	[JsonPropertyName("type")]
 	public string Type { get; set; } = string.Empty;
+
+	/// <summary>
+	/// What the org DOES — level 2. One of <see cref="ServiceCategories"/>, shared with an
+	/// event's Category so the two never drift into separate vocabularies.
+	///
+	/// Only meaningful for a Community Organization (<see cref="OrgTypes.IsOrganization"/>);
+	/// null for schools and courts, which send volunteers rather than provide a service.
+	/// Optional even then — an org that has not chosen one is not an error.
+	/// </summary>
+	[JsonPropertyName("serviceCategory")]
+	public string? ServiceCategory { get; set; }
+
+	/// <summary>
+	/// Whether the org is faith-based. An ATTRIBUTE, not a category, and deliberately so:
+	/// a church running a food pantry is both faith-based and doing food work, so putting
+	/// faith in the category list would force it to drop one of two true things — and with
+	/// many Arkansas service orgs being churches, that would be a large share of the
+	/// directory, not an edge case.
+	///
+	/// Orthogonal means the filters compose: "faith-based" and "food work" are separate
+	/// questions and can be asked together. A denominational `faithAffiliation` is a
+	/// deliberate follow-up: it needs an agreed vocabulary, and freeform would fragment into
+	/// Baptist/baptist/Southern Baptist exactly as an unmanaged category list would.
+	/// </summary>
+	[JsonPropertyName("faithBased")]
+	public bool FaithBased { get; set; }
 
 	[JsonPropertyName("name")]
 	public string Name { get; set; } = string.Empty;

@@ -72,15 +72,9 @@
       </div>
       <div class="form-group">
         <label>Category</label>
-        <select id="evt-category">
-          <option value="">Select…</option>
-          <option>Environmental</option>
-          <option>Food Bank</option>
-          <option>Tutoring</option>
-          <option>Animal Shelter</option>
-          <option>Senior Care</option>
-          <option>Other</option>
-        </select>
+        <!-- Filled from Taxonomy.SERVICE_CATEGORIES: the SAME vocabulary an org's service
+             category uses, so the two can never drift into rival lists. -->
+        <select id="evt-category"></select>
       </div>
     </div>
     <div class="form-group">
@@ -218,6 +212,7 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/taxonomy.js"></script>
 <script src="/js/scope.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/pages/org-portal.js"></script>

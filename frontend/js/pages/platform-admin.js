@@ -94,6 +94,10 @@
 
   // ── Create / edit tenant modal ──────────────────────────────────────────
   let editingTenantId = null;
+  // The org being edited keeps its type: the field is create-only, so on save the type comes
+  // from the stored record rather than the (disabled) input. Held here because the tenant
+  // list itself is fetched into function-local scope and is not reachable from the handler.
+  let editingTenantType = null;
 
   // Fields that can't change after creation (the settings API doesn't update
   // type/domains); shown but disabled in edit mode.
@@ -104,11 +108,19 @@
 
   function openTenantModal(tenant) {
     editingTenantId = tenant ? tenant.id : null;
+    editingTenantType = tenant ? tenant.type : null;
     const editing = !!tenant;
     document.querySelector('#tenant-modal .modal-title').textContent = editing ? 'Edit organization' : 'Add Tenant';
     document.getElementById('tenant-save').textContent = editing ? 'Save changes' : 'Add Tenant';
     document.getElementById('tenant-name').value     = tenant?.name || '';
-    document.getElementById('tenant-type').value     = tenant?.type || '';
+    // Filled from the shared vocabulary, and matched case-insensitively: live data holds both
+    // "organization" and "Organization", and a strict match would show an existing org's type
+    // as blank — i.e. the form appearing to lose the answer.
+    Taxonomy.fillSelect(document.getElementById('tenant-type'), Taxonomy.ORG_TYPES, tenant?.type || '');
+    Taxonomy.fillSelect(document.getElementById('tenant-service-category'),
+      Taxonomy.SERVICE_CATEGORIES, tenant?.serviceCategory || '', 'No category');
+    document.getElementById('tenant-faith-based').checked = !!tenant?.faithBased;
+    syncTenantTaxonomyVisibility();
     document.getElementById('tenant-sso').value      = tenant?.ssoDomain || '';
     document.getElementById('tenant-google').value   = tenant?.googleWorkspaceDomain || '';
     document.getElementById('tenant-email').value    = tenant?.contactEmail || '';
@@ -119,6 +131,17 @@
     document.getElementById('tenant-error').style.display = 'none';
     document.getElementById('tenant-modal').classList.add('open');
   }
+
+  // Service category and the faith flag only apply to a Community Organization; a school's
+  // "service category" is a question with no good answer, and asking anyway is how "Other"
+  // becomes the most popular value in a taxonomy. Mirrors the server, which nulls a category
+  // on any non-organization regardless of what the form sends.
+  function syncTenantTaxonomyVisibility() {
+    const isOrg = Taxonomy.isOrganization(document.getElementById('tenant-type').value);
+    document.getElementById('tenant-service-category-wrap').style.display = isOrg ? '' : 'none';
+    document.getElementById('tenant-faith-wrap').style.display = isOrg ? '' : 'none';
+  }
+  document.getElementById('tenant-type').addEventListener('change', syncTenantTaxonomyVisibility);
 
   document.getElementById('btn-new-tenant').addEventListener('click', () => openTenantModal(null));
   document.getElementById('tenant-cancel').addEventListener('click', () =>
@@ -139,12 +162,24 @@
     const original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
+      // Taxonomy fields are only meaningful for a Community Organization, so they are only
+      // SENT for one. The server enforces this too — it nulls a category on any other type
+      // regardless — but sending them anyway would mean an admin's answer silently vanishing,
+      // which reads as the form being broken.
+      const isOrg = Taxonomy.isOrganization(editingTenantId ? editingTenantType : type);
+      const taxonomy = isOrg ? {
+        serviceCategory: document.getElementById('tenant-service-category').value || '',
+        faithBased:      document.getElementById('tenant-faith-based').checked,
+      } : {};
+
       if (editingTenantId) {
-        // Settings API updates name/status/contactEmail; type/domains are fixed.
+        // Settings API updates name/status/contactEmail and the taxonomy; type/domains stay
+        // fixed after creation.
         await Api.Admin.updateTenant(editingTenantId, {
           name,
           contactEmail: email,
           status: document.getElementById('tenant-status').value,
+          ...taxonomy,
         });
       } else {
         await Api.Admin.createTenant({
@@ -155,6 +190,7 @@
           contactEmail:          email,
           contractStartDate:     document.getElementById('tenant-contract').value || null,
           status: 'active',
+          ...taxonomy,
         });
       }
       document.getElementById('tenant-modal').classList.remove('open');

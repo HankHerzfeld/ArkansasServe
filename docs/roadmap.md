@@ -459,9 +459,46 @@ island.
   Google Map**.
 
 ### Organization & user model
-- **Richer org taxonomy** — two-level org classification: an org *style* (e.g. Community
-  Organization) plus a **service category** sub-definition (clothing distribution, housing,
-  elder care, Parks & Rec, Outdoor, etc.).
+- **Richer org taxonomy** — ✅ **Vocabulary + fields done 2026-07-15.** Self-define-with-
+  approval is the remaining piece (owner-requested; its own PR).
+  - **Level 1 already existed.** "Org style" is `Tenant.Type`, a dropdown that has shipped for
+    months (School / JDC / Community Organization). The real work was level 2.
+  - **One shared vocabulary (owner decision):** `ServiceCategories` classifies BOTH an org and
+    its events. Two lists is how "Senior Care" (event) and "elder care" (org) come to mean the
+    same thing and filter differently — and PR #70's search already indexes category, so a
+    split would surface immediately. There were in fact **three** hardcoded copies of the old
+    list (org-portal, events filter, and the org type dropdown); all now fill from one place.
+  - ⚠️ **Faith is an ATTRIBUTE, not a category** — the load-bearing decision here. A church
+    running a food pantry is faith-based *and* doing food work; one dropdown cannot hold both,
+    and with many Arkansas service orgs being churches that is a large share of the directory,
+    not an edge case. `Tenant.FaithBased` is orthogonal, so "faith-based" and "food work"
+    compose as separate filters. Two categories exist for faith **as a service** (Worship &
+    Congregational Life, Religious Education & Ministry) — for orgs whose offering *is* the
+    faith, not for any org that happens to be one. A denominational `faithAffiliation` is
+    deferred: it needs an agreed list, and freeform would fragment exactly as an unmanaged
+    category list would.
+  - **Service category applies only to Community Organizations** (owner decision), enforced on
+    both create and update. A school's "service category" is a question with no good answer,
+    and asking anyway is how "Other" becomes the most popular value.
+  - **`Tenant.Type` casing was split** — the dropdown wrote `"organization"` while seeded/demo
+    orgs said `"Organization"`, so 3 of 5 live orgs disagreed with the other 2. Nothing
+    branched on it (it renders as a badge), so it went unnoticed until it had to mean
+    something. Canonical is now **Capitalized** (owner decision) and normalised on write — but
+    `OrgTypes.IsOrganization` compares **case-insensitively** regardless: not depending on the
+    stored casing is the fix, normalising it is only tidying. *Two live orgs still carry the
+    lowercase value; harmless, and a one-off data fix when wanted.*
+  - **Political Parties & Campaigns is deliberately separate from Civic Engagement &
+    Elections.** Nonpartisan civic work (poll working, voter registration) and partisan
+    campaign work have different implications for the school or court approving the hours;
+    merging them would deny a school the ability to tell them apart. ⚠️ **The mechanism to act
+    on that distinction is #12 (school approval tags), which does not exist yet** — until it
+    does, a school cannot mark the partisan category approval-required.
+  - *Remaining:* **self-define with approval** — an org proposes a category, shows as "Other"
+    until a SuperAdmin approves it (a pending value must not leak into filters), and the
+    SuperAdmin can approve-as-new **or approve-as-alias onto an existing category**. The alias
+    path is the point: without it you get "Food Bank"/"food bank"/"Foodbank" within a month and
+    the approval step becomes a rubber stamp. Needs a stored vocabulary + a queue, so it is
+    the size of #8 — and it supersedes the earlier "fixed list in code" decision.
 - **Per-org user tags / credentials** — admin-defined markers on a person's per-org record
   (e.g. "waiver signed", "masonry training complete", background-check state) that can gate or
   inform scheduling.

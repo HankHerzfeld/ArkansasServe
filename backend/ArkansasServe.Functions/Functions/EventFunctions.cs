@@ -247,6 +247,12 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (string.IsNullOrWhiteSpace(body.Title) || body.StartDateTime == default)
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Title and StartDateTime are required");
 
+		// An event's category is drawn from the SAME vocabulary as an org's service category
+		// (ServiceCategories). Validated rather than trusted, so the one list stays one list —
+		// an unvalidated free string is how "Food Bank" and "food bank" become two filters.
+		if (!ServiceCategories.IsValid(body.Category))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{body.Category}\" is not a service category");
+
 		// Per-org: authorize by the caller's membership IN THE TARGET ORG (or global
 		// super), not their token level — a membership-based admin/super carries no
 		// matching role on the token.
