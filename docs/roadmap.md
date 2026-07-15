@@ -256,8 +256,25 @@ island.
 - **Group registration** — register multiple individuals for an event in one action.
 
 ### Discovery, search & maps
-- **Event search & sort/filter** — by tag, event name, organization, open spots, date, and
-  date range; results sortable and filterable.
+- **Event search & sort/filter** — ✅ **Done 2026-07-15 (PR #70).** Every axis the item asked
+  for, on the cards (the grid is untouched — DataTables indexes a hidden mirror and the cards
+  render from its results):
+  - **Free text** — name, organization, tag, category and place, all terms in any order across
+    any of them (DataTables' smart search). *Organization only became searchable once PR #69
+    populated `organizationName`, which `CreateEvent` had never set.*
+  - **Tag** — dropdown built from the tags actually present, not a hardcoded list; hides
+    itself when no event carries one.
+  - **Open spots** — "only with spots left". Matches how the card computes spots
+    (`maxSlots === 0` = uncapped, so uncapped counts as roomy, and overbooked clamps to 0
+    rather than going negative).
+  - **Date range** — inclusive both ends.
+  - **Sort** — soonest/latest, name A–Z/Z–A, most spots left. The card grid honours it because
+    the row selector returns indexes in DataTables' applied order.
+  - **Dates are compared on the LOCAL calendar day, never `toISOString()`.** Verified at
+    UTC-5: a 7pm event on 1 Mar reads as `2027-03-02` under `toISOString()` — so the naive
+    version would drift every evening event in Arkansas onto the next day and quietly drop it
+    from a "1 March" filter.
+  - *Not covered here:* ZIP/county and map-based selection are the two items below.
 - **Search map** — plots service locations with date/availability, **color-coded by tag**, with
   the same filter controls as the list view.
 - **ZIP / geo search** — capture **ZIP + city** on event addresses for searchability and
