@@ -36,6 +36,26 @@
   </div>
 </div>
 
+<!-- Group registration (EventAdmin+). Wider than the standard modal because the answers
+     step is a person x question grid; it still obeys the same width/height caps below. -->
+<div class="modal-overlay" id="group-modal">
+  <!-- Wider than the 520px default because step 2 is a person x question grid. Keeps the
+       shared 92vw mobile cap, so it matches every other dialog on a phone and inherits
+       .modal's max-height/scroll rather than growing past the frame. -->
+  <div class="modal" style="width:min(92vw,760px);">
+    <div class="modal-title" id="group-modal-title">Register a group</div>
+    <p id="group-modal-details" style="color:var(--gray-600);font-size:.9rem;margin-bottom:.5rem;"></p>
+    <div id="group-fields" style="margin:.5rem 0;"></div>
+    <div id="group-error" class="alert alert-error" style="display:none;margin-top:.5rem;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="group-cancel">Cancel</button>
+      <button class="btn btn-secondary" id="group-back" style="display:none;">Back</button>
+      <button class="btn btn-primary" id="group-next">Next</button>
+      <button class="btn btn-primary" id="group-confirm" style="display:none;">Register group</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>

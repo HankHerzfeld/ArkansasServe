@@ -2,6 +2,13 @@
   let profile = null;
   let currentEvent = null;
 
+  // Orgs where the viewer holds EventAdmin+ — i.e. whose roster they may sign up as a group.
+  // Deliberately from memberships rather than the token's adminLevel: a membership-based
+  // admin carries no admin claim on their token, which is exactly the mistake Finding 9
+  // documented (they read as Student and were refused on their own members).
+  let groupAdminOrgs = [];
+  const GROUP_ADMIN_LEVELS = ['EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'PlatformAdmin', 'SuperAdmin'];
+
   const params = new URLSearchParams(location.search);
   const eventId = params.get('id');
   const orgId = params.get('organizationId') || '';
@@ -12,6 +19,19 @@
     UI.setupHeader('/events.html');
     loadEvent();
   });
+
+  async function loadGroupAdminOrgs() {
+    try {
+      const memberships = await Api.Memberships.list();
+      groupAdminOrgs = (memberships || [])
+        .filter(m => GROUP_ADMIN_LEVELS.includes(m.adminLevel))
+        .map(m => ({ id: m.organizationId, name: m.organizationName || m.organizationId }));
+    } catch (err) {
+      // Non-fatal: without this the group button simply doesn't appear, and the event page
+      // itself must still render.
+      groupAdminOrgs = [];
+    }
+  }
 
   async function loadEvent() {
     const loading = document.getElementById('event-loading');
@@ -24,6 +44,7 @@
     }
     try {
       currentEvent = await Api.Events.get(eventId, orgId);
+      await loadGroupAdminOrgs();
       loading.style.display = 'none';
       renderEvent(currentEvent);
     } catch (err) {
@@ -165,6 +186,16 @@
       btn.addEventListener('click', () => openSignup(evt));
       actions.appendChild(btn);
     }
+
+    // Group registration is offered to whoever can act for a roster, which is a different
+    // question from the viewer's own sign-up state above: an admin may register their people
+    // whether or not they are personally signed up. Shown only once we know they hold
+    // EventAdmin+ somewhere, so the button never appears just to 403.
+    if (evt.status === 'Open' && groupAdminOrgs.length > 0) {
+      const gbtn = elem('button', { class: 'btn btn-secondary', text: 'Register a group' });
+      gbtn.addEventListener('click', () => openGroup(evt));
+      actions.appendChild(gbtn);
+    }
     if (actions.children.length) root.appendChild(actions);
   }
 
@@ -259,4 +290,249 @@
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
+  }
+
+  // ── Group registration (EventAdmin+) ──────────────────────────────────────
+  // Two steps: choose people, then answer the event's questions FOR EACH of them.
+  // Step 2 is skipped entirely when the event asks nothing, which is the common case.
+
+  const group = { evt: null, orgId: null, roster: [], selected: new Set(), answers: {}, shiftId: null, step: 1 };
+
+  function groupEls() {
+    return {
+      modal:   document.getElementById('group-modal'),
+      title:   document.getElementById('group-modal-title'),
+      details: document.getElementById('group-modal-details'),
+      fields:  document.getElementById('group-fields'),
+      error:   document.getElementById('group-error'),
+      back:    document.getElementById('group-back'),
+      next:    document.getElementById('group-next'),
+      confirm: document.getElementById('group-confirm'),
+    };
+  }
+
+  function groupError(msg) {
+    const { error } = groupEls();
+    if (!msg) { error.style.display = 'none'; error.textContent = ''; return; }
+    error.textContent = msg;
+    error.style.display = 'block';
+  }
+
+  async function openGroup(evt) {
+    group.evt = evt;
+    group.orgId = groupAdminOrgs[0]?.id || null;
+    group.selected = new Set();
+    group.answers = {};
+    group.shiftId = null;
+    group.step = 1;
+    const { modal, title, details } = groupEls();
+    title.textContent = 'Register a group';
+    details.textContent = evt.title || '';
+    groupError(null);
+    modal.classList.add('open');
+    await loadRoster();
+  }
+
+  function closeGroup() { groupEls().modal.classList.remove('open'); }
+
+  async function loadRoster() {
+    const { fields } = groupEls();
+    fields.textContent = 'Loading roster…';
+    try {
+      group.roster = await Api.Volunteers.list({ organizationId: group.orgId });
+    } catch (err) {
+      group.roster = [];
+      groupError('Could not load that organization\'s roster.');
+    }
+    renderGroupStep();
+  }
+
+  function personName(p) {
+    return p.displayName
+      || [p.firstName, p.lastName].filter(Boolean).join(' ')
+      || p.email
+      || p.id;
+  }
+
+  function renderGroupStep() {
+    const { fields, back, next, confirm } = groupEls();
+    fields.innerHTML = '';
+    const questions = group.evt.signupQuestions || [];
+
+    if (group.step === 1) {
+      // With no questions there is no step 2, so step 1 submits directly.
+      back.style.display = 'none';
+      next.style.display = questions.length ? '' : 'none';
+      confirm.style.display = questions.length ? 'none' : '';
+
+      // Org picker only when there is a genuine choice to make.
+      if (groupAdminOrgs.length > 1) {
+        const g = elem('div', { class: 'form-group' });
+        g.appendChild(elem('label', { for: 'group-org', text: 'Register people from' }));
+        const sel = elem('select', { id: 'group-org' });
+        groupAdminOrgs.forEach(o => {
+          const opt = elem('option', { value: o.id, text: o.name });
+          if (o.id === group.orgId) opt.setAttribute('selected', 'true');
+          sel.appendChild(opt);
+        });
+        sel.addEventListener('change', async () => {
+          group.orgId = sel.value;
+          group.selected = new Set();
+          await loadRoster();
+        });
+        g.appendChild(sel);
+        fields.appendChild(g);
+      }
+
+      if (group.evt.shifts && group.evt.shifts.length) {
+        const g = elem('div', { class: 'form-group' });
+        g.appendChild(elem('label', { for: 'group-shift', text: 'Choose a shift *' }));
+        const sel = elem('select', { id: 'group-shift' });
+        sel.appendChild(elem('option', { value: '', text: 'Select…' }));
+        group.evt.shifts.forEach(s => {
+          const left = s.capacity > 0 ? Math.max(0, s.capacity - (s.filled || 0)) : null;
+          const full = s.capacity > 0 && left === 0;
+          const when = s.startDateTime ? ` — ${new Date(s.startDateTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}` : '';
+          const opt = elem('option', {
+            value: s.id,
+            text: `${s.label}${when}${full ? ' — FULL' : left != null ? ` (${left} left)` : ''}`,
+          });
+          if (full) opt.setAttribute('disabled', 'true');
+          sel.appendChild(opt);
+        });
+        g.appendChild(sel);
+        fields.appendChild(g);
+      }
+
+      const already = new Set();
+      if (group.evt.myRegistration) already.add(group.evt.myRegistration.memberId);
+
+      const head = elem('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;gap:1rem;' });
+      head.appendChild(elem('label', { text: 'Who is coming?' }));
+      const count = elem('span', { id: 'group-count', class: 'event-badge' });
+      head.appendChild(count);
+      fields.appendChild(head);
+
+      if (!group.roster.length) {
+        fields.appendChild(elem('p', { text: 'No one on this roster yet.', style: 'color:var(--gray-600);font-size:.9rem;' }));
+      } else {
+        // Scroll container, matching how the tables are contained elsewhere: a long roster
+        // must not make the dialog itself grow past the frame.
+        const list = elem('div', { style: 'max-height:16rem;overflow-y:auto;border:1px solid var(--gray-200);border-radius:var(--radius);padding:.25rem;' });
+        group.roster.forEach(p => {
+          const row = elem('label', { style: 'display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;cursor:pointer;' });
+          const cb = elem('input', { type: 'checkbox', value: p.id });
+          cb.checked = group.selected.has(p.id);
+          cb.addEventListener('change', () => {
+            if (cb.checked) group.selected.add(p.id); else group.selected.delete(p.id);
+            updateGroupCount();
+          });
+          row.appendChild(cb);
+          const who = elem('div');
+          who.appendChild(elem('div', { text: personName(p), style: 'font-size:.9rem;' }));
+          if (p.email) who.appendChild(elem('div', { text: p.email, style: 'font-size:.75rem;color:var(--gray-600);' }));
+          row.appendChild(who);
+          list.appendChild(row);
+        });
+        fields.appendChild(list);
+      }
+      updateGroupCount();
+      return;
+    }
+
+    // ── Step 2: the per-person answer grid ──────────────────────────────────
+    back.style.display = '';
+    next.style.display = 'none';
+    confirm.style.display = '';
+
+    fields.appendChild(elem('p', {
+      text: 'Answer for each person. An admin answers on their behalf, so these are recorded per volunteer rather than shared.',
+      style: 'font-size:.85rem;color:var(--gray-600);margin-bottom:.5rem;',
+    }));
+
+    const selected = group.roster.filter(p => group.selected.has(p.id));
+    selected.forEach(p => {
+      const card = elem('div', { style: 'border:1px solid var(--gray-200);border-radius:var(--radius);padding:.6rem .75rem;margin-bottom:.5rem;' });
+      card.appendChild(elem('div', { text: personName(p), style: 'font-weight:600;font-size:.9rem;margin-bottom:.35rem;color:var(--green);' }));
+      questions.forEach(q => {
+        const g = elem('div', { class: 'form-group', style: 'margin-bottom:.4rem;' });
+        g.appendChild(elem('label', { text: q.label + (q.required ? ' *' : ''), style: 'font-size:.8rem;' }));
+        const input = elem('input', { type: 'text' });
+        input.value = (group.answers[p.id] || {})[q.id] || '';
+        input.addEventListener('input', () => {
+          group.answers[p.id] = group.answers[p.id] || {};
+          group.answers[p.id][q.id] = input.value;
+        });
+        g.appendChild(input);
+        card.appendChild(g);
+      });
+      fields.appendChild(card);
+    });
+  }
+
+  function updateGroupCount() {
+    const el = document.getElementById('group-count');
+    if (el) el.textContent = `${group.selected.size} selected`;
+    const { next, confirm } = groupEls();
+    const none = group.selected.size === 0;
+    next.disabled = none;
+    confirm.disabled = none;
+  }
+
+  document.getElementById('group-cancel')?.addEventListener('click', closeGroup);
+  document.getElementById('group-back')?.addEventListener('click', () => {
+    group.step = 1; groupError(null); renderGroupStep();
+  });
+  document.getElementById('group-next')?.addEventListener('click', () => {
+    if (!validateGroupStep1()) return;
+    group.step = 2; groupError(null); renderGroupStep();
+  });
+  document.getElementById('group-confirm')?.addEventListener('click', submitGroup);
+
+  function validateGroupStep1() {
+    groupError(null);
+    if (group.selected.size === 0) { groupError('Choose at least one person.'); return false; }
+    if (group.evt.shifts && group.evt.shifts.length) {
+      const shift = document.getElementById('group-shift')?.value;
+      if (!shift) { groupError('Choose a shift.'); return false; }
+      group.shiftId = shift;
+    }
+    return true;
+  }
+
+  async function submitGroup() {
+    // Re-check step 1 even when submitting straight from it (no questions), so the shift
+    // requirement can't be skipped by the shorter path.
+    if (group.step === 1 && !validateGroupStep1()) return;
+    groupError(null);
+    const { confirm } = groupEls();
+    confirm.disabled = true;
+    const original = confirm.textContent;
+    confirm.textContent = 'Registering…';
+
+    const registrants = [...group.selected].map(memberId => ({
+      memberId,
+      answers: Object.entries(group.answers[memberId] || {})
+        .filter(([, v]) => v && v.trim())
+        .map(([questionId, answer]) => ({ questionId, answer })),
+    }));
+
+    try {
+      const res = await Api.Registrations.createGroup({
+        eventId: group.evt.id,
+        organizationId: group.evt.organizationId,
+        shiftId: group.shiftId || null,
+        registrantOrganizationId: group.orgId,
+        registrants,
+      });
+      closeGroup();
+      await loadEvent();
+      showToast(`Registered ${res.registered} ${res.registered === 1 ? 'person' : 'people'}.`, 'success');
+    } catch (err) {
+      // The server's message is the useful one here — "Only 3 spots left", or which person
+      // is already registered — so it is surfaced verbatim rather than replaced.
+      groupError(err.message || 'Could not register this group.');
+      confirm.disabled = false;
+      confirm.textContent = original;
+    }
   }
