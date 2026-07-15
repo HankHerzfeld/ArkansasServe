@@ -81,6 +81,16 @@
       leaveBtn.textContent = 'Leave';
       leaveBtn.addEventListener('click', () => doLeave(org, card));
       actions.appendChild(leaveBtn);
+    } else if (org.allowSelfJoin === false) {
+      // Assign-only org: an admin creates the membership. Offering Join here would only
+      // produce a 403. Checked against `=== false` so an older cached response, which
+      // carries no such field, still renders Join exactly as it does today — the server
+      // is the enforcement point either way.
+      const note = document.createElement('span');
+      note.className = 'status';
+      note.style.cssText = 'background:var(--gray-200);color:var(--gray-600);';
+      note.textContent = 'Admin-added';
+      actions.appendChild(note);
     } else {
       const joinBtn = document.createElement('button');
       joinBtn.className = 'btn btn-primary btn-sm';

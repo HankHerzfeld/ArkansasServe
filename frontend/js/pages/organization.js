@@ -125,6 +125,14 @@
       leave.addEventListener('click', () => doLeave(o, wrap));
       wrap.appendChild(joined);
       wrap.appendChild(leave);
+    } else if (o.allowSelfJoin === false) {
+      // Assign-only org. Say who does add you, rather than showing a disabled button
+      // with no explanation or a live one whose only outcome is a 403.
+      wrap.appendChild(elem('span', {
+        class: 'status',
+        text: 'Members added by an admin',
+        style: 'background:var(--gray-200);color:var(--gray-600);',
+      }));
     } else {
       const join = elem('button', { class: 'btn btn-primary btn-sm', text: 'Join' });
       join.addEventListener('click', () => doJoin(o, wrap));
