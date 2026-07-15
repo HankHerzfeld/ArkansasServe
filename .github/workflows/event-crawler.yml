@@ -1,33 +1,48 @@
 name: Daily Event Crawler
 
-# ⚠️ SCHEDULE DISABLED (2026-07-14) — manual runs only.
+# Schedule RE-ENABLED 2026-07-15, now that M2M auth is settled.
 #
-# Why: the crawl endpoint (/manage/events/crawl) authenticates through
-# AuthMiddleware.ValidateRequest, i.e. it expects a real **Entra JWT**. Entra access
-# tokens expire in about an hour, so CRAWLER_SERVICE_TOKEN — a static value pasted into
-# a GitHub secret — cannot drive a daily job: it would 401 by the next morning even once
-# set. The secret was never set, so every scheduled run failed at the validate step
-# ("CRAWLER_SERVICE_TOKEN secret is not set"), mailing a failure daily for no benefit.
+# History: this ran on a static CRAWLER_SERVICE_TOKEN in a GitHub secret, against an
+# endpoint that validates an **Entra JWT**. Those expire in ~1h, so a static token could
+# never drive a daily job — it would 401 by the next morning even if set. It was never
+# set, so every scheduled run failed at the validate step and mailed a failure daily for
+# no benefit. The schedule was disabled 2026-07-14 pending a decision.
 #
-# The schedule stays off until machine-to-machine auth is settled. The real options are
-# an Entra app registration + client_credentials (mint a fresh token per run; needs
-# AuthMiddleware to accept app tokens), a dedicated shared-secret header for this one
-# route, or moving the schedule into a timer-triggered Function. Re-enable the cron
-# below once one is in place — the job body itself is fine and unchanged.
+# Resolution (owner decision, 2026-07-15): a **shared-secret header** scoped to this one
+# route. The endpoint now accepts `X-Crawler-Secret` as an alternative to a JWT — see
+# CrawlerFunctions / AuthConfig.CrawlerSharedSecret. A static secret works here precisely
+# because it is not a token: nothing expires.
 #
-# workflow_dispatch still works for a one-off run IF a currently-valid token is supplied.
+# The two paths this was chosen over, recorded so the trade-off is not re-litigated blind:
+# an Entra app registration + client_credentials (correct M2M, but a client secret that
+# itself needs rotating, and the route stays public), or a timer-triggered Function (no
+# secret at all, but the crawler leaves this repo). The header is weaker than both; it is
+# bounded by the fact that the crawl route only creates **Draft** events, which a human
+# must review and publish through the JWT-only routes before students see anything.
 #
-# Prerequisites (set in GitHub repo Settings → Secrets and variables → Actions):
-#   CRAWLER_ENDPOINT_URL  — e.g. https://your-swa.azurestaticapps.net/api
-#   CRAWLER_SERVICE_TOKEN — a bearer token for a PlatformAdmin/SuperAdmin account
-#                           (see the expiry caveat above)
+# ── Setup (BOTH must match, or every run 401s) ────────────────────────────────
+#   1. GitHub → Settings → Secrets and variables → Actions:
+#        CRAWLER_ENDPOINT_URL  — e.g. https://arkansasserve.com/api
+#        CRAWLER_SHARED_SECRET — the shared secret (generate: openssl rand -base64 48)
+#   2. Azure → Function App `func-arkansas-serve-arksrv` → app settings:
+#        Crawler__SharedSecret — the SAME value
+#
+#   The app setting is optional by design: leave it unset and the header path does not
+#   exist at all (the endpoint stays JWT-only and this workflow 401s). It is NOT declared
+#   in infra/main.bicep — that template is non-authoritative and must not be applied; see
+#   infra/README.md. Set it directly on the Function App.
+#
+#   To revoke: clear Crawler__SharedSecret on the Function App. That kills the path
+#   immediately and needs no redeploy.
+#
+# The old CRAWLER_SERVICE_TOKEN secret is unused as of this change and can be deleted.
 
 on:
-  # schedule:
-  #   # Daily at 11:00 UTC (6 AM CT)
-  #   - cron: '0 11 * * *'
-  #   # Extra full-pull on Sundays at 12:00 UTC (7 AM CT)
-  #   - cron: '0 12 * * 0'
+  schedule:
+    # Daily at 11:00 UTC (6 AM CT)
+    - cron: '0 11 * * *'
+    # Extra full-pull on Sundays at 12:00 UTC (7 AM CT)
+    - cron: '0 12 * * 0'
   workflow_dispatch:
     inputs:
       sources:
@@ -55,8 +70,9 @@ jobs:
             echo "::error::CRAWLER_ENDPOINT_URL secret is not set. Skipping crawl."
             exit 1
           fi
-          if [ -z "${{ secrets.CRAWLER_SERVICE_TOKEN }}" ]; then
-            echo "::error::CRAWLER_SERVICE_TOKEN secret is not set. Skipping crawl."
+          if [ -z "${{ secrets.CRAWLER_SHARED_SECRET }}" ]; then
+            echo "::error::CRAWLER_SHARED_SECRET secret is not set. Skipping crawl."
+            echo "::error::It must match the Crawler__SharedSecret app setting on the Function App."
             exit 1
           fi
 
@@ -82,17 +98,21 @@ jobs:
       - name: Trigger crawl
         id: crawl
         env:
-          CRAWLER_TOKEN: ${{ secrets.CRAWLER_SERVICE_TOKEN }}
+          CRAWLER_SECRET: ${{ secrets.CRAWLER_SHARED_SECRET }}
         run: |
           BASE_URL="${{ secrets.CRAWLER_ENDPOINT_URL }}"
           # Trim trailing slash
           BASE_URL="${BASE_URL%/}"
 
+          # The secret goes in X-Crawler-Secret, not Authorization: the endpoint reads a
+          # bearer token as an Entra JWT and would reject this value as a malformed one.
+          # Passed via env and referenced as a variable so it is never rendered into the
+          # command line (where it would reach the process list and the run log).
           HTTP_RESPONSE=$(curl --silent --show-error --fail-with-body \
             --max-time 600 \
             --write-out "\n%{http_code}" \
             -X POST \
-            -H "Authorization: Bearer ${CRAWLER_TOKEN}" \
+            -H "X-Crawler-Secret: ${CRAWLER_SECRET}" \
             -H "Content-Type: application/json" \
             -d '${{ steps.body.outputs.body }}' \
             "${BASE_URL}/manage/events/crawl")

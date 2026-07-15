@@ -170,6 +170,7 @@
     // Defaults to allowed when the field is absent.
     document.getElementById('tenant-allow-groupadmin-volunteers').checked = tenant.allowGroupAdminAddVolunteers !== false;
     document.getElementById('tenant-allow-profile-self-edit').checked = tenant.allowProfileSelfEdit !== false;
+    document.getElementById('tenant-allow-self-join').checked = tenant.allowSelfJoin !== false;
     document.getElementById('tenant-description').value   = tenant.description || '';
     document.getElementById('tenant-mission').value       = tenant.mission || '';
     document.getElementById('tenant-website').value       = tenant.website || '';
@@ -588,6 +589,7 @@
         rbacEnabled: document.getElementById('tenant-rbac').checked,
         allowGroupAdminAddVolunteers: document.getElementById('tenant-allow-groupadmin-volunteers').checked,
         allowProfileSelfEdit: document.getElementById('tenant-allow-profile-self-edit').checked,
+        allowSelfJoin: document.getElementById('tenant-allow-self-join').checked,
         description:  document.getElementById('tenant-description').value.trim(),
         mission:      document.getElementById('tenant-mission').value.trim(),
         website:      document.getElementById('tenant-website').value.trim(),

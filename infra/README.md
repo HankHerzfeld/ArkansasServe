@@ -1,8 +1,34 @@
 # Infrastructure (Bicep)
 
-`main.bicep` is the **codified real state** of `rg-arkansas-serve` (Central US). It was
-reconciled to the verified live environment on 2026-07-02 and re-verified against live via
-`what-if` on 2026-07-09. Every default in the template is the actual deployed name/config.
+> ## ⚠️ `main.bicep` is NON-AUTHORITATIVE — do not apply it
+>
+> **Status 2026-07-15 (owner decision): reconciliation deferred.** This template does **not**
+> describe the live environment, and it has **never successfully applied** — its only runs were
+> PR `what-if`s that failed at OIDC login. Nothing in it has ever been enforced against live.
+>
+> **Applying it today would break production in two specific ways:**
+>
+> | # | Divergence | Consequence of an apply |
+> |---|---|---|
+> | 1 | Template declares `publicNetworkAccess: 'Enabled'`, no `ipRules`/`networkAclBypass`. Live firewall was scoped 2026-07-14. | **Reverts the firewall, re-opens Cosmos.** |
+> | 2 | Template sets `CosmosDb__ConnectionString` from `listConnectionStrings()` (returns **primary**). Keys were rotated manually 2026-07-14. | **Overwrites the rotated key setting.** |
+> | 3 | Containers (incl. `ImpersonationSessions`/`AuditEvents`) were created out-of-band. | Additive only — creates what exists, or 409. Not dangerous. |
+>
+> Plus: `platformAdminEmailDomain` in `main.prod.bicepparam` is still `arkansasserve.com`, so an
+> apply would **re-open the domain-based PlatformAdmin bootstrap elevation** closed on 2026-07-09.
+>
+> **A clean `what-if` is not sufficient clearance.** ARM returns app-setting values masked, so
+> divergence #2 will not appear as a diff. Read the live setting directly before trusting it.
+>
+> Reconcile all four points against live before any apply. Until then, **Bicep is a record of
+> intent, not of reality** — read live via `az`/portal to know what exists.
+
+_The description below is what the template **claims**, and was true as of 2026-07-09. It is
+retained for reconciliation work. It is not a statement about live today._
+
+`main.bicep` was reconciled to the verified live environment on 2026-07-02 and re-verified via
+`what-if` on 2026-07-09. As of that date every default in the template was the actual deployed
+name/config; the divergences listed above have accumulated since.
 
 - `main.bicep` — all resources: Log Analytics, App Insights, Storage (+3 private containers),
   Cosmos (provisioned/free-tier, 8 containers), the Function App (Y1 Consumption, .NET 8
@@ -11,10 +37,13 @@ reconciled to the verified live environment on 2026-07-02 and re-verified agains
 - `main.prod.bicepparam` — the production parameter values (Entra IDs are **public**
   identifiers, not secrets).
 
-## Golden rule: never deploy without `what-if`
+## Golden rule: never deploy without `what-if` — and today, don't deploy at all
 
 A full-replacement app-settings write and shared Cosmos infra make a blind deploy risky.
 **Always** run `what-if` and confirm the change is additive/no-op first.
+
+`what-if` is read-only and safe to run at any time — it is the right way to *measure* the
+drift described at the top of this file:
 
 ```bash
 az deployment group what-if \
@@ -23,15 +52,10 @@ az deployment group what-if \
   --parameters infra/main.prod.bicepparam
 ```
 
-Deploy only after review:
-
-```bash
-az deployment group create \
-  --resource-group rg-arkansas-serve \
-  --template-file infra/main.bicep \
-  --parameters infra/main.prod.bicepparam \
-  --mode Incremental
-```
+The `az deployment group create` command is **deliberately not written out here.** While the
+divergences at the top of this file stand, an apply reverts the Cosmos firewall and clobbers
+the rotated key — and a clean `what-if` will not warn you about the key, because ARM masks
+app-setting values. Reconcile first, then restore this section along with the command.
 
 > Deploy **infra before** the Functions workflow (or re-run Functions after). The app-settings
 > collection is a full replacement; the run-from-package settings live backends rely on are

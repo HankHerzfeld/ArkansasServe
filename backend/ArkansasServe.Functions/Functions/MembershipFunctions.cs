@@ -94,6 +94,8 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 				type = t.Type,
 				logoUrl = blob.ResolveDisplayUrl("org-logos", t.LogoBlobName, t.LogoUrl),
 				alreadyMember = memberOrgIds.Contains(t.Id),
+				// So the directory can omit a Join button that would only 403.
+				allowSelfJoin = t.AllowSelfJoin,
 			})
 			.ToList();
 
@@ -152,6 +154,9 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 			contactPhone = tenant.ContactPhone,
 			address = tenant.Address,
 			alreadyMember,
+			// So the page can explain that members are added by an admin, rather than
+			// offering a Join button whose only outcome is a 403.
+			allowSelfJoin = tenant.AllowSelfJoin,
 			upcomingEvents,
 		});
 	}
@@ -212,6 +217,20 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 			if (byEmail != null)
 				return await HttpHelper.Error(req, HttpStatusCode.Conflict, "A member with this email already exists in this organization");
 		}
+
+		// Assign-only org: membership is created BY an admin, not claimed by the person.
+		//
+		// This sits HERE, and not beside the root check above, on purpose. Everything before
+		// it is not a self-join and must still work in an assign-only org:
+		//   - an existing member gets idempotent success (they are already in);
+		//   - a global super gets their effective actor (they have access regardless);
+		//   - someone an admin already added as a managed volunteer ADOPTS that record —
+		//     which is precisely the assign-only path working, not a bypass of it.
+		// Only the create-a-membership-from-nothing below is a true self-join, so only that
+		// is refused.
+		if (!tenant.AllowSelfJoin)
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden,
+				"This organization does not accept self sign-up. An administrator adds members.");
 
 		// Seed the name from the person's EXISTING membership, not the token claim. The
 		// "name" claim can be missing or read "unknown", and stamping that onto a fresh

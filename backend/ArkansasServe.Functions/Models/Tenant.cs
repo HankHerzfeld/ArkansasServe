@@ -60,6 +60,19 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("allowProfileSelfEdit")]
 	public bool AllowProfileSelfEdit { get; set; } = true;
 
+	// When true (default), anyone signed in may join this organization themselves from its
+	// public page. Set false for an assign-only org: it stays fully visible and browsable,
+	// but membership is created BY an admin rather than claimed by the person.
+	//
+	// "Assign-only" does not mean "closed". Someone whose managed record an admin already
+	// created still adopts it on first sign-in — that IS the assign-only path working, so
+	// JoinOrg gates only the create-from-nothing step, not adoption (see JoinOrg).
+	//
+	// Defaults to true so every existing Tenant doc keeps today's behaviour without a
+	// backfill: a doc written before this field existed deserialises to true.
+	[JsonPropertyName("allowSelfJoin")]
+	public bool AllowSelfJoin { get; set; } = true;
+
 	[JsonPropertyName("groups")]
 	public List<TenantGroup> Groups { get; set; } = [];
 

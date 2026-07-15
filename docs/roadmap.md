@@ -59,11 +59,24 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
 - **Stale ".NET 10" doc.** ✅ Fixed (README + copilot-instructions, which was actively
   telling agents to target `net10.0`). Staying on **.NET 8 LTS** is deliberate; the "decide
   8 vs 10" action is closed.
-- **Daily Event Crawler.** ✅ Schedule **disabled** (manual `workflow_dispatch` only).
-  Not merely a missing secret: the endpoint validates an **Entra JWT**, and those expire in
-  ~1h, so a static `CRAWLER_SERVICE_TOKEN` in a GitHub secret can never drive a daily job.
-  Re-enable once M2M auth is settled — app registration + `client_credentials` (mint a fresh
-  token per run), a shared-secret header for that route, or a timer-triggered Function.
+- **Daily Event Crawler.** ✅ **Schedule RE-ENABLED 2026-07-15.** The diagnosis stands: the
+  endpoint validates an **Entra JWT**, and those expire in ~1h, so a static
+  `CRAWLER_SERVICE_TOKEN` in a GitHub secret could never drive a daily job.
+  **Owner decision: a shared-secret header** (over an app registration + `client_credentials`,
+  or a timer-triggered Function). A static secret works precisely because it is not a token —
+  nothing expires. `POST /manage/events/crawl` now accepts `X-Crawler-Secret` as an
+  alternative to a JWT; the queue/publish/dismiss routes stay JWT + SuperAdmin.
+  - **Deliberately the weaker path, and bounded.** It is scoped to the one route, compared in
+    constant time, and that route can only create **Draft** events — a human still reviews and
+    publishes them through the JWT-only routes before any student sees anything.
+  - **Fail closed, verified:** with `Crawler__SharedSecret` unset the header path does not
+    exist — the identical secret that returns 200 when configured returns 401 when it is not.
+    Tested against a real local Functions host: no creds → 401; wrong secret → 401 (no
+    fallthrough to the JWT path); correct secret + dryRun → 200.
+  - **Needs both halves set or every run 401s:** GitHub secret `CRAWLER_SHARED_SECRET` and
+    Function App setting `Crawler__SharedSecret`. Set the app setting **directly** — do not
+    add it to Bicep (see infra drift below). Revoke by clearing the app setting; no redeploy.
+    The old `CRAWLER_SERVICE_TOKEN` secret is now unused and can be deleted.
 
 - **Rotate Cosmos/Blob keys.** ✅ Done manually 2026-07-14.
 - **Scope Cosmos firewall.** ✅ Closed 2026-07-14 — **partial by necessity, not oversight.**
@@ -122,7 +135,51 @@ than inventing an org:
   switcher) regardless of what the API returned. The dashboard now shows a real
   "No assigned or joined organization" empty state, which hides itself once an org exists.
 
-**② Edge-to-edge (`viewport-fit=cover`) vs. the current letterboxed setup — OPEN.**
+**② Edge-to-edge (`viewport-fit=cover`) — ✅ DONE 2026-07-15. Owner chose to opt in.**
+The recommendation below was to stay letterboxed; the owner decided otherwise and the full
+audit was carried out. `viewport-fit=cover` is now on all 13 pages and every fixed/sticky
+element is inset-aware. The analysis below is retained because it is still the reasoning
+that governs the area — but the decision it argues for was overridden deliberately.
+
+*What the audit actually found (the reason it was worth doing).* The element list in the
+note below was **incomplete**. Guarding only the five elements it names would have shipped
+a half-opt-in — the exact failure the note warns is "strictly worse than today":
+- **Toasts** (`position:fixed; bottom:1.5rem`, duplicated inline in four page scripts) were
+  not on the list. They would have sat under the home indicator.
+- **`.container`'s** `1.5rem` side padding is *smaller than a landscape notch inset* (~44px),
+  so page text would slide under the notch on a rotated phone. 11 of 13 pages use it.
+- **`index.html` has no `.container` at all** — it styles its sections with inline
+  `padding: 4rem 1.5rem`, which a stylesheet rule cannot override. Measured **12 landscape
+  violations** on the landing page (the `<h1>` at x=24, the footer at x=32, needing ≥44).
+  Fixed by making the hero + three inline-styled sections + the footer inset-aware. 12 → 0.
+- **`.modal`'s** `max-height: calc(100vh - 3rem)` silently became wrong: `100vh` is the full
+  display height edge-to-edge, so the flat `3rem` under-subtracts. Now subtracts the
+  overlay's real, inset-aware padding.
+
+*Verified by measurement, not eyeballing.* Because `env(safe-area-inset-*)` is **always 0 in
+a desktop browser** (the note's "invisible on a desktop browser" trap), verification worked by
+re-injecting the **shipped** CSS rules with real iPhone 14 Pro insets substituted for `env()`,
+then measuring geometry. Portrait (59/34) and landscape (44/21), plus an inset-0 pass to prove
+no regression for today's users. Modal clamps to 759px = 852−59−34, top y=59, bottom y=818,
+overflow 0. Navbar brand at y=66 clears the island; the green still bleeds under it.
+
+⚠️ **Still requires a real-device pass before it is fully trusted.** Substituting literals for
+`env()` proves the arithmetic and the layout, not iOS's actual reported insets. It is the
+strongest check available on Windows; it is not an iPhone.
+
+*Known trade-off, owner's call:* bottom guards use `max(base, inset)`, so at the page bottom
+the footer copyright ends **flush** with the home indicator (gap 0). Nothing is occluded — that
+is the requirement — but there is no breathing room. Switch those to
+`calc(base + env(...))` if you want the design's spacing preserved on top of the inset.
+
+*One regression was caught and fixed during the audit:* blockifying `.navbar-links a` (to give
+the drawer's inline anchors a real 47px tap target instead of a ~19px line box) also hit
+`terms.html`/`privacy.html`, which carry a cut-down navbar with **no drawer** — stacking their
+links into a 102px two-row header. The rule is now scoped to `.nav-menu .navbar-links a`.
+Both pages verified back at 60px.
+
+<details><summary>Original 2026-07-14 analysis (recommended staying letterboxed — overridden)</summary>
+
 *Status 2026-07-14: deliberately left open by the owner; not decided.* No action needed to
 stay safe — the current setup has no exposure. Read the note below when picking it up.
 
@@ -162,23 +219,51 @@ place, so switching later is cheap and mostly mechanical.
 element is strictly worse than today: it is what pushes the brand and hamburger under the
 island.
 
+</details>
+
 ### Still open
-- **Orphaned membership data (needs an owner decision).** A small number of membership rows
-  still point at a tenant that no longer exists (one admin-level, the rest test accounts), all
-  `status:"active"`. The fix above hides them from the UI; the rows remain. Deleting
-  production user records was deliberately **not** done unattended. Removing the admin row is
-  safe for access — the `arkansas-serve-root` SuperAdmin membership is independent — but it is
-  still a destructive write on real data. Identifiers are deliberately not recorded here: this
-  repository is public. See the session notes / Cosmos for the specific rows.
+- **Orphaned membership data.** ✅ **Deleted 2026-07-15 on owner authorization.** 3 rows
+  removed; `Users` went 18 → 15, and the stranded partition now holds 0.
+  - **The old description here was wrong in a way worth recording.** These rows did *not*
+    "point at a tenant that no longer exists" — that tenant **never existed**. The id they
+    carried is the **Entra External-ID directory id** (the same GUID hardcoded as `TENANT_ID`
+    in `frontend/js/auth.js`), i.e. they are exactly the pseudo-org artifacts of finding ①
+    above, created while `AuthMiddleware` still fell back to `Claim("tid")`. Not a deleted
+    org — an org that was never an org. Nor were they "one admin + test accounts": all three
+    are the owner's own identities (one `@arkansasserve.com` SuperAdmin, two gmail).
+  - **Pre-verified before the write, not assumed.** The claim that removing the admin row is
+    "safe for access" was checked rather than trusted: each of the 3 identities has a live
+    membership **matching on `externalId`**, not merely on email; 3 SuperAdmin docs survive in
+    `arkansas-serve-root`; and `ServiceLogs` / `EventRegistrations` / `Notifications` /
+    `PendingApprovals` held **0** rows referencing any of the 3 user ids. Post-delete checks
+    confirmed the owner is still SuperAdmin in `arkansas-serve-root`.
+  - **They could not have come back, and cannot recur.** PR #65 removed the `tid` fallback
+    (`AuthMiddleware` now ends `?? string.Empty`) and that code is deployed, so a sign-in no
+    longer re-creates them. They were also unreachable by #65's `unassigned` → `JoinOrg`
+    migration, which only folds the `unassigned` partition — these sat in the directory-id
+    partition, so nothing would ever have cleaned them up.
+  - Identifiers remain deliberately unrecorded here: this repository is public.
 - **Minor.** Per-org `displayName` differs across pages (per-org User doc).
-- **Infra drift (P2) — now larger.** The Bicep `what-if`/apply workflow has never
-  successfully run; its only runs were PR `what-if`s that failed at OIDC login. Live
-  containers (incl. `ImpersonationSessions`/`AuditEvents`) were created out-of-band, and the
-  Cosmos firewall above is a third out-of-band change: `main.bicep` still declares
-  `publicNetworkAccess: 'Enabled'` with no `ipRules`/`networkAclBypass`, and sets
+- **Infra drift (P2) — reconciliation DEFERRED by owner 2026-07-15; Bicep marked
+  NON-AUTHORITATIVE.** The drift itself is unchanged and still live. The `what-if`/apply
+  workflow has never successfully run; its only runs were PR `what-if`s that failed at OIDC
+  login. Live containers (incl. `ImpersonationSessions`/`AuditEvents`) were created
+  out-of-band, and the Cosmos firewall is a third out-of-band change: `main.bicep` still
+  declares `publicNetworkAccess: 'Enabled'` with no `ipRules`/`networkAclBypass`, and sets
   `CosmosDb__ConnectionString` from `listConnectionStrings()` (which returns **primary**).
-  So an apply today would **revert the firewall and overwrite the rotated key setting**.
-  Bicep is not the source of truth for what exists — reconcile before any apply.
+  An apply today would **revert the firewall and overwrite the rotated key setting**.
+  - **What changed 2026-07-15:** the danger is now documented where it would be encountered
+    rather than only here. `infra/main.bicep` opens with a do-not-apply block naming all
+    three divergences; `infra/README.md` no longer claims to be the "codified real state"
+    (it said so at the top while being three changes stale — the more dangerous of the two
+    documents, because it was reassuring). The `az deployment group create` command was
+    **removed** from that README; `what-if` stays, being read-only and the way to measure the
+    drift. A fourth live-affecting item is now recorded there too: `platformAdminEmailDomain`
+    in `main.prod.bicepparam` is still `arkansasserve.com`, so an apply would re-open the
+    PlatformAdmin bootstrap elevation closed on 2026-07-09.
+  - **A clean `what-if` is NOT sufficient clearance.** ARM returns app-setting values masked,
+    so the rotated-key clobber will never appear as a diff. Read the live setting directly.
+  - Bicep is not the source of truth for what exists — reconcile before any apply.
 
 ---
 
@@ -233,15 +318,15 @@ island.
     they don't need. `height:60px` → `min-height:60px` means those wrapped tabs no longer
     overflow a fixed-height bar.
 
-- **iOS safe area / Dynamic Island.** ✅ Assessed 2026-07-14 — **no current exposure, guarded
-  for later.** The viewport meta is `width=device-width, initial-scale=1.0` with **no
-  `viewport-fit=cover`**, so iOS letterboxes the page and nothing can slide under the island;
-  `display:standalone` + the default status-bar style keeps the PWA below the status bar too.
-  The header and drawer nevertheless pad with `env(safe-area-inset-*)` via `max()`, which
-  resolves to the plain padding today (insets are 0) and becomes correct automatically if the
-  app ever goes edge-to-edge. **Do not add `viewport-fit=cover` on its own** — that is what
-  would push the brand/hamburger row under the island; it requires auditing every
-  fixed/sticky element (navbar, drawer, modal overlay, notification pane) first.
+- **iOS safe area / Dynamic Island.** ✅ **Opted in 2026-07-15** — superseded the 2026-07-14
+  "no current exposure, guarded for later" assessment. The viewport meta on all 13 pages is
+  now `width=device-width, initial-scale=1.0, viewport-fit=cover`, and the audit it demanded
+  was carried out in full rather than partially. See **② Edge-to-edge** under "Open findings"
+  for the element list, the four things the original audit list *missed*, and the measured
+  verification. The `max(…, env(safe-area-inset-*))` guards the header and drawer already
+  carried did exactly what they were put there for: they became correct the moment the app
+  went edge-to-edge, with no change needed. Still owes a real-device pass — `env()` is always
+  0 in a desktop browser, so the check substituted real insets into the shipped rules.
 
 ### Events & scheduling
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
@@ -341,7 +426,37 @@ island.
 - **User assignment under an org/EventAdmin** — assign volunteers to a specific admin who then
   has **direct oversight of those users' hours and approvals**, **per-action notification
   settings**, and **direct communication with assigned users via notifications**.
-- **Arkansas Serve as a distinct organization** — with its own organization page.
+- **Arkansas Serve as a distinct organization** — ✅ **Done 2026-07-15.** Seeded as a real,
+  browsable org (`arkansas-serve`) with its own org page, kept **separate** from
+  `arkansas-serve-root`.
+  - **Two orgs on purpose — do not "tidy" this into one.** `arkansas-serve-root` stays the
+    *internal platform partition*: `UserFunctions.ResolveTenantId` auto-lands every
+    `@arkansasserve.com` account there, both demo SuperAdmins live there, it is filtered out
+    of the org directory, and its org page 404s. Unhiding it instead would have published the
+    SuperAdmin partition — "Demo SuperAdmin 1/2" would appear on the public roster — and made
+    the reserved-partition concept incoherent. The new doc is an ordinary org; root is
+    untouched.
+  - **Nothing was invented.** Root already carried the real Arkansas Serve description,
+    mission, website, contact details and uploaded logo; the seed copies them verbatim. The
+    logo reuses root's blob — `ResolveDisplayUrl` only signs the name, and does not validate
+    the path against the org id, so the `…/arkansas-serve-root/…` prefix is cosmetic.
+    Everything is editable afterwards in Admin Backend → tenant.
+  - **Assign-only (owner decision):** visible and browsable, but an admin adds members.
+    Expressed as a new `Tenant.AllowSelfJoin` flag rather than another hardcoded id check —
+    it joins the existing `RbacEnabled` / `AllowGroupAdminAddVolunteers` /
+    `AllowProfileSelfEdit` family, and schools plausibly want the same policy (see school
+    approval tags). Editable in the tenant modal like its siblings: a flag settable only by
+    hand-editing Cosmos is the same trap as the Bicep drift.
+  - **The gate sits at the create-from-nothing step, not beside the root check**, so an
+    existing member still gets idempotent success, a global super still gets their effective
+    actor, and someone an admin already added still **adopts** their managed record at first
+    sign-in — that last one *is* the assign-only path working, not a bypass of it.
+  - **Defaults to true, verified against the real model:** a Tenant doc written before the
+    field existed deserialises to `true`, so no backfill is needed and no existing org
+    silently became assign-only. Checked all three cases (absent → true, `false` → false,
+    `true` → true).
+  - *Not done here:* it hosts events like any other org (nothing extra was needed — events
+    are org-scoped already), but it has none yet.
 
 ### Approvals & compliance
 - **School approval tags for events** — a school can mark some organizations **pre-approved**

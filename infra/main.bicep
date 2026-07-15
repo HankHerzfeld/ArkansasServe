@@ -1,10 +1,38 @@
 targetScope = 'resourceGroup'
 
 // =============================================================================
-// Arkansas Serve — reconciled infrastructure
-// Rewritten 2026-07-02 to match the VERIFIED live state of rg-arkansas-serve.
-// See docs/production-cutover-plan.md for the audit that produced these values.
-// Every default below is the real deployed name/config; run `what-if` before deploy.
+// Arkansas Serve — infrastructure
+//
+// ⚠️  DO NOT APPLY THIS TEMPLATE. It does NOT describe the live environment.
+//     Status 2026-07-15: NON-AUTHORITATIVE by owner decision. Reconciliation is
+//     deferred, not done. This file is a historical record plus a starting point,
+//     not the source of truth for what exists in rg-arkansas-serve.
+//
+// This template has never successfully applied. Its only runs were PR `what-if`s
+// that failed at OIDC login, so nothing here has ever been enforced against live.
+// It was reconciled to live on 2026-07-02 and re-verified 2026-07-09, but three
+// out-of-band changes have landed since and the template has NOT caught up:
+//
+//   1. Containers created out-of-band (incl. ImpersonationSessions / AuditEvents).
+//      Additive — an apply would create what already exists, or 409.
+//   2. Cosmos firewall scoped 2026-07-14. This file still declares
+//      `publicNetworkAccess: 'Enabled'` with no `ipRules` / `networkAclBypass`.
+//      >>> AN APPLY WOULD REVERT THE FIREWALL AND RE-OPEN COSMOS. <<<
+//   3. Cosmos + Blob keys rotated manually 2026-07-14. This file sets
+//      `CosmosDb__ConnectionString` from `listConnectionStrings()`, which returns
+//      the PRIMARY key.
+//      >>> AN APPLY WOULD OVERWRITE THE ROTATED KEY SETTING. <<<
+//
+// Also live-affecting if applied: `platformAdminEmailDomain` in main.prod.bicepparam
+// is still `arkansasserve.com`, so an apply would RE-OPEN the domain-based
+// PlatformAdmin bootstrap elevation that was deliberately closed on 2026-07-09.
+//
+// Before any future apply, reconcile all four points above against live and re-run
+// `what-if`. Treat a clean `what-if` as necessary but not sufficient: ARM reports
+// app-setting values masked, so the connection-string clobber (#3) will NOT show up
+// as a diff. Verify that one by reading the live setting directly.
+//
+// See docs/roadmap.md ("Infra drift (P2)") and docs/production-cutover-plan.md.
 // =============================================================================
 
 @description('Deployment location for all resources.')

@@ -302,6 +302,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (body.RbacEnabled.HasValue) tenant.RbacEnabled = body.RbacEnabled.Value;
 		if (body.AllowGroupAdminAddVolunteers.HasValue) tenant.AllowGroupAdminAddVolunteers = body.AllowGroupAdminAddVolunteers.Value;
 		if (body.AllowProfileSelfEdit.HasValue) tenant.AllowProfileSelfEdit = body.AllowProfileSelfEdit.Value;
+		if (body.AllowSelfJoin.HasValue) tenant.AllowSelfJoin = body.AllowSelfJoin.Value;
 		// Public profile fields — non-null means "set" (empty string clears).
 		if (body.Description != null) tenant.Description = body.Description;
 		if (body.Mission != null) tenant.Mission = body.Mission;
@@ -520,6 +521,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 
 	private sealed record UpdateTenantRequest(
 		string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers, bool? AllowProfileSelfEdit,
+		bool? AllowSelfJoin,
 		string? Description, string? Mission, string? Website,
 		string? ContactEmail, string? ContactPhone, string? Address, string? LogoUrl, string? LogoBlobName);
 }
