@@ -135,7 +135,51 @@ than inventing an org:
   switcher) regardless of what the API returned. The dashboard now shows a real
   "No assigned or joined organization" empty state, which hides itself once an org exists.
 
-**② Edge-to-edge (`viewport-fit=cover`) vs. the current letterboxed setup — OPEN.**
+**② Edge-to-edge (`viewport-fit=cover`) — ✅ DONE 2026-07-15. Owner chose to opt in.**
+The recommendation below was to stay letterboxed; the owner decided otherwise and the full
+audit was carried out. `viewport-fit=cover` is now on all 13 pages and every fixed/sticky
+element is inset-aware. The analysis below is retained because it is still the reasoning
+that governs the area — but the decision it argues for was overridden deliberately.
+
+*What the audit actually found (the reason it was worth doing).* The element list in the
+note below was **incomplete**. Guarding only the five elements it names would have shipped
+a half-opt-in — the exact failure the note warns is "strictly worse than today":
+- **Toasts** (`position:fixed; bottom:1.5rem`, duplicated inline in four page scripts) were
+  not on the list. They would have sat under the home indicator.
+- **`.container`'s** `1.5rem` side padding is *smaller than a landscape notch inset* (~44px),
+  so page text would slide under the notch on a rotated phone. 11 of 13 pages use it.
+- **`index.html` has no `.container` at all** — it styles its sections with inline
+  `padding: 4rem 1.5rem`, which a stylesheet rule cannot override. Measured **12 landscape
+  violations** on the landing page (the `<h1>` at x=24, the footer at x=32, needing ≥44).
+  Fixed by making the hero + three inline-styled sections + the footer inset-aware. 12 → 0.
+- **`.modal`'s** `max-height: calc(100vh - 3rem)` silently became wrong: `100vh` is the full
+  display height edge-to-edge, so the flat `3rem` under-subtracts. Now subtracts the
+  overlay's real, inset-aware padding.
+
+*Verified by measurement, not eyeballing.* Because `env(safe-area-inset-*)` is **always 0 in
+a desktop browser** (the note's "invisible on a desktop browser" trap), verification worked by
+re-injecting the **shipped** CSS rules with real iPhone 14 Pro insets substituted for `env()`,
+then measuring geometry. Portrait (59/34) and landscape (44/21), plus an inset-0 pass to prove
+no regression for today's users. Modal clamps to 759px = 852−59−34, top y=59, bottom y=818,
+overflow 0. Navbar brand at y=66 clears the island; the green still bleeds under it.
+
+⚠️ **Still requires a real-device pass before it is fully trusted.** Substituting literals for
+`env()` proves the arithmetic and the layout, not iOS's actual reported insets. It is the
+strongest check available on Windows; it is not an iPhone.
+
+*Known trade-off, owner's call:* bottom guards use `max(base, inset)`, so at the page bottom
+the footer copyright ends **flush** with the home indicator (gap 0). Nothing is occluded — that
+is the requirement — but there is no breathing room. Switch those to
+`calc(base + env(...))` if you want the design's spacing preserved on top of the inset.
+
+*One regression was caught and fixed during the audit:* blockifying `.navbar-links a` (to give
+the drawer's inline anchors a real 47px tap target instead of a ~19px line box) also hit
+`terms.html`/`privacy.html`, which carry a cut-down navbar with **no drawer** — stacking their
+links into a 102px two-row header. The rule is now scoped to `.nav-menu .navbar-links a`.
+Both pages verified back at 60px.
+
+<details><summary>Original 2026-07-14 analysis (recommended staying letterboxed — overridden)</summary>
+
 *Status 2026-07-14: deliberately left open by the owner; not decided.* No action needed to
 stay safe — the current setup has no exposure. Read the note below when picking it up.
 
@@ -174,6 +218,8 @@ place, so switching later is cheap and mostly mechanical.
 *Do not opt in halfway.* Adding `viewport-fit=cover` **without** auditing every fixed/sticky
 element is strictly worse than today: it is what pushes the brand and hamburger under the
 island.
+
+</details>
 
 ### Still open
 - **Orphaned membership data (needs an owner decision).** A small number of membership rows
@@ -258,15 +304,15 @@ island.
     they don't need. `height:60px` → `min-height:60px` means those wrapped tabs no longer
     overflow a fixed-height bar.
 
-- **iOS safe area / Dynamic Island.** ✅ Assessed 2026-07-14 — **no current exposure, guarded
-  for later.** The viewport meta is `width=device-width, initial-scale=1.0` with **no
-  `viewport-fit=cover`**, so iOS letterboxes the page and nothing can slide under the island;
-  `display:standalone` + the default status-bar style keeps the PWA below the status bar too.
-  The header and drawer nevertheless pad with `env(safe-area-inset-*)` via `max()`, which
-  resolves to the plain padding today (insets are 0) and becomes correct automatically if the
-  app ever goes edge-to-edge. **Do not add `viewport-fit=cover` on its own** — that is what
-  would push the brand/hamburger row under the island; it requires auditing every
-  fixed/sticky element (navbar, drawer, modal overlay, notification pane) first.
+- **iOS safe area / Dynamic Island.** ✅ **Opted in 2026-07-15** — superseded the 2026-07-14
+  "no current exposure, guarded for later" assessment. The viewport meta on all 13 pages is
+  now `width=device-width, initial-scale=1.0, viewport-fit=cover`, and the audit it demanded
+  was carried out in full rather than partially. See **② Edge-to-edge** under "Open findings"
+  for the element list, the four things the original audit list *missed*, and the measured
+  verification. The `max(…, env(safe-area-inset-*))` guards the header and drawer already
+  carried did exactly what they were put there for: they became correct the moment the app
+  went edge-to-edge, with no change needed. Still owes a real-device pass — `env()` is always
+  0 in a desktop browser, so the check substituted real insets into the shipped rules.
 
 ### Events & scheduling
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
