@@ -330,7 +330,39 @@ island.
 
 ### Events & scheduling
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
-  re-creating it each time.
+  re-creating it each time. *Scoped 2026-07-15; ① and ② landed, ③ (create-form UI) remains.*
+  - **Occurrences are MATERIALISED as real Event docs, and the data model decided that.**
+    `EventRegistrations` is partitioned by `/eventId`, so a computed occurrence has no id to
+    partition by; and the capacity counters (`currentSlots`, `shifts[].filled`) live on the
+    Event document, so it would have nowhere to keep them. Materialised occurrences are
+    ordinary events, so registration, group registration, check-in, service logs, search and
+    the event page all keep working untouched — computing them would have meant teaching
+    every one of those about occurrences.
+  - **Bounded series only (owner decision):** end date or count, capped at 100. Occurrences
+    are created up front, so an endless series would need a rolling window plus a scheduled
+    job — the timer deliberately avoided for the crawler.
+  - ⚠️ **The DST trap, which is the whole difficulty.** Adding 7×24h to a UTC instant is not
+    "the same time next week": a 1pm CST event stored as `19:00Z` reads as 2pm CDT once DST
+    starts, so a naive series drifts an hour, twice a year, for every occurrence after the
+    transition — and unlike PR #70's display bug this is *persisted* data that registrations
+    and shifts inherit. `RecurrenceExpander` therefore steps the **local calendar** with the
+    wall-clock held fixed and converts back to UTC; the UTC instants deliberately change so
+    the local time does not. Verified both directions across 2027.
+  - **Timezone is `America/Chicago`, one named constant** in `RecurrenceExpander` — a
+    single-state programme in a single-zone state. Give Event/Tenant a timezone and only that
+    line changes. The IANA id resolves on Linux *and* Windows (.NET 6+ uses ICU); the Windows
+    id would not resolve on the Function App.
+  - Invalid dates are **skipped, per RFC 5545, never clamped** ("the 31st" → Jan, Mar, May,
+    Jul; a 5th Saturday only in months that have one). Clamping invents a date nobody chose.
+  - **Editing one occurrence never re-expands the series** (owner decision: "this occurrence
+    only"). `UpdateEvent` needed no guard — it already copies field-by-field onto the stored
+    doc rather than replacing it, so `seriesId`/`recurrence` survive and cannot be rewritten.
+  - **Delete-series refuses when anyone is signed up** and reports the count; `force=true`
+    means it. Deleting one event is visible; doing it across twelve dates at once can quietly
+    unregister dozens who are never told. OrganizationAdmin+, matching single-event delete.
+  - *Known and accepted:* a 12-week series is 12 cards in the events list. That is correct —
+    each is separately registerable — and PR #70's filters help. Nobody has decided whether
+    the list should collapse a series; shipped without grouping to find out if it matters.
 - **Live day-of check-in.** A generated **QR code** that redirects to a check-in flow, plus a
   built-in **org/EventAdmin check-in page** for the day of the event: check people in **by
   shift** and **by user**, and **add walk-in volunteers on the spot**. **Must work offline** —
