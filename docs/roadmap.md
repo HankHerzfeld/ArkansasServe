@@ -59,11 +59,24 @@ Detailed context for shipped work lives in the referenced PRs and companion docs
 - **Stale ".NET 10" doc.** ✅ Fixed (README + copilot-instructions, which was actively
   telling agents to target `net10.0`). Staying on **.NET 8 LTS** is deliberate; the "decide
   8 vs 10" action is closed.
-- **Daily Event Crawler.** ✅ Schedule **disabled** (manual `workflow_dispatch` only).
-  Not merely a missing secret: the endpoint validates an **Entra JWT**, and those expire in
-  ~1h, so a static `CRAWLER_SERVICE_TOKEN` in a GitHub secret can never drive a daily job.
-  Re-enable once M2M auth is settled — app registration + `client_credentials` (mint a fresh
-  token per run), a shared-secret header for that route, or a timer-triggered Function.
+- **Daily Event Crawler.** ✅ **Schedule RE-ENABLED 2026-07-15.** The diagnosis stands: the
+  endpoint validates an **Entra JWT**, and those expire in ~1h, so a static
+  `CRAWLER_SERVICE_TOKEN` in a GitHub secret could never drive a daily job.
+  **Owner decision: a shared-secret header** (over an app registration + `client_credentials`,
+  or a timer-triggered Function). A static secret works precisely because it is not a token —
+  nothing expires. `POST /manage/events/crawl` now accepts `X-Crawler-Secret` as an
+  alternative to a JWT; the queue/publish/dismiss routes stay JWT + SuperAdmin.
+  - **Deliberately the weaker path, and bounded.** It is scoped to the one route, compared in
+    constant time, and that route can only create **Draft** events — a human still reviews and
+    publishes them through the JWT-only routes before any student sees anything.
+  - **Fail closed, verified:** with `Crawler__SharedSecret` unset the header path does not
+    exist — the identical secret that returns 200 when configured returns 401 when it is not.
+    Tested against a real local Functions host: no creds → 401; wrong secret → 401 (no
+    fallthrough to the JWT path); correct secret + dryRun → 200.
+  - **Needs both halves set or every run 401s:** GitHub secret `CRAWLER_SHARED_SECRET` and
+    Function App setting `Crawler__SharedSecret`. Set the app setting **directly** — do not
+    add it to Bicep (see infra drift below). Revoke by clearing the app setting; no redeploy.
+    The old `CRAWLER_SERVICE_TOKEN` secret is now unused and can be deleted.
 
 - **Rotate Cosmos/Blob keys.** ✅ Done manually 2026-07-14.
 - **Scope Cosmos firewall.** ✅ Closed 2026-07-14 — **partial by necessity, not oversight.**

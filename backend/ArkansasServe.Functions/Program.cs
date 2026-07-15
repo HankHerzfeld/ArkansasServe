@@ -42,7 +42,9 @@ var host = new HostBuilder()
             Audience = config["Entra__Audience"] ?? config["Entra:Audience"] ?? throw new InvalidOperationException("Entra__Audience is not set."),
             // Optional bootstrap: emails on this domain are elevated to PlatformAdmin.
             // Set it only while seeding the first admin, then clear it (see AuthMiddleware).
-            PlatformAdminEmailDomain = config["Entra__PlatformAdminEmailDomain"] ?? config["Entra:PlatformAdminEmailDomain"]
+            PlatformAdminEmailDomain = config["Entra__PlatformAdminEmailDomain"] ?? config["Entra:PlatformAdminEmailDomain"],
+            // Optional. Enables the M2M header on the crawl route only. Unset = no such path.
+            CrawlerSharedSecret = config["Crawler__SharedSecret"] ?? config["Crawler:SharedSecret"]
         });
 
         services.AddHttpClient();
@@ -65,4 +67,20 @@ public record AuthConfig
     /// normal operation — use only to seed the first admin account.
     /// </summary>
     public string? PlatformAdminEmailDomain { get; init; }
+
+    /// <summary>
+    /// Optional. A high-entropy shared secret that lets an unattended caller (the daily
+    /// crawler workflow) authenticate to POST /manage/events/crawl WITHOUT an Entra JWT,
+    /// by sending it in the X-Crawler-Secret header.
+    ///
+    /// This exists because Entra access tokens expire in ~1h, so a static token in a
+    /// GitHub secret can never drive a scheduled job. It is deliberately a weaker,
+    /// second auth path and is therefore scoped to that ONE route: the crawl queue,
+    /// publish and dismiss routes remain JWT + SuperAdmin only.
+    ///
+    /// Leave unset and the header path does not exist at all — an absent or blank
+    /// setting disables it rather than accepting a blank header (fail closed).
+    /// Generate with: openssl rand -base64 48
+    /// </summary>
+    public string? CrawlerSharedSecret { get; init; }
 }
