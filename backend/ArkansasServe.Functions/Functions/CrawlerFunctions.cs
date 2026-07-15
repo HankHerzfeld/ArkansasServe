@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using ArkansasServe.Functions.Middleware;
 using ArkansasServe.Functions.Services;
 using Microsoft.Azure.Functions.Worker;
@@ -9,8 +11,9 @@ namespace ArkansasServe.Functions.Functions;
 
 /// <summary>
 /// HTTP endpoints that drive the external-event crawler.
-/// All routes require PlatformAdmin/SuperAdmin — the crawler touches every partition
-/// in the Events container and writes under the system "ark-serve-crawler" org.
+/// These routes touch every partition in the Events container and write under the
+/// system "ark-serve-crawler" org, so they require PlatformAdmin/SuperAdmin — with one
+/// deliberate exception, noted below.
 ///
 /// Routes
 /// ──────
@@ -18,6 +21,16 @@ namespace ArkansasServe.Functions.Functions;
 ///   GET    /api/manage/events/crawl/queue     — list Draft events awaiting review
 ///   POST   /api/manage/events/crawl/{id}/publish — approve a draft → "Open"
 ///   DELETE /api/manage/events/crawl/{id}      — dismiss/delete a draft
+///
+/// Auth
+/// ────
+/// Every route takes an Entra JWT + SuperAdmin. The crawl route ALSO accepts a shared
+/// secret in <c>X-Crawler-Secret</c>, because Entra tokens expire in ~1h and so cannot
+/// drive the unattended daily workflow. That second path is weaker on purpose and is
+/// confined to the crawl route: it only imports events as Drafts, which a human must
+/// still review and publish through the JWT-only routes. Nothing it can do is visible
+/// to students without that review — which is what makes the weaker path acceptable.
+/// See <c>AuthConfig.CrawlerSharedSecret</c>; unset the setting and the path vanishes.
 /// </summary>
 public class CrawlerFunctions(
     CosmosService cosmos,
@@ -25,6 +38,34 @@ public class CrawlerFunctions(
     AuthConfig authConfig,
     ILogger<CrawlerFunctions> logger)
 {
+    /// <summary>Header carrying the machine-to-machine secret. Crawl route only.</summary>
+    private const string CrawlerSecretHeader = "X-Crawler-Secret";
+
+    /// <summary>Synthetic caller id recorded in logs for secret-authenticated runs.</summary>
+    private const string CrawlerServiceCallerId = "crawler-service";
+
+    /// <summary>
+    /// Constant-time check of the <see cref="CrawlerSecretHeader"/> against the configured
+    /// secret. Returns false when no secret is configured, so a deployment that has not set
+    /// one has no header path at all rather than one that waves through a blank value.
+    /// </summary>
+    private bool IsValidCrawlerSecret(HttpRequestData req)
+    {
+        var expected = authConfig.CrawlerSharedSecret;
+        if (string.IsNullOrWhiteSpace(expected)) return false;
+
+        if (!req.Headers.TryGetValues(CrawlerSecretHeader, out var values)) return false;
+        var presented = values.FirstOrDefault();
+        if (string.IsNullOrEmpty(presented)) return false;
+
+        // FixedTimeEquals is constant-time only across equal-length inputs; it returns early
+        // on a length mismatch. That leaks the secret's length and nothing more, which is
+        // acceptable — the value is high-entropy, so length is not a useful lever.
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(presented),
+            Encoding.UTF8.GetBytes(expected));
+    }
+
     // ── POST /api/manage/events/crawl ─────────────────────────────────────────
 
     /// <summary>
@@ -54,10 +95,33 @@ public class CrawlerFunctions(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/events/crawl")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
-        if (ctx == null) return authError!;
-        if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel, cancellationToken))
-            return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "SuperAdmin required");
+        // ── Authentication: two accepted paths ────────────────────────────────
+        // 1. X-Crawler-Secret — unattended callers (the daily workflow). Entra access
+        //    tokens expire in ~1h, so a static GitHub secret cannot drive a schedule.
+        // 2. Entra JWT + SuperAdmin — a human running a crawl on demand.
+        //
+        // Presenting the header commits the caller to path 1: a bad secret is a 401, not
+        // a fallthrough to path 2. Falling through would turn every rejected machine call
+        // into an anonymous JWT check and muddy the logs, and there is no caller that
+        // legitimately holds both.
+        string callerId;
+        if (req.Headers.Contains(CrawlerSecretHeader))
+        {
+            if (!IsValidCrawlerSecret(req))
+            {
+                logger.LogWarning("[Crawler] Rejected a request presenting an invalid {Header}.", CrawlerSecretHeader);
+                return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Invalid crawler credentials");
+            }
+            callerId = CrawlerServiceCallerId;
+        }
+        else
+        {
+            var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+            if (ctx == null) return authError!;
+            if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel, cancellationToken))
+                return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "SuperAdmin required");
+            callerId = ctx.UserId;
+        }
 
         var body = await HttpHelper.ReadBody<CrawlRequest>(req);
         var isDryRun = body?.DryRun ?? false;
@@ -65,7 +129,7 @@ public class CrawlerFunctions(
 
         logger.LogInformation(
             "[Crawler] Crawl triggered by {UserId}. Sources: {Sources}. DryRun: {DryRun}",
-            ctx.UserId,
+            callerId,
             sources is null ? "all" : string.Join(',', sources),
             isDryRun);
 
