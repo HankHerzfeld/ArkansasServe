@@ -286,6 +286,26 @@ public partial class CosmosService
         return results.OrderByDescending(e => e.StartDateTime).ToList();
     }
 
+    /// <summary>
+    /// Every occurrence of one recurring series, soonest first.
+    ///
+    /// Single-partition: Events are partitioned by /organizationId and a series never spans
+    /// orgs, so this is a point-read of one partition rather than a cross-partition scan —
+    /// which is the reason a series needs no document of its own to hold its members.
+    /// </summary>
+    public async Task<List<Event>> GetEventsBySeriesAsync(string organizationId, string seriesId, CancellationToken cancellationToken = default)
+    {
+        var query = Events.GetItemLinqQueryable<Event>(requestOptions: new QueryRequestOptions
+            { PartitionKey = new PartitionKey(organizationId) })
+            .Where(e => e.SeriesId == seriesId)
+            .ToFeedIterator();
+
+        var results = new List<Event>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+        return results.OrderBy(e => e.StartDateTime).ToList();
+    }
+
     // ── EventRegistrations ────────────────────────────────────────────────────
 
     public async Task<EventRegistration> CreateRegistrationAsync(EventRegistration reg, CancellationToken cancellationToken = default)

@@ -89,6 +89,11 @@ const Api = (() => {
     create:        (data)       => request('POST', '/events', data),
     update:        (id, data)   => request('PUT',  `/events/${encodeURIComponent(id)}`, data),
     delete:        (id, orgId)  => request('DELETE', `/events/${encodeURIComponent(id)}${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ''}`),
+    // Deletes EVERY occurrence of a recurring series. Refuses with a 409 naming how many
+    // people are signed up unless force is true — so the confirmation can quote the real
+    // number instead of guessing.
+    deleteSeries:  (seriesId, orgId, force = false) =>
+      request('DELETE', `/events/series/${encodeURIComponent(seriesId)}?organizationId=${encodeURIComponent(orgId)}${force ? '&force=true' : ''}`),
     registrations: (id)         => request('GET',  `/events/${encodeURIComponent(id)}/registrations`),
     uploadToken:   (fileName)   => request('POST', '/events/upload-token', { fileName }),
     match:         (orgId, q)   => {

@@ -11,6 +11,8 @@
   // Membership-based, not token-based: a membership admin carries no admin claim on their
   // token, which is exactly the mistake Finding 9 documented.
   let groupAdminOrgs = [];
+  // OrganizationAdmin+ in THIS event's org — the level required to delete a whole series.
+  let canDeleteSeries = false;
   // The reserved platform/host partition. Matches platform-admin.js, which hardcodes the
   // same id to hide Delete for it. Not a joinable org and never a volunteer roster.
   const ROOT_ORG_ID = 'arkansas-serve-root';
@@ -35,6 +37,19 @@
       // most likely to use it. /users/me reports the strongest level across all memberships
       // (Finding 2), which is what scope.js asks and therefore what this must ask too.
       const me = await Api.Users.getMe();
+
+      // Deleting a whole series is destructive, so it needs OrganizationAdmin+ IN THE
+      // EVENT'S OWN ORG — a stricter test than the group button's EventAdmin+ anywhere, and
+      // the same level single-event delete requires. Asked from the same source, for the
+      // same reason as above.
+      if (me.adminLevel === 'SuperAdmin') {
+        canDeleteSeries = true;
+      } else {
+        const mine = (await Api.Memberships.list().catch(() => []))
+          .find(m => m.organizationId === (currentEvent && currentEvent.organizationId));
+        canDeleteSeries = !!mine && Auth.adminRank(mine.adminLevel) >= Auth.adminRank('OrganizationAdmin');
+      }
+
       if (me.adminLevel === 'SuperAdmin') {
         const tenants = await Api.Admin.getTenants().catch(() => []);
         groupAdminOrgs = (tenants || [])
@@ -122,6 +137,9 @@
     badges.appendChild(status);
     if (evt.category) badges.appendChild(elem('span', { class: 'event-badge', text: evt.category }));
     (evt.tags || []).forEach(t => badges.appendChild(elem('span', { class: 'event-badge', text: t })));
+    // An occurrence looks exactly like a one-off event, which is the point — but someone
+    // editing or deleting it should know eleven siblings exist.
+    if (evt.seriesId) badges.appendChild(elem('span', { class: 'event-badge', text: '🔁 ' + describeRecurrence(evt.recurrence) }));
     header.appendChild(badges);
     root.appendChild(header);
 
@@ -222,6 +240,14 @@
       gbtn.addEventListener('click', () => openGroup(evt));
       actions.appendChild(gbtn);
     }
+
+    // Only on an occurrence, and only for someone who could delete these events one by one
+    // anyway. Deliberately last and btn-danger: it removes dates the viewer is not looking at.
+    if (evt.seriesId && canDeleteSeries) {
+      const dbtn = elem('button', { class: 'btn btn-danger', text: 'Delete series' });
+      dbtn.addEventListener('click', () => deleteSeries(evt, dbtn));
+      actions.appendChild(dbtn);
+    }
     if (actions.children.length) root.appendChild(actions);
   }
 
@@ -316,6 +342,60 @@
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
+  }
+
+  // ── Recurring series ──────────────────────────────────────────────────────
+
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // Reads the rule back in the words an admin chose it with. Falls back to a plain label
+  // rather than guessing: a badge reading "Repeats undefined" is worse than one reading
+  // "Repeats".
+  function describeRecurrence(r) {
+    if (!r || !r.frequency) return 'Repeats';
+    const f = String(r.frequency).toLowerCase();
+    if (f === 'daily') return 'Repeats daily';
+    if (f === 'weekly') {
+      const days = (r.daysOfWeek || []).map(d => DAY_NAMES[d]).filter(Boolean);
+      return days.length ? `Repeats weekly on ${days.join(', ')}` : 'Repeats weekly';
+    }
+    if (f === 'monthly') return r.byNthWeekday ? 'Repeats monthly (same weekday)' : 'Repeats monthly (same date)';
+    return 'Repeats';
+  }
+
+  // Deleting a whole series is destructive across dates the admin may not be looking at, so
+  // the server refuses when anyone is signed up and reports the count. That 409 message is
+  // the confirmation text — it knows the real number, and this does not.
+  async function deleteSeries(evt, btn) {
+    const proceed = (msg) => window.confirm(msg);
+    if (!proceed(`Delete every date in this series?\n\n"${evt.title}"\n\nThis cannot be undone.`)) return;
+
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Deleting…';
+    try {
+      const res = await Api.Events.deleteSeries(evt.seriesId, evt.organizationId, false);
+      showToast(`Deleted ${res.occurrencesDeleted} date${res.occurrencesDeleted === 1 ? '' : 's'}.`, 'success');
+      window.location.href = '/events.html';
+    } catch (err) {
+      // The refusal is expected whenever people are signed up. Show the server's own
+      // sentence — it carries the count — and only then offer to force.
+      const msg = err.message || '';
+      if (/signed up/i.test(msg) && proceed(`${msg}\n\nDelete anyway?`)) {
+        try {
+          const res = await Api.Events.deleteSeries(evt.seriesId, evt.organizationId, true);
+          showToast(`Deleted ${res.occurrencesDeleted} date${res.occurrencesDeleted === 1 ? '' : 's'}, cancelling ${res.registrationsRemoved} sign-up${res.registrationsRemoved === 1 ? '' : 's'}.`, 'success');
+          window.location.href = '/events.html';
+          return;
+        } catch (forceErr) {
+          showToast(forceErr.message || 'Could not delete the series.', 'error');
+        }
+      } else if (!/signed up/i.test(msg)) {
+        showToast(msg || 'Could not delete the series.', 'error');
+      }
+      btn.disabled = false;
+      btn.textContent = original;
+    }
   }
 
   // ── Group registration (EventAdmin+) ──────────────────────────────────────
