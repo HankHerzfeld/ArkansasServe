@@ -33,6 +33,21 @@
   // "tutoring little rock" found nothing unless it appeared verbatim in one field.
   //
   // Row order mirrors allEvents, so a row index maps straight back to an event.
+  // maxSlots === 0 means "no cap", matching how the card renders spots left — so an
+  // uncapped event always counts as having room rather than as being full.
+  const openSpots = (evt) => (evt.maxSlots > 0 ? Math.max(0, evt.maxSlots - evt.currentSlots) : Infinity);
+  const hasSpotsLeft = (evt) => openSpots(evt) > 0;
+
+  // Local calendar day for an event, as yyyy-mm-dd, to compare against the date inputs.
+  // Deliberately NOT toISOString(), which converts to UTC and would drift an evening
+  // event onto the following day for anyone behind UTC — i.e. everyone in Arkansas.
+  function localDayKey(value) {
+    const d = new Date(value);
+    if (isNaN(d)) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
   function buildSearchIndex(events) {
     DT.destroy('events-index');
     const body = document.getElementById('events-index-body');
@@ -40,7 +55,20 @@
 
     events.forEach(e => {
       const tr = document.createElement('tr');
-      [e.title, e.organizationName, e.category, e.location].forEach(v => {
+      const spots = openSpots(e);
+      const cells = [
+        e.title,
+        e.organizationName,
+        e.category,
+        e.location,
+        (e.tags || []).join(' '),
+        // Sortable, not displayed. An ISO timestamp sorts lexicographically in
+        // chronological order, so no custom comparator is needed.
+        e.startDateTime ? new Date(e.startDateTime).toISOString() : '',
+        // Uncapped events sort as the roomiest rather than as zero.
+        spots === Infinity ? '999999' : String(spots),
+      ];
+      cells.forEach(v => {
         const td = document.createElement('td');
         td.textContent = v || '';
         tr.appendChild(td);
@@ -49,29 +77,91 @@
     });
 
     DT.mount('events-index', {
-      // Category is a dropdown, not free text — an exact match, so it's checked against
-      // the source record rather than folded into the text search.
+      // Exact and range tests live here rather than in the text search, which can only
+      // ask "does this string appear somewhere in the row".
       rowFilter: (dataIndex) => {
         const evt = allEvents[dataIndex];
         if (!evt) return true;
+
         const category = document.getElementById('filter-category').value;
-        return !category || evt.category === category;
+        if (category && evt.category !== category) return false;
+
+        const tag = document.getElementById('filter-tag').value;
+        if (tag && !(evt.tags || []).includes(tag)) return false;
+
+        if (document.getElementById('filter-open-only').checked && !hasSpotsLeft(evt)) return false;
+
+        // Inclusive on both ends: "From 1 Mar / To 1 Mar" means events ON 1 March.
+        const day = localDayKey(evt.startDateTime);
+        const from = document.getElementById('filter-date-from').value;
+        const to = document.getElementById('filter-date-to').value;
+        if (from && day && day < from) return false;
+        if (to && day && day > to) return false;
+
+        return true;
       },
       dataTables: {
-        // Engine only: nothing of DataTables is rendered on this page.
+        // Engine only: nothing of DataTables is rendered on this page. Ordering is on
+        // (the grid reads rows in the applied order) but there are no headers to click —
+        // the sort dropdown drives it.
         paging: false,
-        ordering: false,
+        ordering: true,
         scrollX: false,
         info: false,
+        order: [[5, 'asc']], // soonest first
+        columnDefs: [{ targets: [5, 6], searchable: false }],
         layout: { topStart: null, topEnd: null, bottomStart: null, bottomEnd: null },
       },
     });
 
     const dt = DT.instance('events-index');
     if (dt) dt.on('draw', renderMatchingEvents);
+    populateTagFilter(events);
+    applySort();
+  }
+
+  // Tags come from the events actually loaded — a hardcoded list would go stale the
+  // moment an organizer invents one. Preserves the current choice across reloads.
+  function populateTagFilter(events) {
+    const sel = document.getElementById('filter-tag');
+    const previous = sel.value;
+    const tags = [...new Set(events.flatMap(e => e.tags || []).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = '';
+    const all = document.createElement('option');
+    all.value = ''; all.textContent = 'All tags';
+    sel.appendChild(all);
+    tags.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      sel.appendChild(o);
+    });
+    // A tag that no longer exists silently falls back to "All tags".
+    sel.value = tags.includes(previous) ? previous : '';
+    // Hide the control entirely when no event carries a tag — an "All tags" dropdown
+    // with nothing in it is just a dead end.
+    sel.style.display = tags.length ? '' : 'none';
+  }
+
+  const SORTS = {
+    'date-asc':   [5, 'asc'],
+    'date-desc':  [5, 'desc'],
+    'name-asc':   [0, 'asc'],
+    'name-desc':  [0, 'desc'],
+    'spots-desc': [6, 'desc'],
+  };
+
+  function applySort() {
+    const dt = DT.instance('events-index');
+    if (!dt) return;
+    const [col, dir] = SORTS[document.getElementById('filter-sort').value] || SORTS['date-asc'];
+    dt.order([col, dir]).draw();
   }
 
   // Re-render the grid from whatever the index currently matches.
+  //
+  // The selector's `order` defaults to 'current', so these indexes come back in the
+  // ORDER DataTables has applied — which is what makes the sort dropdown work on cards.
   function renderMatchingEvents() {
     const dt = DT.instance('events-index');
     if (!dt) return renderEvents(allEvents);
@@ -79,6 +169,14 @@
       .map(i => allEvents[i])
       .filter(Boolean);
     renderEvents(matched);
+    updateFilterCount(matched.length);
+  }
+
+  function updateFilterCount(shown) {
+    const el = document.getElementById('filter-count');
+    if (!el) return;
+    const total = allEvents.length;
+    el.textContent = shown === total ? `${total} event${total === 1 ? '' : 's'}` : `${shown} of ${total}`;
   }
 
   function renderEvents(events) {
@@ -155,14 +253,43 @@
     });
   }
 
-  // Filter — both controls now drive the DataTables index, which redraws the grid.
-  ['filter-search', 'filter-category'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', () => {
-      const dt = DT.instance('events-index');
-      if (!dt) return;
-      dt.search(document.getElementById('filter-search').value.trim()).draw();
-    });
+  // Filters — every control drives the DataTables index, which redraws the grid.
+  // Free text goes to DataTables' search; the rest are read by the rowFilter on draw,
+  // so they only need to trigger one.
+  ['filter-search', 'filter-category', 'filter-tag',
+   'filter-date-from', 'filter-date-to', 'filter-open-only'].forEach(id => {
+    const el = document.getElementById(id);
+    // 'input' doesn't fire for a checkbox in every browser; 'change' covers both, and
+    // covers date pickers where 'input' can fire mid-typing on a half-entered date.
+    el?.addEventListener('input', applyEventFilters);
+    el?.addEventListener('change', applyEventFilters);
   });
+
+  document.getElementById('filter-sort')?.addEventListener('change', applySort);
+
+  document.getElementById('filter-clear')?.addEventListener('click', () => {
+    document.getElementById('filter-search').value = '';
+    document.getElementById('filter-category').value = '';
+    document.getElementById('filter-tag').value = '';
+    document.getElementById('filter-date-from').value = '';
+    document.getElementById('filter-date-to').value = '';
+    document.getElementById('filter-open-only').checked = false;
+    document.getElementById('filter-sort').value = 'date-asc';
+
+    // Clearing the input's value is not enough — DataTables holds the search term
+    // itself, so it must be reset explicitly or Clear would leave the text filter on.
+    // Search + order are set together so this costs one redraw, not two.
+    const dt = DT.instance('events-index');
+    if (!dt) return;
+    const [col, dir] = SORTS['date-asc'];
+    dt.search('').order([col, dir]).draw();
+  });
+
+  function applyEventFilters() {
+    const dt = DT.instance('events-index');
+    if (!dt) return;
+    dt.search(document.getElementById('filter-search').value.trim()).draw();
+  }
 
   // Sign-up modal
   function openSignup(eventId, orgId, title, location) {

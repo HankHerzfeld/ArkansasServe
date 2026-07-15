@@ -21,19 +21,66 @@
     <div id="role-actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
   </div>
 
-  <!-- Filter bar -->
-  <div class="card" style="padding:.75rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-    <input type="search" id="filter-search" placeholder="Search by name or organization…" aria-label="Search events by name or organization"
-      style="flex:1;min-width:200px;padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
-    <select id="filter-category" aria-label="Filter events by category" style="padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
-      <option value="">All categories</option>
-      <option>Environmental</option>
-      <option>Food Bank</option>
-      <option>Tutoring</option>
-      <option>Animal Shelter</option>
-      <option>Senior Care</option>
-      <option>Other</option>
-    </select>
+  <!-- Filter bar.
+       Everything here drives the hidden DataTables index below, which redraws the card
+       grid. Free text goes through DataTables' search (all terms, any order, across
+       name/organization/category/location/tags); the rest are exact or range tests
+       against the event record, which text search can't express. -->
+  <div class="card" style="padding:.75rem 1rem;">
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+      <input type="search" id="filter-search" placeholder="Search name, organization, tag, place…"
+        aria-label="Search events by name, organization, tag or place"
+        style="flex:1;min-width:200px;padding:.45rem .75rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--gray-600);white-space:nowrap;">
+        Sort
+        <select id="filter-sort" aria-label="Sort events"
+          style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+          <option value="date-asc">Soonest first</option>
+          <option value="date-desc">Latest first</option>
+          <option value="name-asc">Name A–Z</option>
+          <option value="name-desc">Name Z–A</option>
+          <option value="spots-desc">Most spots left</option>
+        </select>
+      </label>
+    </div>
+
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-top:.6rem;">
+      <select id="filter-category" aria-label="Filter events by category"
+        style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+        <option value="">All categories</option>
+        <option>Environmental</option>
+        <option>Food Bank</option>
+        <option>Tutoring</option>
+        <option>Animal Shelter</option>
+        <option>Senior Care</option>
+        <option>Other</option>
+      </select>
+
+      <!-- Populated from the events actually loaded — a fixed list would go stale. -->
+      <select id="filter-tag" aria-label="Filter events by tag"
+        style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+        <option value="">All tags</option>
+      </select>
+
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--gray-600);white-space:nowrap;">
+        From
+        <input type="date" id="filter-date-from" aria-label="Show events on or after this date"
+          style="padding:.4rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+      </label>
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--gray-600);white-space:nowrap;">
+        To
+        <input type="date" id="filter-date-to" aria-label="Show events on or before this date"
+          style="padding:.4rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
+      </label>
+
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--gray-600);white-space:nowrap;">
+        <input type="checkbox" id="filter-open-only">
+        Only with spots left
+      </label>
+
+      <button class="btn btn-secondary btn-sm" id="filter-clear" type="button">Clear</button>
+      <span id="filter-count" style="font-size:.8rem;color:var(--gray-600);margin-left:auto;"></span>
+    </div>
   </div>
 
   <!-- Loading / empty / grid -->
@@ -51,7 +98,13 @@
        not the view: no pager, no ordering, nothing rendered. -->
   <table id="events-index" style="display:none;" aria-hidden="true">
     <thead>
-      <tr><th>Title</th><th>Organization</th><th>Category</th><th>Location</th></tr>
+      <tr>
+        <!-- 0-4 are searchable text; 5-6 exist only to sort on and are kept out of the
+             text search, so typing "2027" doesn't match a date and "12" doesn't match a
+             spot count. -->
+        <th>Title</th><th>Organization</th><th>Category</th><th>Location</th><th>Tags</th>
+        <th>Start</th><th>Spots</th>
+      </tr>
     </thead>
     <tbody id="events-index-body"></tbody>
   </table>
