@@ -138,7 +138,14 @@ body {
 .scope-nomatch { font-size: .8rem; color: var(--gray-600); }
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
-.container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+/* Side padding is safe-area aware because the page is edge-to-edge (viewport-fit=cover).
+   A landscape notch inset (~44px) is LARGER than the 1.5rem base, so without max() the
+   first characters of every line would sit under the notch on a rotated phone. */
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem max(1.5rem, env(safe-area-inset-right)) 2rem max(1.5rem, env(safe-area-inset-left));
+}
 .page-header { margin-bottom: 1.5rem; }
 .page-header h1 { font-size: 1.6rem; color: var(--green); }
 .page-header p  { color: var(--gray-600); margin-top: .3rem; }
@@ -322,8 +329,16 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
   z-index: 200;
   align-items: center;
   justify-content: center;
-  /* Keep the dialog off the viewport edges so it never bleeds past the frame. */
-  padding: 1.5rem;
+  /* Keep the dialog off the viewport edges so it never bleeds past the frame.
+     Safe-area aware: the overlay is inset:0 on an edge-to-edge page, so it spans the
+     FULL display including the island and home indicator. The base 1.5rem alone would
+     let a tall dialog's first and last rows — title and footer buttons — sit under
+     them. Each side takes the larger of the base padding and its inset. */
+  padding:
+    max(1.5rem, env(safe-area-inset-top))
+    max(1.5rem, env(safe-area-inset-right))
+    max(1.5rem, env(safe-area-inset-bottom))
+    max(1.5rem, env(safe-area-inset-left));
 }
 .modal-overlay.open { display: flex; }
 .modal {
@@ -334,8 +349,16 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
   box-sizing: border-box;
   box-shadow: 0 8px 30px rgba(0,0,0,.2);
   /* Never exceed the frame: cap height and scroll the body internally so a tall
-     edit form (and its footer buttons) stays fully within the window. */
-  max-height: calc(100vh - 3rem);
+     edit form (and its footer buttons) stays fully within the window.
+     100vh is the FULL display height edge-to-edge, unsafe regions included, so the
+     old flat `- 3rem` (the overlay's old 1.5rem × 2) now under-subtracts: it would
+     let a tall dialog run under the island. Subtract the overlay's real padding,
+     which is inset-aware, so this tracks it on every device and orientation. */
+  max-height: calc(
+    100vh
+    - max(1.5rem, env(safe-area-inset-top))
+    - max(1.5rem, env(safe-area-inset-bottom))
+  );
   overflow-y: auto;
 }
 .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; }
@@ -357,7 +380,11 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
 .hero {
   background: linear-gradient(135deg, var(--green) 0%, var(--green-light) 100%);
   color: #fff;
-  padding: 5rem 1.5rem;
+  /* The gradient deliberately still bleeds to the physical edge — only the padding is
+     inset, so the colour runs under the notch while the words stay clear of it. That
+     is the whole point of edge-to-edge; insetting the element itself would just
+     reintroduce letterboxing with extra steps. */
+  padding: 5rem max(1.5rem, env(safe-area-inset-right)) 5rem max(1.5rem, env(safe-area-inset-left));
   text-align: center;
 }
 .hero h1 { font-size: 2.5rem; margin-bottom: 1rem; }
@@ -407,6 +434,16 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
   }
   .navbar-links a { padding: .7rem .75rem; font-size: 1rem; border-radius: var(--radius); }
   .navbar-links a:hover { background: rgba(255,255,255,.12); }
+
+  /* Scoped to the DRAWER, not to .navbar-links generally: terms.html and privacy.html
+     carry a cut-down navbar (brand + links, no drawer, no hamburger), and blockifying
+     their anchors stacks the links into a 102px two-row header instead of 60px.
+     Inside the drawer, these anchors sit in <li>, so unlike .nav-tab (a flex item,
+     blockified for free) they stay INLINE — and an inline box's vertical padding does
+     not occupy layout space, so the tap target was the ~19px line box rather than the
+     ~47px the padding implies. Blockifying makes the padding real and delivers the
+     full-width tap target the rule above already assumes. */
+  .nav-menu .navbar-links a { display: block; }
   /* Full-width tap targets for the two CTAs. */
   .navbar-links .btn { width: 100%; padding: .6rem 1rem; }
 
@@ -467,7 +504,20 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
   .nav-right { flex-direction: column; align-items: stretch; gap: .75rem; width: 100%; margin-top: auto; }
   .navbar-user { white-space: normal; }
   .notif { justify-content: flex-start; }
-  .notif-pane { position: fixed; right: 1rem; left: 1rem; top: auto; width: auto; max-width: none; }
+  /* Anchored to the bottom safe area rather than left at its static position. The bell
+     sits at the bottom of the drawer, so the pane opened downward from roughly here
+     anyway — but `top:auto` with no `bottom` let its height decide where it ended, which
+     edge-to-edge means it could finish under the home indicator. Anchoring the bottom
+     edge makes the safe gap a property of the pane instead of a coincidence of length. */
+  .notif-pane {
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    left: max(1rem, env(safe-area-inset-left));
+    top: auto;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+  }
 
   .hero h1 { font-size: 1.8rem; }
   .stats-row { flex-direction: column; }
