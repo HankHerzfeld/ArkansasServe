@@ -296,7 +296,37 @@ island.
 - **User assignment under an org/EventAdmin** — assign volunteers to a specific admin who then
   has **direct oversight of those users' hours and approvals**, **per-action notification
   settings**, and **direct communication with assigned users via notifications**.
-- **Arkansas Serve as a distinct organization** — with its own organization page.
+- **Arkansas Serve as a distinct organization** — ✅ **Done 2026-07-15.** Seeded as a real,
+  browsable org (`arkansas-serve`) with its own org page, kept **separate** from
+  `arkansas-serve-root`.
+  - **Two orgs on purpose — do not "tidy" this into one.** `arkansas-serve-root` stays the
+    *internal platform partition*: `UserFunctions.ResolveTenantId` auto-lands every
+    `@arkansasserve.com` account there, both demo SuperAdmins live there, it is filtered out
+    of the org directory, and its org page 404s. Unhiding it instead would have published the
+    SuperAdmin partition — "Demo SuperAdmin 1/2" would appear on the public roster — and made
+    the reserved-partition concept incoherent. The new doc is an ordinary org; root is
+    untouched.
+  - **Nothing was invented.** Root already carried the real Arkansas Serve description,
+    mission, website, contact details and uploaded logo; the seed copies them verbatim. The
+    logo reuses root's blob — `ResolveDisplayUrl` only signs the name, and does not validate
+    the path against the org id, so the `…/arkansas-serve-root/…` prefix is cosmetic.
+    Everything is editable afterwards in Admin Backend → tenant.
+  - **Assign-only (owner decision):** visible and browsable, but an admin adds members.
+    Expressed as a new `Tenant.AllowSelfJoin` flag rather than another hardcoded id check —
+    it joins the existing `RbacEnabled` / `AllowGroupAdminAddVolunteers` /
+    `AllowProfileSelfEdit` family, and schools plausibly want the same policy (see school
+    approval tags). Editable in the tenant modal like its siblings: a flag settable only by
+    hand-editing Cosmos is the same trap as the Bicep drift.
+  - **The gate sits at the create-from-nothing step, not beside the root check**, so an
+    existing member still gets idempotent success, a global super still gets their effective
+    actor, and someone an admin already added still **adopts** their managed record at first
+    sign-in — that last one *is* the assign-only path working, not a bypass of it.
+  - **Defaults to true, verified against the real model:** a Tenant doc written before the
+    field existed deserialises to `true`, so no backfill is needed and no existing org
+    silently became assign-only. Checked all three cases (absent → true, `false` → false,
+    `true` → true).
+  - *Not done here:* it hosts events like any other org (nothing extra was needed — events
+    are org-scoped already), but it has none yet.
 
 ### Approvals & compliance
 - **School approval tags for events** — a school can mark some organizations **pre-approved**
