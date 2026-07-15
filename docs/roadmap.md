@@ -339,6 +339,31 @@ island.
   (PWA) scoped to a single event's roster. This is distinct from the online AJAX search work,
   which requires connectivity by design and does not conflict with it.
 - **Group registration** — register multiple individuals for an event in one action.
+  *Scoped 2026-07-15 into three PRs; the first has landed.*
+  - **Why it is not just a loop over the existing endpoint.** `POST /registrations` registers
+    **only the caller** (`UserId = ctx.UserId`). The owner's chosen use case — an admin signs
+    up people from their org roster — means registering people who have **no account**, and a
+    managed volunteer's `User.ExternalId` is `string.Empty`. So the registrant identity has to
+    change before any group UI is worth writing. That is an identity-model change, not an
+    extension of the existing route.
+  - **① Identity groundwork — ✅ done.** `EventRegistration.MemberId` (the per-org User doc
+    id, which every roster member has, account or not) is now the canonical registrant
+    identity. Reads (`BelongsTo`, `IsAlreadyRegisteredAsync`) accept **either** key, so rows
+    written before the field existed keep working with no migration — the legacy arm can be
+    dropped once every row carries a memberId. This also closes a **latent collision**: keying
+    on `UserId` would give every accountless registrant the key `""`, so the first would read
+    as "already registered" and block all the rest.
+  - **② Group backend — not started.** `POST /registrations/group`, EventAdmin+ **in the
+    event's own org** (the level Finding 9 set for cancel). **All-or-nothing** on overflow
+    (owner decision): 8 people into 5 spots is refused with "only 5 spots left", writing
+    nothing. Reserve **first**, write second — one ETag'd `CurrentSlots += N` /
+    `shift.Filled += N`, then the N docs. This inverts today's order, which writes the doc
+    first and, if the reserve fails, "compensates" by flipping it to `Cancelled` — which is
+    why full events leave cancelled litter, and which at N people would mean N docs plus N
+    compensating writes.
+  - **③ Group UI — not started.** Roster multi-select, then a **per-person × per-question
+    answer grid in a popup** (owner decision), so an admin fills in each volunteer's own
+    answers in one pass rather than sharing one answer set across everybody.
 
 ### Discovery, search & maps
 - **Event search & sort/filter** — ✅ **Done 2026-07-15 (PR #70).** Every axis the item asked

@@ -67,8 +67,9 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		try
 		{
 			var regs = await cosmos.GetRegistrationsByEventAsync(id);
+			var self = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
 			var mine = regs.FirstOrDefault(r =>
-				string.Equals(r.UserId, ctx.UserId, StringComparison.OrdinalIgnoreCase)
+				r.BelongsTo(ctx.UserId, self?.Id)
 				&& !string.Equals(r.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
 			payload["myRegistration"] = mine == null ? null : JsonSerializer.SerializeToNode(mine, opts);
 		}

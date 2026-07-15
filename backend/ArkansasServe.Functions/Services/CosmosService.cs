@@ -302,11 +302,29 @@ public partial class CosmosService
         }
     }
 
-    public async Task<bool> IsAlreadyRegisteredAsync(string eventId, string userId, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// True when this person already holds a live registration for the event.
+    ///
+    /// Matches on EITHER key: <paramref name="memberId"/> (the canonical per-org User doc id)
+    /// or <paramref name="externalId"/> (the Entra id, on rows written before memberId
+    /// existed). The legacy arm is what lets this run correctly against un-backfilled rows;
+    /// it can be dropped once every registration carries a memberId.
+    ///
+    /// An EMPTY externalId never matches. That is the point, not an oversight: User.ExternalId
+    /// defaults to string.Empty, so a managed volunteer's registration carries UserId "" —
+    /// comparing on it would make every accountless registrant collide on the same key and the
+    /// first would block all the rest.
+    /// </summary>
+    public async Task<bool> IsAlreadyRegisteredAsync(string eventId, string externalId, string? memberId = null, CancellationToken cancellationToken = default)
     {
+        var hasExternal = !string.IsNullOrEmpty(externalId);
+        var hasMember = !string.IsNullOrEmpty(memberId);
+        if (!hasExternal && !hasMember) return false;
+
         var query = Registrations.GetItemLinqQueryable<EventRegistration>(requestOptions:
             new QueryRequestOptions { PartitionKey = new PartitionKey(eventId) })
-            .Where(r => r.UserId == userId && r.Status != "Cancelled")
+            .Where(r => r.Status != "Cancelled"
+                && ((hasMember && r.MemberId == memberId) || (hasExternal && r.UserId == externalId)))
             .ToFeedIterator();
 
         while (query.HasMoreResults)

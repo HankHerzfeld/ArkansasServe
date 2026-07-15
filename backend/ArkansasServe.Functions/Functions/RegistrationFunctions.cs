@@ -29,7 +29,13 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		if (evt.MaxSlots > 0 && evt.CurrentSlots >= evt.MaxSlots)
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Event is full");
 
-		if (await cosmos.IsAlreadyRegisteredAsync(body.EventId, ctx.UserId))
+		// The canonical identity of this registration. Resolved from the caller's per-org User
+		// doc rather than taken from the token, because a registrant need not have an account
+		// at all (see EventRegistration.MemberId). Null only if this person somehow has no
+		// User doc in their own tenant, in which case reads fall back to UserId as before.
+		var self = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
+
+		if (await cosmos.IsAlreadyRegisteredAsync(body.EventId, ctx.UserId, self?.Id))
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Already registered for this event");
 
 		// If the event has shifts, the volunteer must choose one that isn't full.
@@ -65,6 +71,7 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		{
 			EventId = body.EventId,
 			UserId = ctx.UserId,
+			MemberId = self?.Id,
 			StudentName = ctx.DisplayName,
 			SchoolId = ctx.TenantId,
 			// The event's authoritative org (its partition key) — may differ from SchoolId
@@ -158,7 +165,11 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		//     they read as Student and were refused on their own member's registration;
 		//   • a token-level admin from an UNRELATED org skipped the check entirely and could
 		//     cancel any registration in any org.
-		if (reg.UserId != ctx.UserId)
+		// Identity comes from BelongsTo, which accepts the canonical memberId or the legacy
+		// externalId — so this keeps working on rows written before memberId existed, and will
+		// keep working for a registrant who has no account at all.
+		var self = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
+		if (!reg.BelongsTo(ctx.UserId, self?.Id))
 		{
 			// The event's own org, with the same legacy SchoolId fallback used below to
 			// locate the event itself.
