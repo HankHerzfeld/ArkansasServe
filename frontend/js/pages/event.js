@@ -28,7 +28,14 @@
 
   async function loadGroupAdminOrgs() {
     try {
-      if (profile.adminLevel === 'SuperAdmin') {
+      // NOT profile.adminLevel. `profile` here comes from Auth.requireAuth(), which is built
+      // from the TOKEN — and this org's SuperAdmin reads as "Student" there, because their
+      // role comes from a membership and a membership grants no token claim. That is Finding
+      // 9's trap verbatim, and it silently made this whole feature a no-op for the person
+      // most likely to use it. /users/me reports the strongest level across all memberships
+      // (Finding 2), which is what scope.js asks and therefore what this must ask too.
+      const me = await Api.Users.getMe();
+      if (me.adminLevel === 'SuperAdmin') {
         const tenants = await Api.Admin.getTenants().catch(() => []);
         groupAdminOrgs = (tenants || [])
           // The host org is never a useful choice: its roster is platform admins, not
