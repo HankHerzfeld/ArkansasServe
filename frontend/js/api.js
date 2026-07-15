@@ -103,6 +103,11 @@ const Api = (() => {
   const Registrations = {
     // data: { eventId, organizationId, shiftId?, answers? }
     create: (data) => request('POST', '/registrations', data),
+    // Sign several roster members up at once. All-or-nothing: if the group doesn't fit,
+    // nobody is registered and the server says how many spots remain.
+    // data: { eventId, organizationId, shiftId?, registrantOrganizationId,
+    //         registrants: [{ memberId, answers: [{ questionId, answer }] }] }
+    createGroup: (data) => request('POST', '/registrations/group', data),
     cancel: (id, eventId)             => {
       if (!eventId) throw new Error('eventId is required to cancel registration');
       return request('DELETE', `/registrations/${encodeURIComponent(id)}?eventId=${encodeURIComponent(eventId)}`);

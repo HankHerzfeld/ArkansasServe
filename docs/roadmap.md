@@ -289,9 +289,16 @@ island.
       fails the event is over-counted — wrongly turning people away, never over-booking, which
       is the safe direction.
     - Required questions are validated **per person**, naming who is missing which answer.
-  - **③ Group UI — not started.** Roster multi-select, then a **per-person × per-question
-    answer grid in a popup** (owner decision), so an admin fills in each volunteer's own
-    answers in one pass rather than sharing one answer set across everybody.
+  - **③ Group UI — ✅ done.** "Register a group" on the event page, for anyone holding
+    EventAdmin+ somewhere. Two steps: roster multi-select (+ shift), then a **per-person ×
+    per-question answer grid** (owner decision) so each volunteer's own answers are recorded
+    rather than one shared set standing in for everybody. Step 2 is skipped entirely when the
+    event asks nothing, which is the common case.
+    - The button's visibility comes from **memberships, not the token's `adminLevel`** — a
+      membership-based admin carries no admin claim on their token, which is exactly the trap
+      Finding 9 documented (they read as Student and were refused on their own members).
+    - Server messages are surfaced verbatim ("Only 3 spots left", or who is already
+      registered): the server knows what actually went wrong, and paraphrasing loses it.
 
 ### Discovery, search & maps
 - **Event search & sort/filter** — ✅ **Done 2026-07-15 (PR #70).** Every axis the item asked
