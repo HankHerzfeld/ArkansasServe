@@ -105,6 +105,98 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		return await HttpHelper.OkJson(req, new { deleted = true, eventId = id, registrationsRemoved });
 	}
 
+	// ── DELETE /api/events/series/{seriesId} ──────────────────────────────────
+
+	/// <summary>
+	/// Deletes every occurrence of a recurring series.
+	///
+	/// Refuses by default when anyone is signed up. Deleting one event and unregistering its
+	/// volunteers is a visible act; doing it across twelve occurrences at once can quietly
+	/// unregister dozens of people who are never told. So the count is reported back and the
+	/// caller must pass ?force=true to mean it — the confirmation carries the number, rather
+	/// than the UI guessing at one.
+	///
+	/// OrganizationAdmin+, matching single-event delete: this is that operation N times, and
+	/// destructive deletes deliberately sit above EventAdmin (see Finding 9).
+	/// </summary>
+	[Function("DeleteEventSeries")]
+	public async Task<HttpResponseData> DeleteEventSeries(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "events/series/{seriesId}")] HttpRequestData req,
+		string seriesId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var q = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+		var orgId = q["organizationId"] ?? string.Empty;
+		var force = string.Equals(q["force"], "true", StringComparison.OrdinalIgnoreCase);
+
+		if (string.IsNullOrWhiteSpace(orgId))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "organizationId is required");
+		if (string.IsNullOrWhiteSpace(seriesId))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "seriesId is required");
+
+		var occurrences = await cosmos.GetEventsBySeriesAsync(orgId, seriesId);
+		if (occurrences.Count == 0)
+			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Series not found");
+
+		// Authorize against the occurrences' own org, never the query string.
+		var actor = await cosmos.ResolveActorInOrgAsync(ctx.UserId, ctx.AdminLevel, occurrences[0].OrganizationId);
+		if (actor == null || !AdminLevels.AtLeast(actor.AdminLevel, AdminLevels.OrganizationAdmin))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You cannot delete events in this organization");
+
+		// Count the people who would lose their place BEFORE removing anything.
+		var registeredPeople = 0;
+		var occurrencesWithPeople = 0;
+		foreach (var occ in occurrences)
+		{
+			var live = (await cosmos.GetRegistrationsByEventAsync(occ.Id))
+				.Count(r => !string.Equals(r.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
+			if (live > 0) { registeredPeople += live; occurrencesWithPeople++; }
+		}
+
+		if (registeredPeople > 0 && !force)
+			return await HttpHelper.Error(req, HttpStatusCode.Conflict,
+				$"{registeredPeople} {(registeredPeople == 1 ? "person is" : "people are")} signed up across "
+				+ $"{occurrencesWithPeople} of the {occurrences.Count} dates in this series. "
+				+ "Deleting it cancels their sign-ups. Re-send with force=true to go ahead.");
+
+		var removedRegistrations = 0;
+		var deleted = 0;
+		var failed = new List<string>();
+		foreach (var occ in occurrences)
+		{
+			try
+			{
+				removedRegistrations += await cosmos.DeleteEventCascadeAsync(occ.Id, occ.OrganizationId);
+				deleted++;
+			}
+			catch (Exception ex)
+			{
+				// Keep going and report. A series is a set of independent documents, so one
+				// failure need not strand the rest — but the caller must be told the series
+				// is now partial rather than shown a clean success.
+				logger.LogError(ex, "[Recurrence] Failed deleting occurrence {EventId} of series {SeriesId}", occ.Id, seriesId);
+				failed.Add(occ.Id);
+			}
+		}
+
+		logger.LogInformation("[Recurrence] Deleted {Deleted}/{Total} occurrence(s) of series {SeriesId} in org {OrgId} ({Regs} registrations removed, forced={Force}) by {UserId}",
+			deleted, occurrences.Count, seriesId, orgId, removedRegistrations, force, ctx.UserId);
+
+		if (failed.Count > 0)
+			return await HttpHelper.Error(req, HttpStatusCode.InternalServerError,
+				$"Deleted {deleted} of {occurrences.Count} dates; {failed.Count} could not be removed and are still there. Please try again.");
+
+		return await HttpHelper.OkJson(req, new
+		{
+			deleted = true,
+			seriesId,
+			occurrencesDeleted = deleted,
+			registrationsRemoved = removedRegistrations,
+		});
+	}
+
 	[Function("CreateEvent")]
 	public async Task<HttpResponseData> CreateEvent(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "events")] HttpRequestData req)
