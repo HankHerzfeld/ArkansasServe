@@ -2,12 +2,18 @@
   let profile = null;
   let currentEvent = null;
 
-  // Orgs where the viewer holds EventAdmin+ — i.e. whose roster they may sign up as a group.
-  // Deliberately from memberships rather than the token's adminLevel: a membership-based
-  // admin carries no admin claim on their token, which is exactly the mistake Finding 9
-  // documented (they read as Student and were refused on their own members).
+  // Orgs whose roster the viewer may sign up as a group. Mirrors scope.js's rule, which is
+  // the app's existing answer to "which orgs can this person act in":
+  //   SuperAdmin → every tenant (they can act in any org; their own membership is the
+  //                arkansas-serve-root host org, whose roster is admins, not volunteers —
+  //                so memberships alone would leave them with an empty list and no way out)
+  //   everyone else → the orgs they hold EventAdmin+ in
+  // Membership-based, not token-based: a membership admin carries no admin claim on their
+  // token, which is exactly the mistake Finding 9 documented.
   let groupAdminOrgs = [];
-  const GROUP_ADMIN_LEVELS = ['EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'PlatformAdmin', 'SuperAdmin'];
+  // The reserved platform/host partition. Matches platform-admin.js, which hardcodes the
+  // same id to hide Delete for it. Not a joinable org and never a volunteer roster.
+  const ROOT_ORG_ID = 'arkansas-serve-root';
 
   const params = new URLSearchParams(location.search);
   const eventId = params.get('id');
@@ -22,10 +28,23 @@
 
   async function loadGroupAdminOrgs() {
     try {
-      const memberships = await Api.Memberships.list();
-      groupAdminOrgs = (memberships || [])
-        .filter(m => GROUP_ADMIN_LEVELS.includes(m.adminLevel))
-        .map(m => ({ id: m.organizationId, name: m.organizationName || m.organizationId }));
+      if (profile.adminLevel === 'SuperAdmin') {
+        const tenants = await Api.Admin.getTenants().catch(() => []);
+        groupAdminOrgs = (tenants || [])
+          // The host org is never a useful choice: its roster is platform admins, not
+          // volunteers, so it is always empty here — and since the public "Arkansas Serve"
+          // org shares its name, offering both puts two identical entries in the picker with
+          // no way to tell them apart. The org directory omits it for the same reason.
+          .filter(t => t.id !== ROOT_ORG_ID)
+          .map(t => ({ id: t.id, name: t.name || t.id }));
+      } else {
+        const memberships = await Api.Memberships.list();
+        groupAdminOrgs = (memberships || [])
+          .filter(m => Auth.adminRank(m.adminLevel) >= Auth.adminRank('EventAdmin'))
+          // Name only — never fall back to the id, which would print a raw tenant GUID in
+          // the picker. The API omits memberships whose org no longer exists.
+          .map(m => ({ id: m.organizationId, name: m.organizationName }));
+      }
     } catch (err) {
       // Non-fatal: without this the group button simply doesn't appear, and the event page
       // itself must still render.
@@ -320,7 +339,14 @@
 
   async function openGroup(evt) {
     group.evt = evt;
-    group.orgId = groupAdminOrgs[0]?.id || null;
+    // Default to the event's own org when the viewer can act there — for a SuperAdmin the
+    // list is every tenant, and its first entry is arbitrary (quite possibly the
+    // arkansas-serve-root host org, whose roster is admins rather than volunteers, i.e. an
+    // empty list and an apparently broken dialog). The org hosting the event is the far
+    // likelier intent; otherwise fall back to the first they can act in.
+    group.orgId = groupAdminOrgs.some(o => o.id === evt.organizationId)
+      ? evt.organizationId
+      : (groupAdminOrgs[0]?.id || null);
     group.selected = new Set();
     group.answers = {};
     group.shiftId = null;

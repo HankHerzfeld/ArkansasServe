@@ -382,6 +382,16 @@ island.
     - The button's visibility comes from **memberships, not the token's `adminLevel`** — a
       membership-based admin carries no admin claim on their token, which is exactly the trap
       Finding 9 documented (they read as Student and were refused on their own members).
+    - **Which orgs are offered follows `scope.js`'s existing rule**, not a second one:
+      SuperAdmin → every tenant; everyone else → the orgs they hold EventAdmin+ in. Deriving
+      it from memberships alone (the first cut) made the feature **unusable for a SuperAdmin**,
+      whose single membership is the `arkansas-serve-root` host org — whose roster is admins,
+      not volunteers, so the dialog opened on an empty list with no way out. Found by running
+      it against production, not by review. The host org is now filtered out of the picker
+      entirely: its roster is always empty here, and it shares the public org's name, so
+      offering both showed two identical "Arkansas Serve" entries.
+    - Opens on the **event's own org** when the viewer can act there; a super's list is
+      every tenant, so its first entry is arbitrary.
     - Server messages are surfaced verbatim ("Only 3 spots left", or who is already
       registered): the server knows what actually went wrong, and paraphrasing loses it.
 
