@@ -222,13 +222,27 @@ island.
 </details>
 
 ### Still open
-- **Orphaned membership data (needs an owner decision).** A small number of membership rows
-  still point at a tenant that no longer exists (one admin-level, the rest test accounts), all
-  `status:"active"`. The fix above hides them from the UI; the rows remain. Deleting
-  production user records was deliberately **not** done unattended. Removing the admin row is
-  safe for access — the `arkansas-serve-root` SuperAdmin membership is independent — but it is
-  still a destructive write on real data. Identifiers are deliberately not recorded here: this
-  repository is public. See the session notes / Cosmos for the specific rows.
+- **Orphaned membership data.** ✅ **Deleted 2026-07-15 on owner authorization.** 3 rows
+  removed; `Users` went 18 → 15, and the stranded partition now holds 0.
+  - **The old description here was wrong in a way worth recording.** These rows did *not*
+    "point at a tenant that no longer exists" — that tenant **never existed**. The id they
+    carried is the **Entra External-ID directory id** (the same GUID hardcoded as `TENANT_ID`
+    in `frontend/js/auth.js`), i.e. they are exactly the pseudo-org artifacts of finding ①
+    above, created while `AuthMiddleware` still fell back to `Claim("tid")`. Not a deleted
+    org — an org that was never an org. Nor were they "one admin + test accounts": all three
+    are the owner's own identities (one `@arkansasserve.com` SuperAdmin, two gmail).
+  - **Pre-verified before the write, not assumed.** The claim that removing the admin row is
+    "safe for access" was checked rather than trusted: each of the 3 identities has a live
+    membership **matching on `externalId`**, not merely on email; 3 SuperAdmin docs survive in
+    `arkansas-serve-root`; and `ServiceLogs` / `EventRegistrations` / `Notifications` /
+    `PendingApprovals` held **0** rows referencing any of the 3 user ids. Post-delete checks
+    confirmed the owner is still SuperAdmin in `arkansas-serve-root`.
+  - **They could not have come back, and cannot recur.** PR #65 removed the `tid` fallback
+    (`AuthMiddleware` now ends `?? string.Empty`) and that code is deployed, so a sign-in no
+    longer re-creates them. They were also unreachable by #65's `unassigned` → `JoinOrg`
+    migration, which only folds the `unassigned` partition — these sat in the directory-id
+    partition, so nothing would ever have cleaned them up.
+  - Identifiers remain deliberately unrecorded here: this repository is public.
 - **Minor.** Per-org `displayName` differs across pages (per-org User doc).
 - **Infra drift (P2) — reconciliation DEFERRED by owner 2026-07-15; Bicep marked
   NON-AUTHORITATIVE.** The drift itself is unchanged and still live. The `what-if`/apply
