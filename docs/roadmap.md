@@ -171,14 +171,26 @@ island.
   still a destructive write on real data. Identifiers are deliberately not recorded here: this
   repository is public. See the session notes / Cosmos for the specific rows.
 - **Minor.** Per-org `displayName` differs across pages (per-org User doc).
-- **Infra drift (P2) — now larger.** The Bicep `what-if`/apply workflow has never
-  successfully run; its only runs were PR `what-if`s that failed at OIDC login. Live
-  containers (incl. `ImpersonationSessions`/`AuditEvents`) were created out-of-band, and the
-  Cosmos firewall above is a third out-of-band change: `main.bicep` still declares
-  `publicNetworkAccess: 'Enabled'` with no `ipRules`/`networkAclBypass`, and sets
+- **Infra drift (P2) — reconciliation DEFERRED by owner 2026-07-15; Bicep marked
+  NON-AUTHORITATIVE.** The drift itself is unchanged and still live. The `what-if`/apply
+  workflow has never successfully run; its only runs were PR `what-if`s that failed at OIDC
+  login. Live containers (incl. `ImpersonationSessions`/`AuditEvents`) were created
+  out-of-band, and the Cosmos firewall is a third out-of-band change: `main.bicep` still
+  declares `publicNetworkAccess: 'Enabled'` with no `ipRules`/`networkAclBypass`, and sets
   `CosmosDb__ConnectionString` from `listConnectionStrings()` (which returns **primary**).
-  So an apply today would **revert the firewall and overwrite the rotated key setting**.
-  Bicep is not the source of truth for what exists — reconcile before any apply.
+  An apply today would **revert the firewall and overwrite the rotated key setting**.
+  - **What changed 2026-07-15:** the danger is now documented where it would be encountered
+    rather than only here. `infra/main.bicep` opens with a do-not-apply block naming all
+    three divergences; `infra/README.md` no longer claims to be the "codified real state"
+    (it said so at the top while being three changes stale — the more dangerous of the two
+    documents, because it was reassuring). The `az deployment group create` command was
+    **removed** from that README; `what-if` stays, being read-only and the way to measure the
+    drift. A fourth live-affecting item is now recorded there too: `platformAdminEmailDomain`
+    in `main.prod.bicepparam` is still `arkansasserve.com`, so an apply would re-open the
+    PlatformAdmin bootstrap elevation closed on 2026-07-09.
+  - **A clean `what-if` is NOT sufficient clearance.** ARM returns app-setting values masked,
+    so the rotated-key clobber will never appear as a diff. Read the live setting directly.
+  - Bicep is not the source of truth for what exists — reconcile before any apply.
 
 ---
 
