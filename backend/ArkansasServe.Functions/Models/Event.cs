@@ -25,6 +25,27 @@ public class Event : CosmosDocument
 	[JsonPropertyName("endDateTime")]
 	public DateTime EndDateTime { get; set; }
 
+	// ── Recurring series ────────────────────────────────────────────────────────
+	// An occurrence of a recurring series is an ORDINARY event in every other respect: its
+	// own document, its own registrations, its own slot counters, its own check-in. That is
+	// the whole reason occurrences are materialised rather than computed — registrations are
+	// partitioned by /eventId and the counters live on this document, so a computed
+	// occurrence would have neither an id to partition by nor anywhere to keep its counts.
+	//
+	// Shared by every occurrence of one series; null for a one-off event. Events are
+	// partitioned by /organizationId, so "the rest of this series" is a single-partition
+	// query — no fan-out, and no separate series document to keep in sync.
+	[JsonPropertyName("seriesId")]
+	public string? SeriesId { get; set; }
+
+	// The rule that generated this occurrence, copied onto each one. Denormalised the same
+	// way OrganizationName already is: it lets a page say "repeats weekly on Tuesday" without
+	// a second read. Set at creation only — editing one occurrence never re-expands a series
+	// (see UpdateEvent, which preserves it), so this is a record of origin, not a live
+	// setting.
+	[JsonPropertyName("recurrence")]
+	public RecurrenceRule? Recurrence { get; set; }
+
 	[JsonPropertyName("maxSlots")]
 	public int MaxSlots { get; set; } = 0;
 
