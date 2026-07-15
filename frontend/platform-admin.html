@@ -137,12 +137,28 @@
     </div>
     <div class="form-group">
       <label>Type *</label>
-      <select id="tenant-type">
-        <option value="">Select…</option>
-        <option value="school">School / District</option>
-        <option value="jdc">Juvenile Detention / Court</option>
-        <option value="organization">Community Organization</option>
-      </select>
+      <!-- Filled from Taxonomy.ORG_TYPES so this and the backend's OrgTypes cannot drift.
+           The old hardcoded values were lowercase, which is how live data came to be split
+           between "organization" and "Organization". -->
+      <select id="tenant-type"></select>
+    </div>
+    <!-- Level 2 of the taxonomy. Shown only for a Community Organization: a school's
+         "service category" is a question with no good answer. -->
+    <div class="form-group" id="tenant-service-category-wrap" style="display:none;">
+      <label for="tenant-service-category">Service category</label>
+      <select id="tenant-service-category"></select>
+      <small style="display:block;color:var(--gray-600);margin-top:.2rem;">
+        What this organization does. Shared with event categories, so a search finds both.
+      </small>
+    </div>
+    <div class="form-group" id="tenant-faith-wrap" style="display:none;">
+      <label>
+        <input type="checkbox" id="tenant-faith-based"> Faith-based organization
+      </label>
+      <small style="display:block;color:var(--gray-600);margin-top:.2rem;">
+        Separate from the category above, on purpose — a church running a food pantry is both
+        faith-based and doing food work.
+      </small>
     </div>
     <div class="form-group">
       <label>Microsoft 365 SSO Domain (schools)</label>
@@ -217,6 +233,7 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/taxonomy.js"></script>
 <script src="/js/scope.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/pages/platform-admin.js"></script>

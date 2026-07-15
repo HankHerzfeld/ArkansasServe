@@ -71,6 +71,29 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (body == null || string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Type))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "name and type are required");
 
+		// Normalise the casing at the only point a type is ever set. This endpoint is
+		// model-bound (ReadBody<Tenant>), so without this a caller sending "organization"
+		// re-introduces the split casing that already divided live data.
+		body.Type = OrgTypes.Normalize(body.Type);
+
+		if (!ServiceCategories.IsValid(body.ServiceCategory))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
+				$"\"{body.ServiceCategory}\" is not a service category");
+
+		// Same rule as UpdateTenant: only a community organization carries these. Being
+		// model-bound means anything in the body lands on the document unless it is cleared
+		// here, so a school could otherwise arrive with a service category that no form shows
+		// and nobody can clear.
+		if (!OrgTypes.IsOrganization(body.Type))
+		{
+			body.ServiceCategory = null;
+			body.FaithBased = false;
+		}
+		else if (string.IsNullOrWhiteSpace(body.ServiceCategory))
+		{
+			body.ServiceCategory = null;
+		}
+
 		var created = await cosmos.CreateTenantAsync(body);
 		return await HttpHelper.CreatedJson(req, created);
 	}
@@ -303,6 +326,27 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		if (body.AllowGroupAdminAddVolunteers.HasValue) tenant.AllowGroupAdminAddVolunteers = body.AllowGroupAdminAddVolunteers.Value;
 		if (body.AllowProfileSelfEdit.HasValue) tenant.AllowProfileSelfEdit = body.AllowProfileSelfEdit.Value;
 		if (body.AllowSelfJoin.HasValue) tenant.AllowSelfJoin = body.AllowSelfJoin.Value;
+
+		// ── Taxonomy ────────────────────────────────────────────────────────────
+		// Normalise on write so the stored casing converges on the canonical value, even
+		// though every read goes through OrgTypes.IsOrganization and does not depend on it.
+		if (!string.IsNullOrWhiteSpace(body.Type)) tenant.Type = OrgTypes.Normalize(body.Type);
+
+		if (body.FaithBased.HasValue) tenant.FaithBased = body.FaithBased.Value;
+
+		if (body.ServiceCategory != null)
+		{
+			if (!ServiceCategories.IsValid(body.ServiceCategory))
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
+					$"\"{body.ServiceCategory}\" is not a service category. A controlled list is the whole point of one — propose a new value instead of inventing it here.");
+
+			// Only a community organization has a service category. Silently keeping one on a
+			// school would leave an invisible value that the form never shows and nobody can
+			// clear, which then surfaces in a filter months later.
+			tenant.ServiceCategory = OrgTypes.IsOrganization(tenant.Type)
+				? (body.ServiceCategory.Length == 0 ? null : body.ServiceCategory)
+				: null;
+		}
 		// Public profile fields — non-null means "set" (empty string clears).
 		if (body.Description != null) tenant.Description = body.Description;
 		if (body.Mission != null) tenant.Mission = body.Mission;
@@ -521,7 +565,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 
 	private sealed record UpdateTenantRequest(
 		string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers, bool? AllowProfileSelfEdit,
-		bool? AllowSelfJoin,
+		bool? AllowSelfJoin, string? Type, string? ServiceCategory, bool? FaithBased,
 		string? Description, string? Mission, string? Website,
 		string? ContactEmail, string? ContactPhone, string? Address, string? LogoUrl, string? LogoBlobName);
 }

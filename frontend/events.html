@@ -45,16 +45,11 @@
     </div>
 
     <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-top:.6rem;">
+      <!-- Third copy of this vocabulary, now filled from Taxonomy.SERVICE_CATEGORIES like the
+           other two. A filter list that has drifted from the list events are created with is
+           worse than no filter: it silently matches nothing. -->
       <select id="filter-category" aria-label="Filter events by category"
-        style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;">
-        <option value="">All categories</option>
-        <option>Environmental</option>
-        <option>Food Bank</option>
-        <option>Tutoring</option>
-        <option>Animal Shelter</option>
-        <option>Senior Care</option>
-        <option>Other</option>
-      </select>
+        style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;"></select>
 
       <!-- Populated from the events actually loaded — a fixed list would go stale. -->
       <select id="filter-tag" aria-label="Filter events by tag"
@@ -132,6 +127,7 @@
 <script src="/js/datatables.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/taxonomy.js"></script>
 <script src="/js/scope.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/pages/events.js"></script>
