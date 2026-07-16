@@ -93,6 +93,21 @@ public class User : CosmosDocument
     [JsonPropertyName("backgroundCheckCompletedAt")]
     public string? BackgroundCheckCompletedAt { get; set; } // ISO date
 
+    // This person's state against their org's own credentials — see UserTag.cs. Admin-set,
+    // like the background check above.
+    //
+    // Background check deliberately stays its own field rather than becoming a tag (owner
+    // decision): folding it in would mean migrating live user records and rewiring every
+    // reader, for no behaviour change. The cost is two ways to express a credential —
+    // acceptable, and worth converging once tags have proved out.
+    //
+    // Per-org for free: a User doc IS per-org (one per person per organization, partitioned by
+    // tenantId), so a waiver signed with one org says nothing about another. That is correct,
+    // and it is also why gating a cross-org registration is a genuinely open question — the
+    // registrant has no doc in the event's org to carry its tags.
+    [JsonPropertyName("tags")]
+    public List<UserTagState> Tags { get; set; } = [];
+
     // ── Terms & Privacy acceptance ───────────────────────────────────────────
     // The version of the Terms/Privacy documents this person accepted, and when.
     // Stored as the version string rather than a bool so that re-issuing the documents

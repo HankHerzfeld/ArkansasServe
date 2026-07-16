@@ -499,9 +499,38 @@ island.
     path is the point: without it you get "Food Bank"/"food bank"/"Foodbank" within a month and
     the approval step becomes a rubber stamp. Needs a stored vocabulary + a queue, so it is
     the size of #8 — and it supersedes the earlier "fixed list in code" decision.
-- **Per-org user tags / credentials** — admin-defined markers on a person's per-org record
-  (e.g. "waiver signed", "masonry training complete", background-check state) that can gate or
-  inform scheduling.
+- **Per-org user tags / credentials** — ✅ **Model + definitions + admin API done 2026-07-15.**
+  Gating and the admin UI remain.
+  - **Per-org came free.** A `User` doc IS per-org (one per person per organization,
+    partitioned by `tenantId`), so tags hang off a record that is already scoped correctly.
+  - **One of the three examples was already built:** `BackgroundCheckStatus`
+    (None/Pending/Cleared) + `BackgroundCheckCompletedAt`. So this item is really "stop adding
+    a bespoke field per credential". It **stays as its own field** (owner decision) — folding
+    it in would mean migrating live user records and rewiring every reader for no behaviour
+    change. Cost: two ways to express a credential; worth converging once tags prove out.
+  - **State + date, not a boolean** (owner decision), mirroring the background check —
+    "pending" is genuinely different from "never started", and an admin chasing a waiver needs
+    to see which.
+  - **Per-tag enforcement** (owner decision), defaulting to **advisory**: a tag that started
+    refusing volunteers the moment an admin created it would be a nasty surprise, so blocking
+    is opt-in. `blockCheckIn` — "refused at the gate", which is the *better* rule for a waiver
+    (sign up now, sign the form before you serve) — is **deliberately not implemented**: it
+    lands with #14, because until a check-in exists the setting would silently do nothing, and
+    a control that does nothing is worse than an absent one.
+  - **Optional per-tag expiry** (owner decision). `ExpiresAt` is **stamped at completion from
+    the policy then in force, and left alone** — so shortening a waiver from two years to one
+    does not retroactively expire people who were compliant under the rule they were told
+    about, and an admin can override one person without touching org policy.
+  - ⚠️ **Gating has an unresolved cross-org problem — decide before building it.** Tags live
+    on the per-org User doc, but registration is routinely cross-org (group registration
+    exists precisely so a school can sign students up for a community org's event). If org A's
+    event requires "waiver signed", a student from org B **has no User doc in org A** and can
+    never satisfy it — blocked permanently, not for lacking a waiver but because the tag has
+    nowhere to live. Options: put the tag state on the registration; give cross-org registrants
+    a managed record in the event's org; or gate same-org only. Unanswered.
+  - *Also note:* group registration is all-or-nothing, so once gating exists a group of 8 where
+    2 lack a tag is refused entirely (naming those 2) rather than signing up 6.
+  - *Remaining:* the gate itself, and the admin UI for defining tags and setting them.
 - **User assignment under an org/EventAdmin** — assign volunteers to a specific admin who then
   has **direct oversight of those users' hours and approvals**, **per-action notification
   settings**, and **direct communication with assigned users via notifications**.
