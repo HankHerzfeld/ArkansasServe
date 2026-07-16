@@ -70,6 +70,18 @@ public class Event : CosmosDocument
 	[JsonPropertyName("eligibleSchoolIds")]
 	public List<string> EligibleSchoolIds { get; set; } = [];
 
+	// ── Day-of check-in (#14) ───────────────────────────────────────────────────
+	// A per-event code the admin mints (POST …/checkin/qr) and posts as a QR at the venue.
+	// A registered student scans it and checks THEMSELVES in — the code proves on-site
+	// presence, so possessing it is what gates self check-in, not who you are. Rotated by
+	// minting again (a new code invalidates the old); bounded by CheckInCodeExpiresAt so a
+	// photographed code cannot be used indefinitely. Null until first minted.
+	[JsonPropertyName("checkInCode")]
+	public string? CheckInCode { get; set; }
+
+	[JsonPropertyName("checkInCodeExpiresAt")]
+	public DateTime? CheckInCodeExpiresAt { get; set; }
+
 	// For internally-uploaded photos we persist the stable blob NAME, not a URL. Read
 	// paths sign it into a short-lived SAS `photoUrl` at response time (the event-photos
 	// container is private). Crawled events instead carry an external absolute `photoUrl`
