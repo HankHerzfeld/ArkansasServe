@@ -241,6 +241,17 @@
       actions.appendChild(gbtn);
     }
 
+    // Day-of check-in overview (roster, manual check-in, walk-ins, the posted QR). Offered to
+    // an admin who can act in THIS event's org — the same membership test the group button uses
+    // (groupAdminOrgs holds the orgs the viewer is EventAdmin+ in; a super gets every tenant).
+    if (groupAdminOrgs.some(o => o.id === evt.organizationId)) {
+      actions.appendChild(elem('a', {
+        class: 'btn btn-secondary',
+        href: `/event-checkin.html?e=${encodeURIComponent(evt.id)}&o=${encodeURIComponent(evt.organizationId)}`,
+        text: 'Day-of check-in',
+      }));
+    }
+
     // Only on an occurrence, and only for someone who could delete these events one by one
     // anyway. Deliberately last and btn-danger: it removes dates the viewer is not looking at.
     if (evt.seriesId && canDeleteSeries) {
