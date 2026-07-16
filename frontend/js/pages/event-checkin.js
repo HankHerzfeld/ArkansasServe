@@ -73,10 +73,10 @@
 
     const shifts = data.shifts || [];
     if (shifts.length > 0) {
-      const byShift = new Map(shifts.map(s => [s.Id, []]));
+      const byShift = new Map(shifts.map(s => [s.id, []]));
       const noShift = [];
       for (const r of regs) (byShift.has(r.shiftId) ? byShift.get(r.shiftId) : noShift).push(r);
-      for (const s of shifts) root.appendChild(groupCard(s.Label || 'Shift', byShift.get(s.Id) || []));
+      for (const s of shifts) root.appendChild(groupCard(s.label || 'Shift', byShift.get(s.id) || []));
       if (noShift.length) root.appendChild(groupCard('No shift', noShift));
     } else {
       root.appendChild(groupCard(null, regs));
@@ -147,11 +147,11 @@
     const sel = document.getElementById('wi-shift');
     if (!shifts || shifts.length === 0) { wrap.style.display = 'none'; return; }
     // Rebuild only if the option set changed, so we don't clobber a selection mid-typing.
-    const want = shifts.map(s => s.Id).join('|');
+    const want = shifts.map(s => s.id).join('|');
     if (sel.dataset.sig === want) { wrap.style.display = ''; return; }
     sel.dataset.sig = want;
     sel.innerHTML = '';
-    for (const s of shifts) sel.appendChild(el('option', { value: s.Id, text: s.Label || 'Shift' }));
+    for (const s of shifts) sel.appendChild(el('option', { value: s.id, text: s.label || 'Shift' }));
     wrap.style.display = '';
   }
 
@@ -197,6 +197,10 @@
     mintBtn.disabled = true; rotateBtn.disabled = true;
     try {
       codeInfo = await Api.CheckIn.mintCode(eventId, orgId);
+      // Build the self check-in URL from THIS page's own origin — the admin page is served from
+      // the public site (arkansasserve.com), so its origin is correct. The API can't supply it:
+      // its request Host is the Function App behind the linked-backend proxy.
+      codeInfo.url = `${window.location.origin}/checkin.html?e=${encodeURIComponent(eventId)}&o=${encodeURIComponent(orgId)}&c=${encodeURIComponent(codeInfo.code)}`;
       text('ci-code', codeInfo.code);
       const link = document.getElementById('ci-code-url');
       link.href = codeInfo.url; link.textContent = codeInfo.url;

@@ -171,9 +171,13 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 			try
 			{
 				await cosmos.UpdateEventAsync(evt, etag);
-				var url = $"{PublicBaseUrl(req)}/checkin.html?e={Uri.EscapeDataString(eventId)}&o={Uri.EscapeDataString(orgId)}&c={Uri.EscapeDataString(code)}";
+				// Return only the code; the client builds the self check-in URL from its OWN
+				// origin (window.location.origin). The backend can't: /api/* reaches the Function
+				// App via the SWA linked-backend proxy, so the request Host here is the Function
+				// App's own *.azurewebsites.net — not the public site — and a URL built from it
+				// pointed at a host that doesn't even serve checkin.html.
 				logger.LogInformation("[CheckIn] code minted for event {EventId} by {Actor}, expires {ExpiresAt:o}", eventId, ctx.UserId, expiresAt);
-				return await HttpHelper.OkJson(req, new { code, url, expiresAt });
+				return await HttpHelper.OkJson(req, new { code, expiresAt });
 			}
 			catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.PreconditionFailed)
 			{
@@ -406,15 +410,6 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 		{
 			for (var i = 0; i < span.Length; i++) span[i] = alphabet[b[i] % alphabet.Length];
 		});
-	}
-
-	/// <summary>The public origin to build the self check-in link from, honoring the proxy's forwarded host (Cloudflare/SWA).</summary>
-	private static string PublicBaseUrl(HttpRequestData req)
-	{
-		string? Header(string n) => req.Headers.TryGetValues(n, out var v) ? v.FirstOrDefault() : null;
-		var proto = Header("X-Forwarded-Proto") ?? "https";
-		var host = Header("X-Forwarded-Host") ?? Header("Host") ?? req.Url.Host;
-		return $"{proto}://{host}";
 	}
 
 	private sealed record CheckInRequest(string? OrganizationId, string? RegistrationId, bool? CheckedIn);
