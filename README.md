@@ -64,7 +64,7 @@ ArkansasServe/
 
 Prerequisites:
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download) (the project targets `net8.0` LTS)
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
 - An Azure subscription with Cosmos DB, Blob Storage, and Entra External ID configured
@@ -78,6 +78,12 @@ func start
 
 Configure your secrets (Cosmos DB and Blob Storage connection strings, Entra settings)
 in `backend/ArkansasServe.Functions/local.settings.json`. This file is never committed.
+
+> **If only a newer .NET runtime is installed** (e.g. the ASP.NET Core 8 shared runtime is
+> missing but a 9/10 one is present), set `DOTNET_ROLL_FORWARD=LatestMajor` so the `net8.0`
+> host rolls forward onto it. A malformed `BlobStorage__ConnectionString` no longer crashes
+> the host — blob endpoints degrade and log a warning instead — but a *valid* one is still
+> needed for logo/photo uploads.
 
 ### Run the frontend locally
 
