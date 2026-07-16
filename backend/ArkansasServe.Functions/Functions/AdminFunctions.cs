@@ -285,6 +285,114 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		return await HttpHelper.OkJson(req, updated.Groups);
 	}
 
+	// ── Per-org user tags / credentials (#11) ─────────────────────────────────
+	// Definitions only; a person's state against them is set via VolunteerFunctions.
+	// Mirrors the Groups endpoints above — same route shape, same CanManageTenantAsync gate,
+	// same "stored on the Tenant" model. These are a handful per org, always read with the
+	// org, never queried across orgs.
+
+	[Function("GetTenantUserTags")]
+	public async Task<HttpResponseData> GetTenantUserTags(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/backend/tenants/{tenantId}/user-tags")] HttpRequestData req,
+		string tenantId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
+
+		var tenant = await cosmos.GetTenantAsync(tenantId);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+
+		return await HttpHelper.OkJson(req, tenant.UserTags);
+	}
+
+	[Function("CreateTenantUserTag")]
+	public async Task<HttpResponseData> CreateTenantUserTag(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/tenants/{tenantId}/user-tags")] HttpRequestData req,
+		string tenantId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
+
+		var body = await HttpHelper.ReadBody<UserTagRequest>(req);
+		if (body == null || string.IsNullOrWhiteSpace(body.Label))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "label is required");
+
+		var enforcement = string.IsNullOrWhiteSpace(body.Enforcement) ? TagEnforcement.Advisory : body.Enforcement;
+		if (!TagEnforcement.IsValid(enforcement))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
+				$"\"{enforcement}\" is not a supported enforcement. Use advisory or blockRegistration.");
+		if (body.ExpiresAfterDays is <= 0)
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "expiresAfterDays must be a positive number of days, or omitted for a credential that never expires");
+
+		var tenant = await cosmos.GetTenantAsync(tenantId);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+
+		// A duplicate label is not a hard error anywhere, but two tags called "Waiver signed"
+		// are indistinguishable to the admin choosing between them — which defeats the point.
+		if (tenant.UserTags.Any(t => string.Equals(t.Label, body.Label.Trim(), StringComparison.OrdinalIgnoreCase)
+			&& string.Equals(t.Status, "active", StringComparison.OrdinalIgnoreCase)))
+			return await HttpHelper.Error(req, HttpStatusCode.Conflict, $"This organization already has a tag called \"{body.Label.Trim()}\"");
+
+		tenant.UserTags.Add(new TenantUserTag
+		{
+			Label = body.Label.Trim(),
+			Description = string.IsNullOrWhiteSpace(body.Description) ? null : body.Description.Trim(),
+			Enforcement = enforcement,
+			ExpiresAfterDays = body.ExpiresAfterDays,
+			Status = "active",
+		});
+
+		var updated = await cosmos.UpdateTenantAsync(tenant);
+		logger.LogInformation("[UserTags] Created tag \"{Label}\" ({Enforcement}) in org {OrgId} by {UserId}", body.Label, enforcement, tenantId, ctx.UserId);
+		return await HttpHelper.OkJson(req, updated.UserTags);
+	}
+
+	[Function("UpdateTenantUserTag")]
+	public async Task<HttpResponseData> UpdateTenantUserTag(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "manage/backend/tenants/{tenantId}/user-tags/{tagId}")] HttpRequestData req,
+		string tenantId, string tagId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
+
+		var body = await HttpHelper.ReadBody<UserTagRequest>(req);
+		if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
+
+		var tenant = await cosmos.GetTenantAsync(tenantId);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+
+		var tag = tenant.UserTags.FirstOrDefault(t => t.Id == tagId);
+		if (tag == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tag not found");
+
+		if (!string.IsNullOrWhiteSpace(body.Label)) tag.Label = body.Label.Trim();
+		if (body.Description != null) tag.Description = body.Description.Length == 0 ? null : body.Description.Trim();
+		if (!string.IsNullOrWhiteSpace(body.Enforcement))
+		{
+			if (!TagEnforcement.IsValid(body.Enforcement))
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{body.Enforcement}\" is not a supported enforcement");
+			tag.Enforcement = body.Enforcement;
+		}
+		// Changing the expiry policy does NOT retouch anyone's existing ExpiresAt: that was
+		// stamped from the policy in force when they completed it. Shortening a waiver from
+		// two years to one should not retroactively expire people who are compliant under the
+		// rule they were told about.
+		if (body.ExpiresAfterDays.HasValue)
+		{
+			if (body.ExpiresAfterDays.Value <= 0)
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "expiresAfterDays must be positive");
+			tag.ExpiresAfterDays = body.ExpiresAfterDays;
+		}
+		// Archiving stops a tag being offered but keeps existing people's history readable —
+		// deleting it would silently strip the record that someone signed a waiver.
+		if (!string.IsNullOrWhiteSpace(body.Status)) tag.Status = body.Status;
+
+		var updated = await cosmos.UpdateTenantAsync(tenant);
+		return await HttpHelper.OkJson(req, updated.UserTags);
+	}
+
 	[Function("GetOrgLogoUploadToken")]
 	public async Task<HttpResponseData> GetOrgLogoUploadToken(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/tenants/{tenantId}/logo-upload-token")] HttpRequestData req,
@@ -558,6 +666,9 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		List<string>? EventAdminEventIds);
 
 	private sealed record CreateGroupRequest(string Name, string? Status);
+
+	private sealed record UserTagRequest(
+		string? Label, string? Description, string? Enforcement, int? ExpiresAfterDays, string? Status);
 
 	private sealed record DbQueryRequest(string Container, string Query, int? MaxItems);
 

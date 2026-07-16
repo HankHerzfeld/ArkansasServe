@@ -104,6 +104,16 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("allowSelfJoin")]
 	public bool AllowSelfJoin { get; set; } = true;
 
+	/// <summary>
+	/// The credentials this org tracks against its people — see <see cref="TenantUserTag"/>.
+	/// The definitions; a person's state against them lives on their User doc.
+	///
+	/// Kept on the Tenant rather than in a container of their own, exactly as Groups already
+	/// are: a handful per org, always read with the org, never queried across orgs.
+	/// </summary>
+	[JsonPropertyName("userTags")]
+	public List<TenantUserTag> UserTags { get; set; } = [];
+
 	[JsonPropertyName("groups")]
 	public List<TenantGroup> Groups { get; set; } = [];
 
