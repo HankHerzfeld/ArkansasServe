@@ -27,12 +27,30 @@ public class BlobService
             ?? config["BlobStorage:ConnectionString"]
             ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(connStr))
-            _client = new BlobServiceClient(connStr);
+        {
+            // A present-but-MALFORMED connection string must not throw here. This ctor runs
+            // during DI activation for every function that injects BlobService, so an unguarded
+            // throw fails construction and 500s ALL of those routes — including every
+            // EventFunctions read — before auth even runs. Absent config already degrades to a
+            // null client; a bad string should degrade the same way, not be strictly worse than
+            // no string at all. Only the blob-specific endpoints then fail (via EnsureConfigured),
+            // and the read paths (ResolveDisplayUrl/TryGetOwnedBlobName) fall back gracefully.
+            try
+            {
+                _client = new BlobServiceClient(connStr);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "BlobStorage__ConnectionString is set but could not be parsed. Blob upload/read endpoints will be unavailable.");
+            }
+        }
 
         _accountName = ParseConnectionStringPart(connStr, "AccountName");
         _accountKey  = ParseConnectionStringPart(connStr, "AccountKey");
 
-        if (_client is null)
+        // Only warn "not configured" when it genuinely was not set — the malformed case is
+        // already logged above with its exception, and double-logging would misreport it.
+        if (_client is null && string.IsNullOrWhiteSpace(connStr))
             _logger.LogWarning("BlobStorage__ConnectionString is not configured. Blob upload/read endpoints will be unavailable.");
     }
 
