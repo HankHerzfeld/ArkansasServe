@@ -58,14 +58,18 @@ public static class TagEnforcement
 	/// <summary>Registration is refused, naming what is missing.</summary>
 	public const string BlockRegistration = "blockRegistration";
 
-	// Reserved, not implemented: "blockCheckIn" — let someone sign up but refuse them at the
-	// door. That is the more useful rule for a waiver (sign up now, sign the form before you
-	// serve), and it is what "refused at the gate" means. It lands with #14 (day-of check-in),
-	// because until a check-in exists this setting would silently do nothing — and a control
-	// that does nothing is worse than an absent one.
+	/// <summary>
+	/// Sign-up is allowed but CHECK-IN is refused, naming what is missing — the better rule
+	/// for a waiver (sign up now, sign the form before you serve). Enforced at day-of check-in
+	/// (#14), for both self and admin-initiated check-in, and same-org only: a cross-org
+	/// registrant has no User doc in the event's org to carry a tag state, so there is nothing
+	/// to evaluate (the locked cross-org decision). The admin's remedy for a genuinely-missing
+	/// tag is to record it (SetVolunteerTag) and check in again.
+	/// </summary>
+	public const string BlockCheckIn = "blockCheckIn";
 
 	public static bool IsValid(string? v) =>
-		v is Advisory or BlockRegistration;
+		v is Advisory or BlockRegistration or BlockCheckIn;
 }
 
 /// <summary>

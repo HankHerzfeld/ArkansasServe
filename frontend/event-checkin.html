@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Day-of check-in — Arkansas Serve</title>
+  <meta name="description" content="Live day-of check-in for an event: mark volunteers present, add walk-ins, and post the check-in code.">
+  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+</head>
+<body>
+
+<div id="app-header"></div>
+
+<div class="container">
+  <p style="margin-bottom:1rem;"><a id="back-link" href="/events.html" style="font-size:.9rem;">← Back to event</a></p>
+
+  <div id="checkin-loading" class="loading-state"><div class="spinner"></div><p>Loading roster…</p></div>
+  <div id="checkin-error" class="card" style="display:none;text-align:center;color:var(--gray-600);"></div>
+
+  <div id="checkin-root" style="display:none;">
+    <!-- Header + live stats -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+        <div>
+          <div class="modal-title" id="ci-title" style="margin-bottom:.15rem;"></div>
+          <div id="ci-when" style="color:var(--gray-600);font-size:.9rem;"></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:1.6rem;font-weight:700;line-height:1;" id="ci-count">0 / 0</div>
+          <div style="color:var(--gray-600);font-size:.8rem;">checked in</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Posted check-in code (for students to self-check-in) -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <div class="modal-title" style="margin:0;">Self check-in code</div>
+        <button id="ci-mint" class="btn btn-secondary">Show check-in code</button>
+      </div>
+      <div id="ci-code-panel" style="display:none;margin-top:1rem;text-align:center;">
+        <p style="color:var(--gray-600);font-size:.9rem;margin-bottom:.75rem;">
+          Post or show this so registered volunteers can check themselves in. Rotate it any time.
+        </p>
+        <div id="ci-code" style="font-size:2rem;font-weight:700;letter-spacing:.12em;font-family:monospace;"></div>
+        <div style="margin:.75rem 0;">
+          <a id="ci-code-url" href="#" target="_blank" rel="noopener" style="word-break:break-all;font-size:.85rem;"></a>
+        </div>
+        <div id="ci-code-expiry" style="color:var(--gray-600);font-size:.8rem;"></div>
+        <div style="margin-top:.75rem;display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;">
+          <button id="ci-copy" class="btn btn-secondary">Copy link</button>
+          <button id="ci-rotate" class="btn btn-secondary">Rotate code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add a walk-in -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="modal-title" style="margin-bottom:.5rem;">Add a walk-in</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;">
+        <div class="form-group" style="margin:0;flex:1 1 140px;">
+          <label for="wi-first">First name</label>
+          <input id="wi-first" type="text" autocomplete="off">
+        </div>
+        <div class="form-group" style="margin:0;flex:1 1 140px;">
+          <label for="wi-last">Last name</label>
+          <input id="wi-last" type="text" autocomplete="off">
+        </div>
+        <div class="form-group" style="margin:0;flex:1 1 180px;">
+          <label for="wi-email">Email <span style="font-weight:400;color:var(--gray-600);">(optional)</span></label>
+          <input id="wi-email" type="email" autocomplete="off">
+        </div>
+        <div class="form-group" id="wi-shift-wrap" style="margin:0;flex:1 1 160px;display:none;">
+          <label for="wi-shift">Shift</label>
+          <select id="wi-shift"></select>
+        </div>
+        <button id="wi-add" class="btn btn-primary" style="flex:0 0 auto;">Add &amp; check in</button>
+      </div>
+      <div id="wi-error" class="alert alert-error" style="display:none;margin-top:.75rem;"></div>
+    </div>
+
+    <!-- Roster -->
+    <div id="ci-roster"></div>
+  </div>
+</div>
+
+<script src="/js/vendor/msal-browser.min.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/pages/event-checkin.js"></script>
+</body>
+</html>

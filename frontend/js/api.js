@@ -123,6 +123,21 @@ const Api = (() => {
     },
   };
 
+  // ── Day-of check-in (#14) ─────────────────────────────────────────────────
+  const CheckIn = {
+    // Admin live overview: non-cancelled registrations + check-in state + shifts.
+    roster:   (eventId, orgId) => request('GET', `/events/${encodeURIComponent(eventId)}/roster?organizationId=${encodeURIComponent(orgId)}`),
+    // Admin marks one registrant present/absent. data: { organizationId, registrationId, checkedIn }
+    set:      (eventId, data)  => request('POST', `/events/${encodeURIComponent(eventId)}/checkin`, data),
+    // Admin mints/rotates the posted code; returns { code, url, expiresAt }.
+    mintCode: (eventId, orgId) => request('POST', `/events/${encodeURIComponent(eventId)}/checkin/qr`, { organizationId: orgId }),
+    // Student self-check-in after scanning the posted code. data: { organizationId, code }
+    self:     (eventId, data)  => request('POST', `/events/${encodeURIComponent(eventId)}/checkin/self`, data),
+    // Admin adds someone unregistered + checks them in.
+    // data: { organizationId, firstName, lastName, email?, shiftId? }
+    walkIn:   (eventId, data)  => request('POST', `/events/${encodeURIComponent(eventId)}/checkin/walkin`, data),
+  };
+
   // ── Service Logs ──────────────────────────────────────────────────────────
   const ServiceLogs = {
     create:   (data)           => request('POST',  '/servicelogs', data),
@@ -270,5 +285,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
+  return { Users, Events, Registrations, CheckIn, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();

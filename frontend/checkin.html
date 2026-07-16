@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Check in — Arkansas Serve</title>
+  <meta name="description" content="Check in to your volunteer event on Arkansas Serve.">
+  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+</head>
+<body>
+
+<div id="app-header"></div>
+
+<div class="container" style="max-width:520px;">
+  <div id="checkin-loading" class="loading-state"><div class="spinner"></div><p>Checking you in…</p></div>
+
+  <div id="checkin-result" class="card" style="display:none;text-align:center;"></div>
+
+  <!-- Manual code entry: shown when the link carried no code, or the student needs to retry. -->
+  <div id="checkin-manual" class="card" style="display:none;">
+    <div class="modal-title" style="margin-bottom:.25rem;">Enter the check-in code</div>
+    <p style="color:var(--gray-600);font-size:.9rem;margin-bottom:.75rem;">
+      Ask an event admin for the code shown at the event, then enter it below.
+    </p>
+    <div class="form-group" style="margin-bottom:0;">
+      <input id="checkin-code" type="text" inputmode="text" autocomplete="off"
+             autocapitalize="characters" placeholder="e.g. K7QP2M9RT4" style="text-transform:uppercase;letter-spacing:.08em;">
+    </div>
+    <div id="checkin-manual-error" class="alert alert-error" style="display:none;margin-top:.75rem;"></div>
+    <div style="margin-top:1rem;">
+      <button id="checkin-submit" class="btn btn-primary" style="width:100%;">Check in</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/vendor/msal-browser.min.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/scope.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/pages/checkin.js"></script>
+</body>
+</html>
