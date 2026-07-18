@@ -171,6 +171,39 @@
   document.getElementById('evt-add-shift').addEventListener('click', () => buildShiftRow());
   document.getElementById('evt-add-question').addEventListener('click', () => buildQuestionRow());
 
+  // ── ZIP → city/county auto-fill (#16) ──────────────────────────────────────
+  function setZipHint(msg, kind) {
+    const el = document.getElementById('evt-zip-hint');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.display = msg ? 'block' : 'none';
+    el.style.color = kind === 'error' ? 'var(--danger, #b91c1c)' : 'var(--gray-600)';
+  }
+
+  // Guards against a slow earlier lookup landing after a newer one (out-of-order responses).
+  let zipLookupSeq = 0;
+  async function autofillFromZip() {
+    const zip5 = (document.getElementById('evt-zip').value || '').replace(/\D/g, '').slice(0, 5);
+    if (zip5.length !== 5) { setZipHint(''); return; }
+    const seq = ++zipLookupSeq;
+    setZipHint('Looking up ZIP…');
+    try {
+      const r = await Api.Geo.lookupZip(zip5);
+      if (seq !== zipLookupSeq) return;
+      document.getElementById('evt-city').value   = r.city;
+      document.getElementById('evt-county').value = r.county;
+      setZipHint(`Auto-filled ${r.city}, ${r.county} County. Edit if the venue differs.`);
+    } catch {
+      if (seq !== zipLookupSeq) return;
+      // Leave any city/county the admin already typed; just tell them it wasn't recognised.
+      setZipHint('ZIP not in the Arkansas list — enter city and county by hand.', 'error');
+    }
+  }
+  document.getElementById('evt-zip').addEventListener('change', autofillFromZip);
+  document.getElementById('evt-zip').addEventListener('input', (e) => {
+    if ((e.target.value || '').replace(/\D/g, '').length === 5) autofillFromZip();
+  });
+
   function openEventModal(evt = null) {
     document.getElementById('event-modal-title').textContent = evt ? 'Edit Event' : 'New Event';
     document.getElementById('edit-event-id').value   = evt?.id || '';
@@ -180,6 +213,10 @@
     document.getElementById('evt-start').value       = evt?.startDateTime?.slice(0,16) || '';
     document.getElementById('evt-end').value         = evt?.endDateTime?.slice(0,16) || '';
     document.getElementById('evt-location').value    = evt?.location || '';
+    document.getElementById('evt-zip').value          = evt?.zip || '';
+    document.getElementById('evt-city').value         = evt?.city || '';
+    document.getElementById('evt-county').value       = evt?.county || '';
+    setZipHint('');
     document.getElementById('evt-hours').value       = evt?.hoursValue ?? 2;
     document.getElementById('evt-slots').value       = evt?.maxSlots ?? 0;
     document.getElementById('evt-category').value    = evt?.category || '';
@@ -399,6 +436,9 @@
       startDateTime: new Date(document.getElementById('evt-start').value).toISOString(),
       endDateTime:   new Date(document.getElementById('evt-end').value).toISOString(),
       location:      document.getElementById('evt-location').value,
+      zip:           document.getElementById('evt-zip').value.replace(/\D/g, '').slice(0, 5) || null,
+      city:          document.getElementById('evt-city').value.trim() || null,
+      county:        document.getElementById('evt-county').value.trim() || null,
       hoursValue:    Number(document.getElementById('evt-hours').value),
       maxSlots:      Number(document.getElementById('evt-slots').value),
       category:      document.getElementById('evt-category').value,

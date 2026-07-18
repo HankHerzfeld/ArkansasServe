@@ -94,6 +94,18 @@
         const tag = document.getElementById('filter-tag').value;
         if (tag && !(evt.tags || []).includes(tag)) return false;
 
+        // ZIP / town / county (#16). Structured fields, so these only match events created
+        // (or edited) since #16 shipped; older events fall to the free-text search over
+        // `location`. ZIP is a prefix match; town/county are case-insensitive substrings.
+        const zip = document.getElementById('filter-zip').value.replace(/\D/g, '').slice(0, 5);
+        if (zip && !(evt.zip || '').startsWith(zip)) return false;
+
+        const town = document.getElementById('filter-town').value.trim().toLowerCase();
+        if (town && !(evt.city || '').toLowerCase().includes(town)) return false;
+
+        const county = document.getElementById('filter-county').value.trim().toLowerCase();
+        if (county && !(evt.county || '').toLowerCase().includes(county)) return false;
+
         if (document.getElementById('filter-open-only').checked && !hasSpotsLeft(evt)) return false;
 
         // Inclusive on both ends: "From 1 Mar / To 1 Mar" means events ON 1 March.
@@ -262,6 +274,7 @@
   // Free text goes to DataTables' search; the rest are read by the rowFilter on draw,
   // so they only need to trigger one.
   ['filter-search', 'filter-category', 'filter-tag',
+   'filter-zip', 'filter-town', 'filter-county',
    'filter-date-from', 'filter-date-to', 'filter-open-only'].forEach(id => {
     const el = document.getElementById(id);
     // 'input' doesn't fire for a checkbox in every browser; 'change' covers both, and
@@ -276,6 +289,9 @@
     document.getElementById('filter-search').value = '';
     document.getElementById('filter-category').value = '';
     document.getElementById('filter-tag').value = '';
+    document.getElementById('filter-zip').value = '';
+    document.getElementById('filter-town').value = '';
+    document.getElementById('filter-county').value = '';
     document.getElementById('filter-date-from').value = '';
     document.getElementById('filter-date-to').value = '';
     document.getElementById('filter-open-only').checked = false;

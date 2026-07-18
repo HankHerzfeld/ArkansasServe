@@ -34,6 +34,7 @@ var host = new HostBuilder()
         services.AddSingleton<BlobService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<CrawlerService>();
+        services.AddSingleton<ZipLookup>();
 
         services.AddSingleton(_ => new AuthConfig
         {

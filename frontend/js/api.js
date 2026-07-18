@@ -138,6 +138,13 @@ const Api = (() => {
     walkIn:   (eventId, data)  => request('POST', `/events/${encodeURIComponent(eventId)}/checkin/walkin`, data),
   };
 
+  // ── Geo (#16) ─────────────────────────────────────────────────────────────
+  const Geo = {
+    // Resolve an AR ZIP to { zip, city, county, latitude, longitude }. Rejects on an
+    // unknown/out-of-state ZIP (backend 404) so the caller can fall back to manual entry.
+    lookupZip: (zip) => request('GET', `/geo/zip/${encodeURIComponent(String(zip).trim())}`),
+  };
+
   // ── Service Logs ──────────────────────────────────────────────────────────
   const ServiceLogs = {
     create:   (data)           => request('POST',  '/servicelogs', data),
@@ -285,5 +292,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, CheckIn, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
+  return { Users, Events, Registrations, CheckIn, Geo, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();
