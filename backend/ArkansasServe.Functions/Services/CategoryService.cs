@@ -138,6 +138,21 @@ public class CategoryService(CosmosService cosmos)
 			Resolve(vocab, prop.Label, CategoryProposalStatus.ApprovedAlias, target, byUserId);
 		});
 
+	/// <summary>
+	/// Removes a label from the vocabulary entirely (#10② admin cleanup): its approved-new entry,
+	/// any alias keyed on it, and its proposal records. Use to undo a mistaken approval or scrub a
+	/// test value. Destructive: an org/event still storing the label will fall back to "Other",
+	/// since the value is no longer known — so only scrub a label nothing real relies on.
+	/// </summary>
+	public Task<CategoryVocabulary> ScrubLabelAsync(string label) =>
+		MutateReturningAsync(vocab =>
+		{
+			vocab.ApprovedNew.RemoveAll(x => Same(x, label));
+			foreach (var key in vocab.Aliases.Keys.Where(k => Same(k, label)).ToList())
+				vocab.Aliases.Remove(key);
+			vocab.Proposals.RemoveAll(p => Same(p.Label, label));
+		});
+
 	/// <summary>Reject a pending proposal. The label stops being offered; the org shows "Other".</summary>
 	public Task<CategoryVocabulary> RejectAsync(string label, string byUserId) =>
 		MutateReturningAsync(vocab =>

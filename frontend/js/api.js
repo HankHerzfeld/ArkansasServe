@@ -148,6 +148,8 @@ const Api = (() => {
     list:    ()     => request('GET',  '/manage/backend/category-proposals'),
     // data: { label, action: 'approveNew'|'approveAlias'|'reject', canonical? }
     resolve: (data) => request('POST', '/manage/backend/category-proposals/resolve', data),
+    // Remove a label from the vocabulary entirely (approved-new, alias, and proposal records).
+    scrub:   (label) => request('POST', '/manage/backend/categories/scrub', { label }),
   };
 
   // ── Admin oversight / assignments (#13) ───────────────────────────────────
