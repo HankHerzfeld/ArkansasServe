@@ -73,6 +73,16 @@
         Only with spots left
       </label>
 
+      <input type="search" id="filter-zip" inputmode="numeric" maxlength="5" placeholder="ZIP"
+        aria-label="Filter events by ZIP code"
+        style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;width:5.5rem;">
+      <input type="search" id="filter-town" placeholder="Town"
+        aria-label="Filter events by town"
+        style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;width:8rem;">
+      <input type="search" id="filter-county" placeholder="County"
+        aria-label="Filter events by county"
+        style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);font-size:.9rem;width:8rem;">
+
       <button class="btn btn-secondary btn-sm" id="filter-clear" type="button">Clear</button>
       <span id="filter-count" style="font-size:.8rem;color:var(--gray-600);margin-left:auto;"></span>
     </div>

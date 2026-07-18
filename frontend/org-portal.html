@@ -61,6 +61,21 @@
       <label>Location *</label>
       <input type="text" id="evt-location" placeholder="123 Main St, Little Rock, AR">
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1.4fr 1.4fr;gap:1rem;">
+      <div class="form-group">
+        <label for="evt-zip">ZIP</label>
+        <input type="text" id="evt-zip" inputmode="numeric" maxlength="10" placeholder="72201">
+      </div>
+      <div class="form-group">
+        <label for="evt-city">City</label>
+        <input type="text" id="evt-city" placeholder="Little Rock">
+      </div>
+      <div class="form-group">
+        <label for="evt-county">County</label>
+        <input type="text" id="evt-county" placeholder="Pulaski">
+      </div>
+    </div>
+    <div id="evt-zip-hint" style="display:none;font-size:.8rem;margin-top:-.5rem;margin-bottom:.75rem;"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
       <div class="form-group">
         <label>Hours Credit</label>

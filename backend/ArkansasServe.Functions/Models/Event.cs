@@ -19,6 +19,28 @@ public class Event : CosmosDocument
 	[JsonPropertyName("location")]
 	public string Location { get; set; } = string.Empty;
 
+	// ── Structured address (#16) ────────────────────────────────────────────────
+	// The free-text `location` above stays the display string and the back-compat field;
+	// these carry the parts that ZIP/town/county SEARCH needs. Forward-only: events created
+	// before #16 leave these null and match only the text search until they are edited. On
+	// create/update, a recognised AR `zip` auto-fills city/county/coords via ZipLookup unless
+	// the caller supplied its own — see EventFunctions. Coordinates are here now (at no extra
+	// cost) to pre-seed the #17 auto-populate and #18 search map.
+	[JsonPropertyName("zip")]
+	public string? Zip { get; set; }
+
+	[JsonPropertyName("city")]
+	public string? City { get; set; }
+
+	[JsonPropertyName("county")]
+	public string? County { get; set; }
+
+	[JsonPropertyName("latitude")]
+	public double? Latitude { get; set; }
+
+	[JsonPropertyName("longitude")]
+	public double? Longitude { get; set; }
+
 	[JsonPropertyName("startDateTime")]
 	public DateTime StartDateTime { get; set; }
 

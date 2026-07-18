@@ -11,8 +11,31 @@ using Microsoft.Extensions.Logging;
 
 namespace ArkansasServe.Functions.Functions;
 
-public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig authConfig, ILogger<EventFunctions> logger)
+public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zips, AuthConfig authConfig, ILogger<EventFunctions> logger)
 {
+	/// <summary>
+	/// Fills the structured-address parts from a recognised AR ZIP (#16). Coordinates are the
+	/// ZIP centroid and are authoritative, so they are always (re)stamped from the lookup;
+	/// city and county are only filled when the caller left them blank, so a deliberate
+	/// correction ("the venue is really in the next town") is preserved. An unknown or
+	/// out-of-state ZIP is left exactly as sent — manual entry still works.
+	/// </summary>
+	private void ApplyZipAutofill(Event e)
+	{
+		if (string.IsNullOrWhiteSpace(e.Zip)) return;
+		var zip = e.Zip.Trim();
+		if (zip.Length > 5) zip = zip[..5];
+		e.Zip = zip;
+
+		var info = zips.Lookup(zip);
+		if (info == null) return;
+
+		if (string.IsNullOrWhiteSpace(e.City)) e.City = info.City;
+		if (string.IsNullOrWhiteSpace(e.County)) e.County = info.County;
+		e.Latitude = info.Lat;
+		e.Longitude = info.Lng;
+	}
+
 	[Function("GetEvents")]
 	public async Task<HttpResponseData> GetEvents(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "events")] HttpRequestData req)
@@ -277,6 +300,10 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 			if (org != null) body.OrganizationName = org.Name;
 		}
 
+		// Auto-fill city/county/coords from the ZIP before saving — once, so both the one-off
+		// and every recurring occurrence (which copy these off body) inherit it.
+		ApplyZipAutofill(body);
+
 		// One-off event: unchanged.
 		if (body.Recurrence == null)
 		{
@@ -312,6 +339,11 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 				Title = body.Title,
 				Description = body.Description,
 				Location = body.Location,
+				Zip = body.Zip,
+				City = body.City,
+				County = body.County,
+				Latitude = body.Latitude,
+				Longitude = body.Longitude,
 				StartDateTime = start,
 				EndDateTime = start + duration,
 				SeriesId = seriesId,
@@ -401,6 +433,14 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		existing.Title = body.Title;
 		existing.Description = body.Description;
 		existing.Location = body.Location;
+		existing.Zip = body.Zip;
+		existing.City = body.City;
+		existing.County = body.County;
+		// Coordinates are derived, not sent by the form; ApplyZipAutofill (re)stamps them from
+		// the ZIP below, so carry the prior values forward rather than letting the body null them.
+		existing.Latitude = body.Latitude ?? existing.Latitude;
+		existing.Longitude = body.Longitude ?? existing.Longitude;
+		ApplyZipAutofill(existing);
 		existing.StartDateTime = body.StartDateTime;
 		existing.EndDateTime = body.EndDateTime;
 		existing.MaxSlots = body.MaxSlots;
