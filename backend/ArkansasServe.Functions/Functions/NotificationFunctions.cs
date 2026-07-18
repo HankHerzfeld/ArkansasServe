@@ -117,4 +117,33 @@ public class NotificationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 
 		return await HttpHelper.OkJson(req, updated);
 	}
+
+	// DELETE /api/notifications/{id} — remove one of the caller's own notifications. The userId
+	// partition key is the caller's, so anyone else's id resolves to NotFound.
+	[Function("DeleteNotification")]
+	public async Task<HttpResponseData> Delete(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "notifications/{id}")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var deleted = await cosmos.DeleteNotificationAsync(id, ctx.UserId);
+		if (!deleted) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Notification not found");
+
+		return await HttpHelper.OkJson(req, new { deleted = true, id });
+	}
+
+	// DELETE /api/notifications — clear ALL of the caller's own notifications.
+	[Function("ClearNotifications")]
+	public async Task<HttpResponseData> Clear(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "notifications")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var cleared = await cosmos.DeleteAllNotificationsForUserAsync(ctx.UserId);
+		logger.LogInformation("[Notifications] {User} cleared {Count} notification(s)", ctx.UserId, cleared);
+		return await HttpHelper.OkJson(req, new { cleared });
+	}
 }

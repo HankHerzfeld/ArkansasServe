@@ -230,6 +230,8 @@ const Api = (() => {
     list:     ()   => request('GET',   '/notifications'),
     pane:     ()   => request('GET',   '/notifications/pane'),
     markRead: (id) => request('PATCH', `/notifications/${encodeURIComponent(id)}`, { isRead: true }),
+    delete:   (id) => request('DELETE', `/notifications/${encodeURIComponent(id)}`),
+    clear:    ()   => request('DELETE', '/notifications'),
   };
 
   // ── Role matrix (SuperAdmin) ──────────────────────────────────────────────
