@@ -96,5 +96,29 @@ public class CategoryFunctions(CategoryService categories, CosmosService cosmos,
 		}
 	}
 
+	/// <summary>
+	/// POST /api/manage/backend/categories/scrub  body: { label }
+	/// Removes a label from the vocabulary entirely — its approved-new entry, any alias on it, and
+	/// its proposal records. SuperAdmin cleanup for a mistaken approval or a test value.
+	/// </summary>
+	[Function("ScrubCategory")]
+	public async Task<HttpResponseData> ScrubCategory(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/categories/scrub")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "SuperAdmin only");
+
+		var body = await HttpHelper.ReadBody<ScrubRequest>(req);
+		if (body == null || string.IsNullOrWhiteSpace(body.Label))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "label is required");
+
+		var vocab = await categories.ScrubLabelAsync(body.Label.Trim());
+		logger.LogInformation("[Categories] {Actor} scrubbed label \"{Label}\" from the vocabulary", ctx.UserId, body.Label.Trim());
+		return await HttpHelper.OkJson(req, vocab);
+	}
+
 	private sealed record ResolveRequest(string? Label, string? Action, string? Canonical);
+	private sealed record ScrubRequest(string? Label);
 }
