@@ -138,6 +138,18 @@ const Api = (() => {
     walkIn:   (eventId, data)  => request('POST', `/events/${encodeURIComponent(eventId)}/checkin/walkin`, data),
   };
 
+  // ── Service categories (#10②) ─────────────────────────────────────────────
+  const Categories = {
+    // Effective list + aliases for dropdowns/facets: { canonical, effective, aliases }.
+    list: () => request('GET', '/categories'),
+  };
+  const CategoryProposals = {
+    // SuperAdmin queue: { pending:[...], aliasTargets:[...] }.
+    list:    ()     => request('GET',  '/manage/backend/category-proposals'),
+    // data: { label, action: 'approveNew'|'approveAlias'|'reject', canonical? }
+    resolve: (data) => request('POST', '/manage/backend/category-proposals/resolve', data),
+  };
+
   // ── Geo (#16) ─────────────────────────────────────────────────────────────
   const Geo = {
     // Resolve an AR ZIP to { zip, city, county, latitude, longitude }. Rejects on an
@@ -295,5 +307,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, CheckIn, Geo, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
+  return { Users, Events, Registrations, CheckIn, Categories, CategoryProposals, Geo, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();

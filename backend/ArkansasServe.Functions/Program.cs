@@ -35,6 +35,7 @@ var host = new HostBuilder()
         services.AddSingleton<EmailService>();
         services.AddSingleton<CrawlerService>();
         services.AddSingleton<ZipLookup>();
+        services.AddSingleton<CategoryService>();
 
         services.AddSingleton(_ => new AuthConfig
         {

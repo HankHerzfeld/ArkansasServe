@@ -111,6 +111,8 @@
       await safe(loadDemoUsers);
       await safe(initDbConsole);
       await safe(initCrawler);
+      document.getElementById('category-proposals-card').style.display = 'block';
+      await safe(loadCategoryProposals);
     }
 
     // The shared scope switcher chooses which org's settings/groups/users to
@@ -173,6 +175,21 @@
     document.getElementById('tenant-allow-self-join').checked = tenant.allowSelfJoin !== false;
     document.getElementById('tenant-description').value   = tenant.description || '';
     document.getElementById('tenant-mission').value       = tenant.mission || '';
+
+    // Service category (#10②): Organizations only. Effective list; "Other" opens the propose
+    // input; a still-pending stored value selects Other and pre-fills it.
+    const isOrg = String(tenant.type || '').trim().toLowerCase() === 'organization';
+    document.getElementById('tenant-service-category-wrap').style.display = isOrg ? '' : 'none';
+    if (isOrg) {
+      const scSel = document.getElementById('tenant-service-category');
+      const scInput = document.getElementById('tenant-service-category-propose');
+      Categories.fillSelect(scSel, tenant.serviceCategory || '', 'No category').then(() => {
+        Categories.wirePropose(scSel, scInput, {
+          hintEl: document.getElementById('tenant-service-category-hint'),
+          pendingValue: tenant.serviceCategory,
+        });
+      });
+    }
     document.getElementById('tenant-website').value       = tenant.website || '';
     document.getElementById('tenant-logo').value          = tenant.logoUrl || '';
     document.getElementById('tenant-logo-blob').value     = tenant.logoBlobName || '';
@@ -482,6 +499,101 @@
       document.getElementById(id).addEventListener('input', applyVolunteerFilters));
   })();
 
+  // ── Category proposal queue (#10②, SuperAdmin) ──────────────────────────────
+  async function loadCategoryProposals() {
+    const card = document.getElementById('category-proposals-card');
+    if (!card || card.style.display === 'none') return;
+    const loading = document.getElementById('proposals-loading');
+    const list = document.getElementById('proposals-list');
+    const empty = document.getElementById('proposals-empty');
+    loading.style.display = 'block'; list.style.display = 'none'; empty.style.display = 'none';
+    try {
+      const res = await Api.CategoryProposals.list();
+      renderCategoryProposals(res.pending || [], res.aliasTargets || []);
+    } catch {
+      loading.style.display = 'none';
+      empty.textContent = 'Could not load proposals.';
+      empty.style.display = 'block';
+    }
+  }
+
+  function renderCategoryProposals(pending, aliasTargets) {
+    document.getElementById('proposals-loading').style.display = 'none';
+    const list = document.getElementById('proposals-list');
+    const empty = document.getElementById('proposals-empty');
+    list.innerHTML = '';
+    if (!pending.length) {
+      empty.textContent = 'No pending category proposals.';
+      empty.style.display = 'block'; list.style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none'; list.style.display = 'flex';
+
+    pending.forEach(p => {
+      const row = document.createElement('div');
+      row.style.cssText = 'border:1px solid var(--gray-200);border-radius:var(--radius);padding:.75rem;';
+
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:baseline;';
+      const label = document.createElement('strong'); label.textContent = `“${p.label}”`;
+      const meta = document.createElement('span');
+      meta.style.cssText = 'font-size:.78rem;color:var(--gray-600);';
+      meta.textContent = `from ${p.proposingOrgName || p.proposingOrgId} · ${p.source === 'event' ? 'event' : 'org'}`;
+      head.append(label, meta);
+      row.appendChild(head);
+
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.6rem;';
+
+      const newBtn = document.createElement('button');
+      newBtn.className = 'btn btn-primary btn-sm'; newBtn.type = 'button'; newBtn.textContent = 'Approve as new';
+      newBtn.addEventListener('click', () => resolveProposal({ label: p.label, action: 'approveNew' }));
+
+      const aliasSel = document.createElement('select');
+      aliasSel.style.cssText = 'padding:.4rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);';
+      const blank = document.createElement('option'); blank.value = ''; blank.textContent = 'Alias of…'; aliasSel.appendChild(blank);
+      aliasTargets.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; aliasSel.appendChild(o); });
+
+      const aliasBtn = document.createElement('button');
+      aliasBtn.className = 'btn btn-secondary btn-sm'; aliasBtn.type = 'button'; aliasBtn.textContent = 'Approve as alias';
+      aliasBtn.addEventListener('click', () => {
+        if (!aliasSel.value) { flashProposalStatus('Pick a category to alias onto first.', true); return; }
+        resolveProposal({ label: p.label, action: 'approveAlias', canonical: aliasSel.value });
+      });
+
+      const rejectBtn = document.createElement('button');
+      rejectBtn.className = 'btn btn-secondary btn-sm'; rejectBtn.type = 'button'; rejectBtn.textContent = 'Reject';
+      rejectBtn.addEventListener('click', () => resolveProposal({ label: p.label, action: 'reject' }));
+
+      actions.append(newBtn, aliasSel, aliasBtn, rejectBtn);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  async function resolveProposal(data) {
+    try {
+      await Api.CategoryProposals.resolve(data);
+      Categories.refresh(); // approving/aliasing changes the effective list everywhere
+      const verb = data.action === 'reject' ? 'rejected'
+        : (data.action === 'approveAlias' ? `aliased onto “${data.canonical}”` : 'approved as new');
+      flashProposalStatus(`“${data.label}” ${verb}.`, false);
+      await loadCategoryProposals();
+    } catch (err) {
+      flashProposalStatus(err.message || 'Could not resolve the proposal.', true);
+    }
+  }
+
+  function flashProposalStatus(msg, isError) {
+    const s = document.getElementById('proposals-status');
+    s.className = isError ? 'alert alert-error' : 'alert alert-success';
+    s.textContent = msg;
+    s.style.display = 'block';
+    if (!isError) setTimeout(() => { s.style.display = 'none'; }, 4000);
+  }
+
+  document.getElementById('btn-refresh-proposals')?.addEventListener('click', () => loadCategoryProposals());
+
   async function loadDemoUsers() {
     const users = await Api.AdminBackend.demoUsers();
     const table = document.getElementById('demo-users-table');
@@ -583,7 +695,7 @@
     }
     status.textContent = 'Saving...';
     try {
-      const updated = await Api.AdminBackend.updateTenant(state.tenantId, {
+      const payload = {
         name: document.getElementById('tenant-name').value.trim(),
         status: document.getElementById('tenant-status').value,
         rbacEnabled: document.getElementById('tenant-rbac').checked,
@@ -598,7 +710,14 @@
         contactEmail: document.getElementById('tenant-contact-email').value.trim(),
         contactPhone: document.getElementById('tenant-contact-phone').value.trim(),
         address:      document.getElementById('tenant-address').value.trim(),
-      });
+      };
+      // Service category only when the field is shown (Organizations); "Other" + text proposes (#10②).
+      if (document.getElementById('tenant-service-category-wrap').style.display !== 'none') {
+        payload.serviceCategory = Categories.valueFrom(
+          document.getElementById('tenant-service-category'),
+          document.getElementById('tenant-service-category-propose'));
+      }
+      const updated = await Api.AdminBackend.updateTenant(state.tenantId, payload);
       const org = Scope.activeOrg();
       if (org && updated) {
         org.raw = updated;

@@ -45,6 +45,17 @@
       <label for="tenant-mission">Mission</label>
       <textarea id="tenant-mission" placeholder="Your mission statement."></textarea>
     </div>
+    <!-- Service category (#10②): org-admin self-serve, Organizations only. "Other" proposes a
+         new value for SuperAdmin review. -->
+    <div class="form-group" id="tenant-service-category-wrap" style="display:none;">
+      <label for="tenant-service-category">Service category</label>
+      <select id="tenant-service-category"></select>
+      <input type="text" id="tenant-service-category-propose" placeholder="Propose a new category…"
+        maxlength="60" style="display:none;margin-top:.4rem;">
+      <div id="tenant-service-category-hint" style="display:none;font-size:.78rem;color:var(--gray-600);margin-top:.3rem;">
+        New categories are reviewed by a platform admin before they appear in search and filters.
+      </div>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
       <div class="form-group">
         <label for="tenant-website">Website</label>
@@ -303,6 +314,23 @@
     <div id="demo-users-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No demo users found.</div>
   </div>
 
+  <!-- Service-category proposal queue (#10②) -->
+  <div class="card" id="category-proposals-card" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+      <div class="card-title" style="margin:0;">Category Proposals (SuperAdmin Only)</div>
+      <button class="btn btn-secondary btn-sm" id="btn-refresh-proposals" type="button">↻ Refresh</button>
+    </div>
+    <p style="font-size:.85rem;color:var(--gray-600);margin:.4rem 0 1rem;">
+      New service categories orgs have proposed. Approve as a <strong>new</strong> category, or as
+      an <strong>alias</strong> of an existing one to prevent duplicates (e.g. “Food Bank” →
+      “Food &amp; Nutrition”). Rejecting drops it; the org falls back to “Other”.
+    </p>
+    <div id="proposals-status" class="alert alert-success" style="display:none;margin-bottom:.75rem;"></div>
+    <div id="proposals-loading" class="loading-state"><div class="spinner"></div></div>
+    <div id="proposals-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No pending category proposals.</div>
+    <div id="proposals-list" style="display:none;flex-direction:column;gap:.75rem;"></div>
+  </div>
+
   <div class="card" id="crawler-card" style="display:none;">
     <div class="card-title">Event Crawler (SuperAdmin Only)</div>
     <p style="color:var(--gray-600);font-size:.9rem;">
@@ -411,6 +439,7 @@
 <script src="/js/datatables.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/categories.js"></script>
 <script src="/js/scope.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/pages/admin-backend.js"></script>

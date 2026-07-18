@@ -159,7 +159,26 @@ canonical value.
 **Verify.** Propose a category → it shows as pending to the org and is absent from filters →
 SuperAdmin approves-as-alias → the org's org now filters under the canonical value.
 
----
+**Decisions locked 2026-07-18:**
+- **Org admins self-serve the proposal.** Today only SuperAdmins set an org's `serviceCategory`
+  (platform-admin); this adds a `serviceCategory` field with an "Other → propose" path to the
+  **org-admin** settings form (`admin-backend.html`), so an org proposes and a SuperAdmin approves.
+- **Events can also propose inline.** Both the org `serviceCategory` AND the event `category`
+  are proposal entry points, so BOTH must quarantine a pending value from search/filter facets.
+
+**Build notes / findings:**
+- The vocabulary is read from the hardcoded list in **five** places: `ServiceCategories.All`
+  (backend `IsValid`, 4 call sites — EventFunctions, AdminFunctions x2, and the #12 policy) and
+  `Taxonomy.SERVICE_CATEGORIES` (frontend: event-create, events filter, org serviceCategory,
+  #12 grid). #10② adds a `GET /api/categories` returning **canonical + approved-new** (never
+  pending); the frontend dropdowns/facets switch to it. `IsValid` is relaxed to accept a
+  currently-pending value for storage while it stays out of every facet.
+- The org directory (`organizations.js`) has **no** category facet today, so "guard the facet
+  builder" is mainly: don't introduce one that lists pending, and render a proposing org's own
+  category as "Other (pending review)".
+- Recommended storage: a singleton vocabulary doc (approved-new[], aliases{label→canonical},
+  proposals[]) — one cheap read for the effective list; per-proposal org state lives on the
+  proposal entry. Confirm container/shape at build time.
 
 ## #13 — User assignment under an org/EventAdmin  ·  ~1 week  ·  BUILD NOW
 **Model** (`Models/User.cs`, per-org doc): `assignedAdminId?` (the admin who oversees this

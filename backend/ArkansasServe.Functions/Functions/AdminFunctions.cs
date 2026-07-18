@@ -10,9 +10,13 @@ using User = ArkansasServe.Functions.Models.User;
 
 namespace ArkansasServe.Functions.Functions;
 
-public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig authConfig, ILogger<AdminFunctions> logger)
+public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryService categories, AuthConfig authConfig, ILogger<AdminFunctions> logger)
 {
 	private const string RootTenantId = "arkansas-serve-root";
+
+	// A proposed service-category label is a short noun phrase; this only stops an accidental
+	// over-long string from becoming a proposal (#10②).
+	private const int MaxCategoryLabelLength = 60;
 
 	// Demo organizations (#26) — parents for the demo personas. See BuildDemoOrganizations.
 	private const string DemoOrgAlphaId = "demo-org-alpha";
@@ -76,9 +80,11 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		// re-introduces the split casing that already divided live data.
 		body.Type = OrgTypes.Normalize(body.Type);
 
-		if (!ServiceCategories.IsValid(body.ServiceCategory))
-			return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
-				$"\"{body.ServiceCategory}\" is not a service category");
+		// #10②: an unknown service category is no longer rejected — it is stored and recorded as
+		// a pending proposal (below, after creation). Only an over-long label is refused.
+		body.ServiceCategory = string.IsNullOrWhiteSpace(body.ServiceCategory) ? null : body.ServiceCategory.Trim();
+		if (body.ServiceCategory?.Length > MaxCategoryLabelLength)
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"That service-category label is too long (max {MaxCategoryLabelLength} characters).");
 
 		// Same rule as UpdateTenant: only a community organization carries these. Being
 		// model-bound means anything in the body lands on the document unless it is cleared
@@ -89,12 +95,9 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 			body.ServiceCategory = null;
 			body.FaithBased = false;
 		}
-		else if (string.IsNullOrWhiteSpace(body.ServiceCategory))
-		{
-			body.ServiceCategory = null;
-		}
 
 		var created = await cosmos.CreateTenantAsync(body);
+		await categories.RecordProposalIfNewAsync(created.ServiceCategory, created.Id, created.Name, CategoryProposalSources.Org);
 		return await HttpHelper.CreatedJson(req, created);
 	}
 
@@ -440,11 +443,14 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 			byOrg[kv.Key.Trim()] = kv.Value;
 		}
 
+		// Category keys must be REAL categories (canonical or approved-new, #10②) — never a
+		// pending label, which would gate on something no one can pick yet.
+		var effectiveCategories = (await categories.GetEffectiveAsync()).Effective;
 		var byCategory = new Dictionary<string, string>();
 		foreach (var kv in body.ByCategory ?? [])
 		{
 			if (string.IsNullOrWhiteSpace(kv.Key)) continue;
-			if (!ServiceCategories.IsValid(kv.Key))
+			if (!effectiveCategories.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
 				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{kv.Key}\" is not a service category.");
 			if (!ApprovalPolicies.IsValid(kv.Value))
 				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{kv.Value}\" is not a valid policy for category {kv.Key}.");
@@ -512,16 +518,20 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 
 		if (body.ServiceCategory != null)
 		{
-			if (!ServiceCategories.IsValid(body.ServiceCategory))
-				return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
-					$"\"{body.ServiceCategory}\" is not a service category. A controlled list is the whole point of one — propose a new value instead of inventing it here.");
+			var proposed = body.ServiceCategory.Trim();
+			if (proposed.Length > MaxCategoryLabelLength)
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"That service-category label is too long (max {MaxCategoryLabelLength} characters).");
 
 			// Only a community organization has a service category. Silently keeping one on a
 			// school would leave an invisible value that the form never shows and nobody can
 			// clear, which then surfaces in a filter months later.
 			tenant.ServiceCategory = OrgTypes.IsOrganization(tenant.Type)
-				? (body.ServiceCategory.Length == 0 ? null : body.ServiceCategory)
+				? (proposed.Length == 0 ? null : proposed)
 				: null;
+
+			// #10②: an unknown label is recorded as a pending proposal for SuperAdmin review
+			// rather than rejected. Known values / empties are no-ops.
+			await categories.RecordProposalIfNewAsync(tenant.ServiceCategory, tenantId, tenant.Name, CategoryProposalSources.Org);
 		}
 		// Public profile fields — non-null means "set" (empty string clears).
 		if (body.Description != null) tenant.Description = body.Description;

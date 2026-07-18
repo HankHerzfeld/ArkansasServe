@@ -126,6 +126,14 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("approvalPolicy")]
 	public ApprovalPolicy? ApprovalPolicy { get; set; }
 
+	/// <summary>
+	/// Root tenant only (#10②): the stored half of the service-category vocabulary — approved-new
+	/// labels, aliases, and proposals. Null/absent on every other tenant. Kept here so the whole
+	/// vocabulary is one read (the root tenant) with no new container.
+	/// </summary>
+	[JsonPropertyName("categoryVocabulary")]
+	public CategoryVocabulary? CategoryVocabulary { get; set; }
+
 	[JsonPropertyName("eventScopeRules")]
 	public List<EventScopeRule> EventScopeRules { get; set; } = [];
 

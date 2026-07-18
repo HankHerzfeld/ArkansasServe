@@ -87,9 +87,14 @@
       </div>
       <div class="form-group">
         <label>Category</label>
-        <!-- Filled from Taxonomy.SERVICE_CATEGORIES: the SAME vocabulary an org's service
-             category uses, so the two can never drift into rival lists. -->
+        <!-- Filled from the effective vocabulary (canonical + approved-new, #10②) — the SAME
+             list an org's service category uses. Choosing "Other" reveals the propose input. -->
         <select id="evt-category"></select>
+        <input type="text" id="evt-category-propose" placeholder="Propose a new category…"
+          maxlength="60" style="display:none;margin-top:.4rem;">
+        <div id="evt-category-hint" style="display:none;font-size:.78rem;color:var(--gray-600);margin-top:.3rem;">
+          New categories are reviewed by an admin before they appear in search.
+        </div>
       </div>
     </div>
     <div class="form-group">
@@ -227,6 +232,7 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/categories.js"></script>
 <script src="/js/taxonomy.js"></script>
 <script src="/js/scope.js"></script>
 <script src="/js/ui.js"></script>

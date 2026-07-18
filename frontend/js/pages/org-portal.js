@@ -247,11 +247,16 @@
     document.getElementById('evt-questions').innerHTML = '';
     (evt?.signupQuestions || []).forEach(buildQuestionRow);
 
-    // Categories come from the shared vocabulary — the same list an org's service category
-    // uses. Filled here rather than hardcoded in the HTML, which is how three copies of this
-    // list drifted apart in the first place.
-    Taxonomy.fillSelect(document.getElementById('evt-category'),
-      Taxonomy.SERVICE_CATEGORIES, evt?.category || '');
+    // Categories come from the effective vocabulary (canonical + approved-new, #10②). A stored
+    // value that is still a pending proposal selects "Other" and pre-fills the propose input.
+    const catSel = document.getElementById('evt-category');
+    const catInput = document.getElementById('evt-category-propose');
+    Categories.fillSelect(catSel, evt?.category || '', 'Select…').then(() => {
+      Categories.wirePropose(catSel, catInput, {
+        hintEl: document.getElementById('evt-category-hint'),
+        pendingValue: evt?.category,
+      });
+    });
 
     // Recurrence is a create-time choice only. An occurrence is an ordinary event once it
     // exists, and editing one never re-expands its series (decided), so offering these
@@ -441,7 +446,7 @@
       county:        document.getElementById('evt-county').value.trim() || null,
       hoursValue:    Number(document.getElementById('evt-hours').value),
       maxSlots:      Number(document.getElementById('evt-slots').value),
-      category:      document.getElementById('evt-category').value,
+      category:      Categories.valueFrom(document.getElementById('evt-category'), document.getElementById('evt-category-propose')),
       tags:          document.getElementById('evt-tags').value.split(',').map(s => s.trim()).filter(Boolean),
       requirements:  document.getElementById('evt-requirements').value.trim() || null,
       externalUrl:   document.getElementById('evt-external-url').value.trim() || null,
