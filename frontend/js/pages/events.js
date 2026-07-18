@@ -5,15 +5,15 @@
   let pendingEventId = null;
   let pendingOrgId   = null;
 
-  Auth.requireAuth().then((p) => {
+  Auth.requireAuth().then(async (p) => {
     profile = p;
     if (!profile) return;
     UI.setupHeader('/events.html');
-    // The filter list is filled from the shared vocabulary rather than hardcoded, so it can
-    // never offer a category that events cannot be created with — a filter that matches
-    // nothing looks like broken search, not a stale list.
-    Taxonomy.fillSelect(document.getElementById('filter-category'),
-      Taxonomy.SERVICE_CATEGORIES, '', 'All categories');
+    // The filter list is the EFFECTIVE vocabulary (canonical + approved-new, #10②), fetched so
+    // it can never offer a category events can't be created with — and never a pending one.
+    // Loaded before rendering so the rowFilter/badges can resolve aliases.
+    await Categories.load().catch(() => {});
+    Categories.fillSelect(document.getElementById('filter-category'), '', 'All categories');
     loadEvents();
   });
 
@@ -88,8 +88,10 @@
         const evt = allEvents[dataIndex];
         if (!evt) return true;
 
+        // Resolve the event's stored value (an alias -> its canonical) before matching, so an
+        // aliased category filters under the canonical the dropdown offers. Pending -> null -> excluded.
         const category = document.getElementById('filter-category').value;
-        if (category && evt.category !== category) return false;
+        if (category && Categories.resolve(evt.category) !== category) return false;
 
         const tag = document.getElementById('filter-tag').value;
         if (tag && !(evt.tags || []).includes(tag)) return false;
@@ -221,7 +223,9 @@
 
       const badge = document.createElement('span');
       badge.className = 'event-badge';
-      badge.textContent = evt.category || 'Volunteer';
+      // Public card: show the resolved canonical (aliases fold in); a pending label stays hidden
+      // behind the neutral "Volunteer" until it is approved.
+      badge.textContent = Categories.resolve(evt.category) || 'Volunteer';
       card.appendChild(badge);
 
       const title = document.createElement('a');

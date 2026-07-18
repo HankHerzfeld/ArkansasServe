@@ -46,6 +46,7 @@
       const [policy, orgs] = await Promise.all([
         Api.AdminBackend.approvalPolicy(schoolId),
         orgDirectory.length ? Promise.resolve(orgDirectory) : Api.Orgs.browse().catch(() => []),
+        Categories.load().catch(() => {}), // effective list for the by-category grid (#10②)
       ]);
       orgDirectory = orgs || [];
       policyState = {
@@ -67,7 +68,8 @@
 
     const catWrap = document.getElementById('policy-categories');
     catWrap.innerHTML = '';
-    Taxonomy.SERVICE_CATEGORIES.forEach(cat => {
+    // Effective list (canonical + approved-new, #10②), not the hardcoded one.
+    (Categories.list().length ? Categories.list() : Taxonomy.SERVICE_CATEGORIES).forEach(cat => {
       const label = document.createElement('div');
       label.textContent = cat;
       label.style.fontSize = '.88rem';

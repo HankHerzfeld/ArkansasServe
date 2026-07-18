@@ -11,8 +11,12 @@ using Microsoft.Extensions.Logging;
 
 namespace ArkansasServe.Functions.Functions;
 
-public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zips, AuthConfig authConfig, ILogger<EventFunctions> logger)
+public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zips, CategoryService categories, AuthConfig authConfig, ILogger<EventFunctions> logger)
 {
+	// Longest a proposed category label may be. A category is a short noun phrase; this only
+	// stops an accidental paragraph from becoming a "proposal".
+	private const int MaxCategoryLabelLength = 60;
+
 	/// <summary>
 	/// Fills the structured-address parts from a recognised AR ZIP (#16). Coordinates are the
 	/// ZIP centroid and are authoritative, so they are always (re)stamped from the lookup;
@@ -270,11 +274,13 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		if (string.IsNullOrWhiteSpace(body.Title) || body.StartDateTime == default)
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Title and StartDateTime are required");
 
-		// An event's category is drawn from the SAME vocabulary as an org's service category
-		// (ServiceCategories). Validated rather than trusted, so the one list stays one list —
-		// an unvalidated free string is how "Food Bank" and "food bank" become two filters.
-		if (!ServiceCategories.IsValid(body.Category))
-			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{body.Category}\" is not a service category");
+		// An event's category is drawn from the SAME vocabulary as an org's service category.
+		// #10②: an unknown label is no longer rejected — it becomes a PENDING proposal (recorded
+		// below, once the org is known) and is quarantined from every facet until a SuperAdmin
+		// approves it. Only obvious garbage (an over-long string) is refused here.
+		body.Category = string.IsNullOrWhiteSpace(body.Category) ? null : body.Category.Trim();
+		if (body.Category?.Length > MaxCategoryLabelLength)
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"That category label is too long (max {MaxCategoryLabelLength} characters).");
 
 		// Per-org: authorize by the caller's membership IN THE TARGET ORG (or global
 		// super), not their token level — a membership-based admin/super carries no
@@ -299,6 +305,10 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 			var org = await cosmos.GetTenantAsync(orgId);
 			if (org != null) body.OrganizationName = org.Name;
 		}
+
+		// #10②: if the category is a brand-new label, record it as a pending proposal for a
+		// SuperAdmin to approve (as new or as an alias). Known values and empties are no-ops.
+		await categories.RecordProposalIfNewAsync(body.Category, orgId, body.OrganizationName, CategoryProposalSources.Event);
 
 		// Auto-fill city/county/coords from the ZIP before saving — once, so both the one-off
 		// and every recurring occurrence (which copy these off body) inherit it.
@@ -448,7 +458,12 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		existing.EligibleSchoolIds = body.EligibleSchoolIds;
 		existing.PhotoBlobName = body.PhotoBlobName;
 		existing.PhotoUrl = body.PhotoUrl;
-		existing.Category = body.Category;
+		// #10②: same treatment as create — an unknown label is stored and proposed, not rejected.
+		var newCategory = string.IsNullOrWhiteSpace(body.Category) ? null : body.Category.Trim();
+		if (newCategory?.Length > MaxCategoryLabelLength)
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"That category label is too long (max {MaxCategoryLabelLength} characters).");
+		existing.Category = newCategory;
+		await categories.RecordProposalIfNewAsync(newCategory, existing.OrganizationId, existing.OrganizationName, CategoryProposalSources.Event);
 		existing.Tags = body.Tags ?? [];
 		existing.Requirements = body.Requirements;
 		existing.ExternalUrl = body.ExternalUrl;

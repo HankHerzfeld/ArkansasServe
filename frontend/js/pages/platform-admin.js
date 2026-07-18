@@ -117,8 +117,16 @@
     // "organization" and "Organization", and a strict match would show an existing org's type
     // as blank — i.e. the form appearing to lose the answer.
     Taxonomy.fillSelect(document.getElementById('tenant-type'), Taxonomy.ORG_TYPES, tenant?.type || '');
-    Taxonomy.fillSelect(document.getElementById('tenant-service-category'),
-      Taxonomy.SERVICE_CATEGORIES, tenant?.serviceCategory || '', 'No category');
+    // Effective vocabulary (canonical + approved-new, #10②); "Other" opens a propose input, and
+    // a still-pending stored value selects Other and pre-fills it.
+    const scSel = document.getElementById('tenant-service-category');
+    const scInput = document.getElementById('tenant-service-category-propose');
+    Categories.fillSelect(scSel, tenant?.serviceCategory || '', 'No category').then(() => {
+      Categories.wirePropose(scSel, scInput, {
+        hintEl: document.getElementById('tenant-service-category-hint'),
+        pendingValue: tenant?.serviceCategory,
+      });
+    });
     document.getElementById('tenant-faith-based').checked = !!tenant?.faithBased;
     syncTenantTaxonomyVisibility();
     document.getElementById('tenant-sso').value      = tenant?.ssoDomain || '';
@@ -168,7 +176,7 @@
       // which reads as the form being broken.
       const isOrg = Taxonomy.isOrganization(editingTenantId ? editingTenantType : type);
       const taxonomy = isOrg ? {
-        serviceCategory: document.getElementById('tenant-service-category').value || '',
+        serviceCategory: Categories.valueFrom(document.getElementById('tenant-service-category'), document.getElementById('tenant-service-category-propose')) || '',
         faithBased:      document.getElementById('tenant-faith-based').checked,
       } : {};
 
