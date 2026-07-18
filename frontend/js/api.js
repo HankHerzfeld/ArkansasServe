@@ -150,6 +150,16 @@ const Api = (() => {
     resolve: (data) => request('POST', '/manage/backend/category-proposals/resolve', data),
   };
 
+  // ── Admin oversight / assignments (#13) ───────────────────────────────────
+  const Assignments = {
+    // Volunteers assigned to me in this org, with my per-volunteer notify prefs.
+    mine:     (orgId) => request('GET', `/manage/me/assigned-volunteers?organizationId=${encodeURIComponent(orgId)}`),
+    // Edit MY own notify prefs on one assigned volunteer. data: { notifyOnHours?, notifyOnApproval? }
+    setPrefs: (volunteerId, orgId, data) => request('PATCH', `/manage/me/assignments/${encodeURIComponent(volunteerId)}?organizationId=${encodeURIComponent(orgId)}`, data),
+    // Send a direct in-app message to all my assigned volunteers. data: { organizationId, message }
+    notify:   (data) => request('POST', '/manage/me/assigned-volunteers/notify', data),
+  };
+
   // ── Geo (#16) ─────────────────────────────────────────────────────────────
   const Geo = {
     // Resolve an AR ZIP to { zip, city, county, latitude, longitude }. Rejects on an
@@ -307,5 +317,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, CheckIn, Categories, CategoryProposals, Geo, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
+  return { Users, Events, Registrations, CheckIn, Categories, CategoryProposals, Geo, Assignments, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();

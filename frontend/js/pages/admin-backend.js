@@ -408,6 +408,28 @@
       eventTd.appendChild(eventInput);
       tr.appendChild(eventTd);
 
+      // #13: assign this volunteer to overseeing admins (EventAdmin+ in this org). Prefs are the
+      // assigned admin's own to set, so this only controls membership; the server preserves prefs.
+      const assignTd = document.createElement('td');
+      const assignSelect = document.createElement('select');
+      assignSelect.multiple = true;
+      assignSelect.size = 3;
+      assignSelect.style.minWidth = '150px';
+      const orgAdmins = (state.users || []).filter(u => u.id !== user.id && userRank(u.adminLevel) >= userRank('EventAdmin'));
+      const assignedIds = new Set((user.assignedAdmins || []).map(a => a.adminId));
+      if (!orgAdmins.length) {
+        const o = document.createElement('option'); o.value = ''; o.textContent = '(no admins in org)'; o.disabled = true; assignSelect.appendChild(o);
+      }
+      orgAdmins.forEach(a => {
+        const o = document.createElement('option');
+        o.value = a.id;
+        o.textContent = a.displayName || a.email || a.id;
+        if (assignedIds.has(a.id)) o.selected = true;
+        assignSelect.appendChild(o);
+      });
+      assignTd.appendChild(assignSelect);
+      tr.appendChild(assignTd);
+
       const saveTd = document.createElement('td');
       const saveBtn = document.createElement('button');
       saveBtn.className = 'btn btn-primary btn-sm';
@@ -421,6 +443,7 @@
             organizationId: state.tenantId,
             groupIds: splitCsv(groupInput.value),
             eventAdminEventIds: splitCsv(eventInput.value),
+            assignedAdmins: [...assignSelect.selectedOptions].map(o => o.value).filter(Boolean).map(adminId => ({ adminId })),
           });
           saveBtn.textContent = 'Saved';
           setTimeout(() => { saveBtn.textContent = 'Save'; }, 800);
@@ -450,9 +473,9 @@
         return true;
       },
       dataTables: {
-        // Columns 2–5 hold controls (select, two inputs, Save). Their text is meaningless
-        // to a sort or a search, so DataTables is told to leave them alone.
-        columnDefs: [{ targets: [2, 3, 4, 5], orderable: false, searchable: false }],
+        // Columns 2–6 hold controls (level select, two inputs, assign multi-select, Save).
+        // Their text is meaningless to a sort or a search, so DataTables leaves them alone.
+        columnDefs: [{ targets: [2, 3, 4, 5, 6], orderable: false, searchable: false }],
         order: [[0, 'asc']], // user name
       },
     });
