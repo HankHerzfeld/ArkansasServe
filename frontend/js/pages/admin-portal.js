@@ -9,13 +9,165 @@
     if (!profile) return;
     await UI.setupHeader('/admin-portal.html');
     // Reload when a SuperAdmin switches the active organization.
-    Scope.onChange(() => { loadApprovals(); loadReport(); });
+    Scope.onChange(() => { loadApprovals(); loadReport(); loadApprovalPolicy(); });
     loadApprovals();
     loadReport();
+    loadApprovalPolicy();
   });
 
   // Refresh button (was an inline onclick; moved here so CSP can drop script 'unsafe-inline').
   document.getElementById('btn-refresh-approvals').addEventListener('click', () => loadApprovals());
+
+  // ── Service-hour approval policy (#12) ──────────────────────────────────────
+  // Only Schools/JDCs review hours, so the editor is shown for them (and when the active org's
+  // type is unknown — membership admins carry none — so a school's own admin still sees it),
+  // and hidden for a Community Organization. A GET 403 (not an org admin here) also hides it.
+  let policyState = null;      // { default, byOrg:{orgId:policy}, byCategory:{cat:policy} }
+  let orgDirectory = [];       // [{ id, name }] for naming/picking org rules
+
+  function policyAppliesToActiveOrg() {
+    const type = Scope.activeOrg && Scope.activeOrg()?.raw?.type;
+    return !type || !Taxonomy.isOrganization(type);
+  }
+
+  async function loadApprovalPolicy() {
+    const card = document.getElementById('approval-policy-card');
+    if (!card) return;
+    if (!policyAppliesToActiveOrg()) { card.style.display = 'none'; return; }
+
+    card.style.display = '';
+    const loading = document.getElementById('policy-loading');
+    const bodyEl  = document.getElementById('policy-body');
+    loading.style.display = 'block'; bodyEl.style.display = 'none';
+    document.getElementById('policy-saved').style.display = 'none';
+
+    const schoolId = Scope.activeOrgId;
+    try {
+      const [policy, orgs] = await Promise.all([
+        Api.AdminBackend.approvalPolicy(schoolId),
+        orgDirectory.length ? Promise.resolve(orgDirectory) : Api.Orgs.browse().catch(() => []),
+      ]);
+      orgDirectory = orgs || [];
+      policyState = {
+        default: policy?.default || 'approvalRequired',
+        byOrg: { ...(policy?.byOrg || {}) },
+        byCategory: { ...(policy?.byCategory || {}) },
+      };
+      renderPolicyEditor();
+      loading.style.display = 'none';
+      bodyEl.style.display = 'block';
+    } catch {
+      // Not an admin of this org (403), or load failed — hide rather than show a broken editor.
+      card.style.display = 'none';
+    }
+  }
+
+  function renderPolicyEditor() {
+    document.getElementById('policy-default').value = policyState.default;
+
+    const catWrap = document.getElementById('policy-categories');
+    catWrap.innerHTML = '';
+    Taxonomy.SERVICE_CATEGORIES.forEach(cat => {
+      const label = document.createElement('div');
+      label.textContent = cat;
+      label.style.fontSize = '.88rem';
+      const sel = document.createElement('select');
+      sel.dataset.cat = cat;
+      sel.style.cssText = 'padding:.35rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);';
+      [['', 'Use default'], ['preapproved', 'Preapproved'], ['approvalRequired', 'Approval required']]
+        .forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o); });
+      sel.value = policyState.byCategory[cat] || '';
+      catWrap.appendChild(label);
+      catWrap.appendChild(sel);
+    });
+
+    renderOrgRules();
+    renderOrgPicker();
+  }
+
+  function orgName(id) { return (orgDirectory.find(o => o.id === id)?.name) || id; }
+
+  function renderOrgRules() {
+    const wrap = document.getElementById('policy-org-rules');
+    wrap.innerHTML = '';
+    const entries = Object.entries(policyState.byOrg);
+    if (!entries.length) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'font-size:.82rem;color:var(--gray-600);';
+      empty.textContent = 'No organization-specific rules yet.';
+      wrap.appendChild(empty);
+      return;
+    }
+    entries.forEach(([orgId, pol]) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+      const name = document.createElement('span');
+      name.style.cssText = 'flex:1;font-size:.88rem;';
+      name.textContent = orgName(orgId);
+      const badge = document.createElement('span');
+      badge.style.cssText = 'font-size:.78rem;padding:.15rem .5rem;border-radius:999px;background:var(--gray-100);color:var(--gray-700);white-space:nowrap;';
+      badge.textContent = pol === 'preapproved' ? 'Preapproved' : 'Approval required';
+      const rm = document.createElement('button');
+      rm.className = 'btn btn-secondary btn-sm';
+      rm.type = 'button';
+      rm.textContent = 'Remove';
+      rm.addEventListener('click', () => { delete policyState.byOrg[orgId]; renderOrgRules(); renderOrgPicker(); });
+      row.append(name, badge, rm);
+      wrap.appendChild(row);
+    });
+  }
+
+  function renderOrgPicker() {
+    const pick = document.getElementById('policy-org-pick');
+    pick.innerHTML = '';
+    const used = new Set(Object.keys(policyState.byOrg));
+    const avail = orgDirectory.filter(o => !used.has(o.id) && o.id !== Scope.activeOrgId);
+    if (!avail.length) {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = 'No more organizations';
+      pick.appendChild(o);
+      return;
+    }
+    const blank = document.createElement('option');
+    blank.value = ''; blank.textContent = 'Choose an organization…';
+    pick.appendChild(blank);
+    avail.forEach(o => { const opt = document.createElement('option'); opt.value = o.id; opt.textContent = o.name || o.id; pick.appendChild(opt); });
+  }
+
+  document.getElementById('policy-org-add')?.addEventListener('click', () => {
+    if (!policyState) return;
+    const id = document.getElementById('policy-org-pick').value;
+    const pol = document.getElementById('policy-org-policy').value;
+    if (!id) return;
+    policyState.byOrg[id] = pol;
+    renderOrgRules();
+    renderOrgPicker();
+  });
+
+  document.getElementById('policy-save')?.addEventListener('click', async () => {
+    if (!policyState) return;
+    const note = document.getElementById('policy-saved');
+    const byCategory = {};
+    document.querySelectorAll('#policy-categories select').forEach(sel => { if (sel.value) byCategory[sel.dataset.cat] = sel.value; });
+    const payload = { default: document.getElementById('policy-default').value, byOrg: policyState.byOrg, byCategory };
+
+    const btn = document.getElementById('policy-save');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const saved = await Api.AdminBackend.setApprovalPolicy(Scope.activeOrgId, payload);
+      policyState = { default: saved.default, byOrg: { ...(saved.byOrg || {}) }, byCategory: { ...(saved.byCategory || {}) } };
+      note.className = 'alert alert-success';
+      note.textContent = 'Approval policy saved.';
+      note.style.display = 'block';
+      setTimeout(() => { note.style.display = 'none'; }, 4000);
+    } catch (err) {
+      note.className = 'alert alert-error';
+      note.textContent = err.message || 'Could not save the policy.';
+      note.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save policy';
+    }
+  });
 
   async function loadApprovals() {
     document.getElementById('approvals-loading').style.display = 'block';

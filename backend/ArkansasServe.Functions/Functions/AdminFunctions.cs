@@ -393,6 +393,74 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, AuthConfig a
 		return await HttpHelper.OkJson(req, updated.UserTags);
 	}
 
+	// ── School/JDC event-approval policy (#12) ──────────────────────────────────
+	// Whether a student's logged hours auto-count or need review, by org and/or category.
+	// OrganizationAdmin+ in the school (or a global super) manages it, like the tag endpoints.
+
+	[Function("GetTenantApprovalPolicy")]
+	public async Task<HttpResponseData> GetTenantApprovalPolicy(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/backend/tenants/{tenantId}/approval-policy")] HttpRequestData req,
+		string tenantId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
+
+		var tenant = await cosmos.GetTenantAsync(tenantId);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+
+		// An unconfigured school reads back the defaults, so the editor always has a shape to bind.
+		return await HttpHelper.OkJson(req, tenant.ApprovalPolicy ?? new ApprovalPolicy());
+	}
+
+	[Function("SetTenantApprovalPolicy")]
+	public async Task<HttpResponseData> SetTenantApprovalPolicy(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "manage/backend/tenants/{tenantId}/approval-policy")] HttpRequestData req,
+		string tenantId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await CanManageTenantAsync(ctx, tenantId)) return await Forbid(req);
+
+		var body = await HttpHelper.ReadBody<ApprovalPolicy>(req);
+		if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "A policy body is required");
+
+		// Validate + normalize the whole policy before storing: an invalid value must fail the
+		// request, never land as a silent typo that changes who gets auto-approved.
+		var def = string.IsNullOrWhiteSpace(body.Default) ? ApprovalPolicies.ApprovalRequired : body.Default.Trim();
+		if (!ApprovalPolicies.IsValid(def))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{def}\" is not a valid default. Use approvalRequired or preapproved.");
+
+		var byOrg = new Dictionary<string, string>();
+		foreach (var kv in body.ByOrg ?? [])
+		{
+			if (string.IsNullOrWhiteSpace(kv.Key)) continue;
+			if (!ApprovalPolicies.IsValid(kv.Value))
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{kv.Value}\" is not a valid policy for org {kv.Key}.");
+			byOrg[kv.Key.Trim()] = kv.Value;
+		}
+
+		var byCategory = new Dictionary<string, string>();
+		foreach (var kv in body.ByCategory ?? [])
+		{
+			if (string.IsNullOrWhiteSpace(kv.Key)) continue;
+			if (!ServiceCategories.IsValid(kv.Key))
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{kv.Key}\" is not a service category.");
+			if (!ApprovalPolicies.IsValid(kv.Value))
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"\"{kv.Value}\" is not a valid policy for category {kv.Key}.");
+			byCategory[kv.Key] = kv.Value;
+		}
+
+		var tenant = await cosmos.GetTenantAsync(tenantId);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
+
+		tenant.ApprovalPolicy = new ApprovalPolicy { Default = def, ByOrg = byOrg, ByCategory = byCategory };
+		var updated = await cosmos.UpdateTenantAsync(tenant);
+		logger.LogInformation("[ApprovalPolicy] {Actor} set policy for org {OrgId}: default={Default}, {OrgRules} org rule(s), {CatRules} category rule(s)",
+			ctx.UserId, tenantId, def, byOrg.Count, byCategory.Count);
+		return await HttpHelper.OkJson(req, updated.ApprovalPolicy);
+	}
+
 	[Function("GetOrgLogoUploadToken")]
 	public async Task<HttpResponseData> GetOrgLogoUploadToken(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/tenants/{tenantId}/logo-upload-token")] HttpRequestData req,

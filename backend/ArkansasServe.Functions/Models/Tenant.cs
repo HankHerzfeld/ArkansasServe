@@ -117,6 +117,15 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("groups")]
 	public List<TenantGroup> Groups { get; set; } = [];
 
+	/// <summary>
+	/// School/JDC only (#12): whether a student's logged hours auto-count or need review, keyed
+	/// by the org that ran the event and/or the event's category. Null/absent means the default
+	/// everywhere — <c>approvalRequired</c> — so schools that never configure it keep the pre-#12
+	/// all-reviewed behaviour. Meaningless on a service Organization, which reviews nothing.
+	/// </summary>
+	[JsonPropertyName("approvalPolicy")]
+	public ApprovalPolicy? ApprovalPolicy { get; set; }
+
 	[JsonPropertyName("eventScopeRules")]
 	public List<EventScopeRule> EventScopeRules { get; set; } = [];
 

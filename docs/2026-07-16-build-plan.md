@@ -121,7 +121,20 @@ per-category approval policy.
 **Verify.** Mark an org approval-required for a school; a student at that school logs hours →
 lands in the queue, not auto-counted. Mark preapproved → auto-counts.
 
-**Confirm before building:** default policy for unlisted orgs; key by org, by category, or both.
+**Decisions locked 2026-07-18:**
+- **Default for unlisted orgs → `approvalRequired`.** Preserves today's behavior (every log is
+  Pending + queued until reviewed); nothing auto-counts until a school deliberately preapproves.
+  So #12 ships with zero behavior change until a school configures a policy.
+- **Key by BOTH org and category, most-specific-wins** (org rule > category rule > default).
+  Category-keying is what lets a school blanket "Political Parties & Campaigns" as
+  approval-required without listing every org — the guardrail this feature exists for — while
+  org-keying still preapproves a specific trusted partner.
+
+Notes for the build: the policy lives on the student's **School/JDC** tenant (`ServiceLog.schoolId`),
+not only "school" — JDCs approve their people's hours too. The gate goes in `CreateServiceLog`
+(the event, hence its category, is already loadable there). Forward-only: existing Pending logs
+are untouched. Edge: a student with no `schoolId` has no policy to apply → keep the current
+Pending path.
 
 ---
 

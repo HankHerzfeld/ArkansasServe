@@ -124,6 +124,47 @@
       </div>
     </div>
   </div>
+
+  <!-- Service-hour approval policy (#12) -->
+  <div class="card" id="approval-policy-card" style="margin-top:1.5rem;display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+      <div class="card-title" style="margin:0;">Service-hour approval policy</div>
+      <button class="btn btn-primary btn-sm" id="policy-save" type="button">Save policy</button>
+    </div>
+    <p style="font-size:.85rem;color:var(--gray-600);margin:.4rem 0 1rem;">
+      Decide whose logged hours count automatically and whose need your review. Most-specific wins:
+      a rule for a specific organization beats a category rule, which beats the default.
+    </p>
+    <div id="policy-saved" class="alert alert-success" style="display:none;margin-bottom:1rem;"></div>
+    <div id="policy-loading" class="loading-state"><div class="spinner"></div></div>
+    <div id="policy-body" style="display:none;">
+      <div class="form-group" style="max-width:360px;">
+        <label for="policy-default">Default for unlisted organizations</label>
+        <select id="policy-default">
+          <option value="approvalRequired">Approval required — review each log</option>
+          <option value="preapproved">Preapproved — hours auto-count</option>
+        </select>
+      </div>
+
+      <h3 style="font-size:.95rem;margin:1.25rem 0 .35rem;">By service category</h3>
+      <p style="font-size:.8rem;color:var(--gray-600);margin:0 0 .6rem;">
+        e.g. require review for “Political Parties &amp; Campaigns” without listing every organization.
+      </p>
+      <div id="policy-categories" style="display:grid;grid-template-columns:1fr auto;gap:.4rem .75rem;align-items:center;max-width:540px;"></div>
+
+      <h3 style="font-size:.95rem;margin:1.5rem 0 .35rem;">By organization</h3>
+      <p style="font-size:.8rem;color:var(--gray-600);margin:0 0 .6rem;">Overrides the category and default rules for a specific organization.</p>
+      <div id="policy-org-rules" style="display:flex;flex-direction:column;gap:.4rem;max-width:660px;"></div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.6rem;">
+        <select id="policy-org-pick" style="min-width:220px;padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);"></select>
+        <select id="policy-org-policy" style="padding:.45rem .5rem;border:1px solid var(--gray-400);border-radius:var(--radius);">
+          <option value="preapproved">Preapproved</option>
+          <option value="approvalRequired">Approval required</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="policy-org-add" type="button">Add organization rule</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Review modal -->
@@ -151,6 +192,7 @@
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/scope.js"></script>
+<script src="/js/taxonomy.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/pages/admin-portal.js"></script>
 </body>
