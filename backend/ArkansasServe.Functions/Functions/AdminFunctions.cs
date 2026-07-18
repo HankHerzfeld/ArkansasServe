@@ -242,6 +242,30 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		target.GroupIds = body.GroupIds ?? [];
 		target.EventAdminEventIds = body.EventAdminEventIds ?? [];
 
+		// #13: replace the oversight assignments when supplied (null = leave untouched). The
+		// OrgAdmin sets WHO oversees; each admin's own notification prefs are preserved across a
+		// membership edit (they are the assigned admin's to change, via SetMyAssignmentPrefs).
+		if (body.AssignedAdmins != null)
+		{
+			var priorByAdmin = target.AssignedAdmins.ToDictionary(a => a.AdminId, a => a, StringComparer.OrdinalIgnoreCase);
+			var rebuilt = new List<UserAssignment>();
+			var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			foreach (var a in body.AssignedAdmins)
+			{
+				var adminId = a?.AdminId?.Trim();
+				if (string.IsNullOrWhiteSpace(adminId) || string.Equals(adminId, id, StringComparison.OrdinalIgnoreCase)) continue;
+				if (!seen.Add(adminId)) continue;
+
+				var adminUser = await cosmos.GetUserByIdAsync(adminId, target.TenantId);
+				if (adminUser == null || !AdminLevels.AtLeast(adminUser.AdminLevel, AdminLevels.EventAdmin))
+					return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
+						"Every assigned admin must be an EventAdmin or higher in this organization.");
+
+				rebuilt.Add(priorByAdmin.TryGetValue(adminId, out var prev) ? prev : new UserAssignment { AdminId = adminId });
+			}
+			target.AssignedAdmins = rebuilt;
+		}
+
 		var updated = await cosmos.UpsertUserAsync(target);
 		return await HttpHelper.OkJson(req, updated);
 	}
@@ -741,7 +765,10 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		string AdminLevel,
 		string? OrganizationId,
 		List<string>? GroupIds,
-		List<string>? EventAdminEventIds);
+		List<string>? EventAdminEventIds,
+		// #13: the admins overseeing this volunteer. When present, REPLACES the list (like
+		// GroupIds). Omit (null) to leave assignments untouched — a role edit shouldn't wipe them.
+		List<UserAssignment>? AssignedAdmins);
 
 	private sealed record CreateGroupRequest(string Name, string? Status);
 

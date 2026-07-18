@@ -79,7 +79,51 @@ public class ServiceLogFunctions(CosmosService cosmos, EmailService email, AuthC
 		else
 			await TryCreatePendingApprovalAsync(created);
 
+		// #13: tell the volunteer's assigned admins, each per their own prefs. Best-effort — a
+		// lost notification must never fail the log.
+		try { await NotifyAssignedAdminsAsync(created); }
+		catch (Exception ex) { logger.LogWarning(ex, "Assigned-admin notification failed for service log {ServiceLogId}", created.Id); }
+
 		return await HttpHelper.CreatedJson(req, created);
+	}
+
+	/// <summary>
+	/// Notifies the admins overseeing this volunteer (#13), fanning out over their per-org
+	/// assignments and honouring each admin's own notify-on-hours / notify-on-approval prefs.
+	/// Assignments live on the volunteer's User doc IN THE EVENT'S ORG; an admin who never signs
+	/// in (no externalId) is skipped since notifications are keyed by the recipient's login id.
+	/// </summary>
+	private async Task NotifyAssignedAdminsAsync(ServiceLog log)
+	{
+		var volunteer = await cosmos.GetUserByIdAsync(log.StudentId, log.OrganizationId)
+			?? await cosmos.GetUserByExternalIdAsync(log.StudentId, log.OrganizationId);
+		if (volunteer == null || volunteer.AssignedAdmins.Count == 0) return;
+
+		var needsApproval = string.Equals(log.Status, "Pending", StringComparison.OrdinalIgnoreCase);
+		foreach (var assignment in volunteer.AssignedAdmins)
+		{
+			var admin = await cosmos.GetUserByIdAsync(assignment.AdminId, log.OrganizationId);
+			var recipient = admin?.ExternalId;
+			if (string.IsNullOrWhiteSpace(recipient)) continue;
+
+			if (assignment.NotifyOnHours)
+				await cosmos.CreateNotificationAsync(new Notification
+				{
+					UserId = recipient,
+					Type = "AssignedHoursLogged",
+					Message = $"{log.StudentName} logged {log.HoursLogged}h at {log.OrganizationName} ({log.EventTitle}).",
+					RelatedId = log.Id,
+				});
+
+			if (needsApproval && assignment.NotifyOnApproval)
+				await cosmos.CreateNotificationAsync(new Notification
+				{
+					UserId = recipient,
+					Type = "AssignedApprovalNeeded",
+					Message = $"{log.StudentName}'s {log.HoursLogged}h need approval.",
+					RelatedId = log.Id,
+				});
+		}
 	}
 
 	[Function("ReviewServiceLog")]

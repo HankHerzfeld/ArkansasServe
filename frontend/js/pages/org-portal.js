@@ -9,8 +9,84 @@
     if (!profile) return;
     await UI.setupHeader('/org-portal.html');
     // Reload the event list when a SuperAdmin switches the active organization.
-    Scope.onChange(() => loadOrgEvents());
+    Scope.onChange(() => { loadOrgEvents(); loadMyAssignees(); });
     loadOrgEvents();
+    loadMyAssignees();
+  });
+
+  // ── My assigned volunteers (#13) ────────────────────────────────────────────
+  async function loadMyAssignees() {
+    const card = document.getElementById('assignees-card');
+    if (!card || !Scope.activeOrgId) { if (card) card.style.display = 'none'; return; }
+    try {
+      const list = await Api.Assignments.mine(Scope.activeOrgId);
+      renderAssignees(list || []);
+    } catch {
+      card.style.display = 'none'; // caller isn't an admin in this org, or the load failed
+    }
+  }
+
+  function renderAssignees(list) {
+    const card = document.getElementById('assignees-card');
+    const empty = document.getElementById('assignees-empty');
+    const body = document.getElementById('assignees-body');
+    const tbody = document.getElementById('assignees-tbody');
+    card.style.display = '';
+    tbody.innerHTML = '';
+    if (!list.length) { empty.style.display = 'block'; body.style.display = 'none'; return; }
+    empty.style.display = 'none'; body.style.display = 'block';
+
+    list.forEach(v => {
+      const tr = document.createElement('tr');
+      const name = document.createElement('td'); name.textContent = v.name || v.email || v.id; tr.appendChild(name);
+      const hrs = document.createElement('td'); hrs.textContent = (v.totalApprovedHours ?? 0); tr.appendChild(hrs);
+      tr.appendChild(prefCell(v, 'notifyOnHours'));
+      tr.appendChild(prefCell(v, 'notifyOnApproval'));
+      tbody.appendChild(tr);
+    });
+  }
+
+  function prefCell(v, key) {
+    const td = document.createElement('td');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!v[key];
+    cb.addEventListener('change', async () => {
+      cb.disabled = true;
+      try {
+        await Api.Assignments.setPrefs(v.id, Scope.activeOrgId, { [key]: cb.checked });
+        v[key] = cb.checked;
+      } catch {
+        cb.checked = !cb.checked; // revert on failure
+      } finally {
+        cb.disabled = false;
+      }
+    });
+    td.appendChild(cb);
+    return td;
+  }
+
+  document.getElementById('assignee-send')?.addEventListener('click', async () => {
+    const ta = document.getElementById('assignee-message');
+    const status = document.getElementById('assignee-send-status');
+    const msg = (ta.value || '').trim();
+    if (!msg) return;
+    const btn = document.getElementById('assignee-send');
+    btn.disabled = true;
+    try {
+      const res = await Api.Assignments.notify({ organizationId: Scope.activeOrgId, message: msg });
+      ta.value = '';
+      status.style.color = 'var(--gray-600)';
+      status.textContent = `Sent to ${res.sent} volunteer${res.sent === 1 ? '' : 's'}.`;
+      status.style.display = 'block';
+      setTimeout(() => { status.style.display = 'none'; }, 4000);
+    } catch (err) {
+      status.style.color = 'var(--danger,#b91c1c)';
+      status.textContent = err.message || 'Could not send.';
+      status.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   async function loadOrgEvents() {

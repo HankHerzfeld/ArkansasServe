@@ -197,8 +197,31 @@ volunteers" view for the admin; notification-preference toggles.
 **Verify.** Assign a volunteer; log hours as them → the assigned admin is notified and sees the
 approval; send a direct notification → it lands.
 
-**Confirm before building:** is assignment one-admin-per-volunteer (recommended, simplest) or
-many? Do per-action notification prefs live per-admin or per-assignment?
+**Decisions locked 2026-07-18:**
+- **Many admins per volunteer** (not one). The volunteer's per-org User doc carries a LIST of
+  assignments, not a single `assignedAdminId`.
+- **Per-assignment notification prefs.** Each assignment is an `{ adminId, notifyOnHours,
+  notifyOnApproval }` record (prefs default true) — the assignment list IS the per-assignment
+  pref store. Every routing/filter/comms path fans out over the list.
+
+**Revised design (supersedes the single-field model above):**
+- **Model** (`User.cs`): `assignedAdmins: [{ adminId, notifyOnHours, notifyOnApproval }]` on the
+  per-org doc. Empty/absent = unassigned.
+- **Placement correction:** the assign control belongs in **admin-backend "User Access
+  Management"** (OrganizationAdmin+ reach it via `UpdateUserAccess`), NOT platform-admin's
+  super-only role matrix. `UpdateUserAccess` already replaces `groupIds`/`eventAdminEventIds` as
+  full lists — extend it to replace `assignedAdmins` (OrgAdmin sets WHO oversees; each new entry
+  defaults prefs true; validate every adminId is an EventAdmin+ member of the same org).
+- **Pref editing** is the assigned admin's own call (it is their inbox): a self-service endpoint
+  lets an EventAdmin+ toggle `notifyOnHours`/`notifyOnApproval` on THEIR OWN assignment for a
+  given volunteer, without OrgAdmin rights.
+- **Routing:** `CreateServiceLog` (and the approval path) fans out — notify each assigned admin
+  whose matching pref is true. Today `CreateServiceLog` notifies no admin, so this is additive.
+- **Direct comms:** new `POST /notifications` — an admin messages the volunteers who list them in
+  `assignedAdmins` (reuses `Notification { userId, type, message, relatedId }`; no send endpoint
+  exists yet).
+- **Scoped views:** "my assigned volunteers" = org members whose `assignedAdmins` contains me;
+  the admin's hours/approvals filter to that set.
 
 ---
 

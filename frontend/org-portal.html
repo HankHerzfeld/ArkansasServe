@@ -31,6 +31,28 @@
     You haven't created any events yet. Click <strong>+ New Event</strong> to get started.
   </div>
   <div id="events-list"></div>
+
+  <!-- My assigned volunteers (#13) -->
+  <div class="card" id="assignees-card" style="margin-top:1.5rem;display:none;">
+    <div class="card-title">My assigned volunteers</div>
+    <p style="font-size:.85rem;color:var(--gray-600);margin:.3rem 0 1rem;">
+      Volunteers an org admin has put under your oversight. Toggle what you're notified about, or send them all a message.
+    </p>
+    <div id="assignees-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No volunteers are assigned to you in this organization.</div>
+    <div id="assignees-body" style="display:none;">
+      <div style="display:flex;gap:.5rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:.5rem;">
+        <textarea id="assignee-message" placeholder="Send a message to all your assigned volunteers…" rows="2" maxlength="500" style="flex:1;min-width:220px;"></textarea>
+        <button class="btn btn-primary btn-sm" id="assignee-send" type="button">Send</button>
+      </div>
+      <div id="assignee-send-status" style="display:none;font-size:.82rem;margin-bottom:.75rem;"></div>
+      <div class="table-scroll">
+        <table class="table" id="assignees-table">
+          <thead><tr><th>Volunteer</th><th>Approved hours</th><th>Notify on hours</th><th>Notify on approval</th></tr></thead>
+          <tbody id="assignees-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Create / Edit Event Modal -->

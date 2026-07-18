@@ -22,6 +22,14 @@ public class User : CosmosDocument
     [JsonPropertyName("eventAdminEventIds")]
     public List<string> EventAdminEventIds { get; set; } = [];
 
+    // ── Admin oversight (#13) ────────────────────────────────────────────────
+    // The admins in THIS org who oversee this volunteer. Many-to-many: a volunteer may be
+    // assigned to several admins, and each assignment carries its own notification prefs — so
+    // one admin can mute a noisy assignee without affecting another admin's. Empty = unassigned.
+    // OrganizationAdmin+ sets who is on the list; each assigned admin controls their own prefs.
+    [JsonPropertyName("assignedAdmins")]
+    public List<UserAssignment> AssignedAdmins { get; set; } = [];
+
     [JsonPropertyName("permissions")]
     public Dictionary<string, bool> Permissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -155,4 +163,24 @@ public class User : CosmosDocument
             .Where(s => !string.IsNullOrWhiteSpace(s)));
         return string.IsNullOrWhiteSpace(name) ? (fallback?.Trim() ?? string.Empty) : name;
     }
+}
+
+/// <summary>
+/// One admin's oversight of one volunteer (#13). Lives in the volunteer's
+/// <see cref="User.AssignedAdmins"/> list. The notification flags are the assigned admin's own
+/// per-volunteer preference — the assignment record IS the per-assignment pref store.
+/// </summary>
+public class UserAssignment
+{
+    /// <summary>The overseeing admin's user id (an EventAdmin+ member of the same org).</summary>
+    [JsonPropertyName("adminId")]
+    public string AdminId { get; set; } = string.Empty;
+
+    /// <summary>Notify this admin when the volunteer logs service hours. Default on.</summary>
+    [JsonPropertyName("notifyOnHours")]
+    public bool NotifyOnHours { get; set; } = true;
+
+    /// <summary>Notify this admin when the volunteer's logged hours need approval. Default on.</summary>
+    [JsonPropertyName("notifyOnApproval")]
+    public bool NotifyOnApproval { get; set; } = true;
 }
