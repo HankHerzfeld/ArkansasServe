@@ -636,6 +636,50 @@ public partial class CosmosService
         }
     }
 
+    // Deletes a single notification. Scoped to userId (the partition key), so a caller can only
+    // ever delete their own. Returns false when it does not exist.
+    public async Task<bool> DeleteNotificationAsync(string id, string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await Notifications.DeleteItemAsync<Notification>(id, new PartitionKey(userId), cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+    }
+
+    // Deletes every notification in one user's partition (read and unread alike). Returns the
+    // count removed. Single-partition, so no cross-partition fan-out.
+    public async Task<int> DeleteAllNotificationsForUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var iterator = Notifications.GetItemLinqQueryable<Notification>(requestOptions:
+            new QueryRequestOptions { PartitionKey = new PartitionKey(userId) })
+            .Select(n => n.Id)
+            .ToFeedIterator();
+
+        var ids = new List<string>();
+        while (iterator.HasMoreResults)
+            ids.AddRange(await iterator.ReadNextAsync(cancellationToken));
+
+        var deleted = 0;
+        foreach (var id in ids)
+        {
+            try
+            {
+                await Notifications.DeleteItemAsync<Notification>(id, new PartitionKey(userId), cancellationToken: cancellationToken);
+                deleted++;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Already gone (concurrent read on the same list) — fine.
+            }
+        }
+        return deleted;
+    }
+
     // ── Tenants ───────────────────────────────────────────────────────────────
 
     public async Task<Tenant> CreateTenantAsync(Tenant tenant, CancellationToken cancellationToken = default)
