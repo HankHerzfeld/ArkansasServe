@@ -1,6 +1,6 @@
 # Arkansas Serve — Priorities & Roadmap
 
-_Last updated 2026-07-13._ Consolidated list of completed and upcoming priorities.
+_Last updated 2026-07-18._ Consolidated list of completed and upcoming priorities.
 Detailed context for shipped work lives in the referenced PRs and companion docs
 (`production-cutover-plan.md`, `manual-verification-checklist.md`).
 
@@ -363,13 +363,14 @@ island.
   - *Known and accepted:* a 12-week series is 12 cards in the events list. That is correct —
     each is separately registerable — and PR #70's filters help. Nobody has decided whether
     the list should collapse a series; shipped without grouping to find out if it matters.
-- **Live day-of check-in.** A generated **QR code** that redirects to a check-in flow, plus a
-  built-in **org/EventAdmin check-in page** for the day of the event: check people in **by
-  shift** and **by user**, and **add walk-in volunteers on the spot**. **Must work offline** —
-  this is the primary offline use case (updating events / checking in / authorizing volunteer
-  service at work sites without wifi), so it needs local caching + a queued-write/sync model
-  (PWA) scoped to a single event's roster. This is distinct from the online AJAX search work,
-  which requires connectivity by design and does not conflict with it.
+- **Live day-of check-in.** — ✅ **SHIPPED online-first 2026-07-16 (PR #89, fixes PR #90).** An
+  admin **check-in page** (live roster by shift/user, manual toggle, **walk-in** add, and a minted
+  **code/QR** panel) plus **student self-check-in**: the admin posts the code and a registered
+  student scans/enters it to check *themselves* in (locked decision — not admin-scans-student).
+  Enforces the `blockCheckIn` tag gate (same-org). Verified in prod (walk-in, self-check-in,
+  blockCheckIn refusal). **Offline operation is deferred to #15** — this shipped online-first; the
+  local-cache + queued-write/sync PWA model is that separate item, scoped to a single event's roster
+  and distinct from the online AJAX search work.
 - **Group registration** — register multiple individuals for an event in one action.
   *Scoped 2026-07-15 into three PRs; the first has landed.*
   - **Why it is not just a loop over the existing endpoint.** `POST /registrations` registers
@@ -449,9 +450,13 @@ island.
   - *Not covered here:* ZIP/county and map-based selection are the two items below.
 - **Search map** — plots service locations with date/availability, **color-coded by tag**, with
   the same filter controls as the list view.
-- **ZIP / geo search** — capture **ZIP + city** on event addresses for searchability and
-  location; search by **ZIP code, town, and county**; map-based ZIP selection. Prefer/prompt
-  for ZIP at event creation.
+- **ZIP / geo search** — ✅ **SHIPPED 2026-07-18 (PR #91).** Events gained `zip`/`city`/`county`
+  (+`latitude`/`longitude`) alongside free-text `location`, resolved from a **bundled Arkansas ZIP
+  dataset** (706 ZIPs, all 75 counties; GeoNames CC BY 4.0) — **no external geocoding API, no
+  billing**. A recognised ZIP **auto-fills** city/county/coords on event create/edit
+  (`GET /api/geo/zip/{zip}`), and the events list filters by **ZIP / town / county**. Forward-only
+  (pre-#16 events keep their free-text location). Verified in prod. *Map-based ZIP selection lives
+  with the maps items (#17/#18).*
 
 ### Addresses & mapping
 - **Address auto-populate** in the event and organization creation portals (Google Maps API),
@@ -493,12 +498,16 @@ island.
     merging them would deny a school the ability to tell them apart. ⚠️ **The mechanism to act
     on that distinction is #12 (school approval tags), which does not exist yet** — until it
     does, a school cannot mark the partisan category approval-required.
-  - *Remaining:* **self-define with approval** — an org proposes a category, shows as "Other"
-    until a SuperAdmin approves it (a pending value must not leak into filters), and the
-    SuperAdmin can approve-as-new **or approve-as-alias onto an existing category**. The alias
-    path is the point: without it you get "Food Bank"/"food bank"/"Foodbank" within a month and
-    the approval step becomes a rubber stamp. Needs a stored vocabulary + a queue, so it is
-    the size of #8 — and it supersedes the earlier "fixed list in code" decision.
+  - **Self-define with approval — ✅ SHIPPED 2026-07-18 (PR #93).** An org (via its
+    `serviceCategory`) or an event creator (via the event `category`) proposes a new label with
+    **"Other → type a label"**; it stores as **pending** — shown to that org as "Other (pending
+    review)" and **kept out of every dropdown/facet** — until a SuperAdmin resolves it from the
+    admin-backend **queue**: **approve-as-new**, **approve-as-alias** onto an existing category
+    (the anti-fragmentation path — prevents "Food Bank"/"food bank"/"Foodbank"), or reject.
+    Vocabulary lives on the **root tenant** (no new container); stored values stay raw and resolve
+    client-side, so alias approval takes effect on read with no batch rewrite. `GET /api/categories`
+    serves the effective (canonical + approved-new) list. Verified in prod. A `POST
+    /manage/backend/categories/scrub` **un-approve** path was added afterward (PR #95).
 - **Per-org user tags / credentials** — ✅ **Model + definitions + admin API done 2026-07-15.**
   Gating and the admin UI remain.
   - **Per-org came free.** A `User` doc IS per-org (one per person per organization,
@@ -531,9 +540,24 @@ island.
   - *Also note:* group registration is all-or-nothing, so once gating exists a group of 8 where
     2 lack a tag is refused entirely (naming those 2) rather than signing up 6.
   - *Remaining:* the gate itself, and the admin UI for defining tags and setting them.
-- **User assignment under an org/EventAdmin** — assign volunteers to a specific admin who then
-  has **direct oversight of those users' hours and approvals**, **per-action notification
-  settings**, and **direct communication with assigned users via notifications**.
+- **User assignment under an org/EventAdmin** — ✅ **SHIPPED 2026-07-18 (PR #94).** Volunteers
+  are assigned to overseeing admins — **many admins per volunteer**, each assignment carrying its
+  **own** notification prefs (`{ adminId, notifyOnHours, notifyOnApproval }` on the per-org User
+  doc; the list *is* the per-assignment pref store). `UpdateUserAccess` sets who oversees
+  (OrgAdmin+, each admin validated EventAdmin+ in the org; prefs preserved across a role edit);
+  `CreateServiceLog` **fans out** notifications to each assigned admin per their prefs (approval
+  notice only when the log is Pending; additive — nothing notified admins before). Assigned
+  admins get a **"My assigned volunteers"** view (org-portal) with per-volunteer notify toggles
+  and a **direct-message** box (`GET /manage/me/assigned-volunteers`, `PATCH
+  /manage/me/assignments/{volunteerId}`, `POST /manage/me/assigned-volunteers/notify`). Verified
+  end-to-end in prod (assign → log → fan-out → pref-suppression → direct message) and demonstrated
+  live in the browser.
+  - *Follow-ups shipped alongside:* **notification delete/clear** (PR #96) — `DELETE
+    /api/notifications/{id}` and `DELETE /api/notifications` (clear all), owner-scoped, filling
+    the gap where notifications could only be marked read, never removed. **Category vocabulary
+    scrub** (PR #95) — `POST /manage/backend/categories/scrub { label }` removes a label's
+    approved-new / alias / proposal records: the un-approve path #10②'s self-define categories
+    lacked.
 - **Arkansas Serve as a distinct organization** — ✅ **Done 2026-07-15.** Seeded as a real,
   browsable org (`arkansas-serve`) with its own org page, kept **separate** from
   `arkansas-serve-root`.
@@ -567,8 +591,14 @@ island.
     are org-scoped already), but it has none yet.
 
 ### Approvals & compliance
-- **School approval tags for events** — a school can mark some organizations **pre-approved**
-  (events auto-count) and others **approval-required**.
+- **School approval tags for events** — ✅ **SHIPPED 2026-07-18 (PR #92).** A School/JDC tenant
+  carries an approval policy — a **default** plus **per-org** and **per-category** rules,
+  **most-specific-wins** (org > category > default) — so a school can preapprove a trusted org
+  *and* blanket "Political Parties & Campaigns" as approval-required without listing every org.
+  The gate is one branch in `CreateServiceLog`: **preapproved** → the log is `Approved` and skips
+  the queue (hours auto-count); everything else keeps the existing Pending + approval-queue path.
+  Default is `approvalRequired`, so **behaviour is unchanged until a school configures it**
+  (forward-only). Editor lives in the School Admin Portal. Verified in prod.
 - **Real-time waiver prompting** — email + phone prompts through to a student's parent/guardian,
   with **documents uploaded by the organization**.
 - **Parental account oversight** — guardian oversight features that don't require up-front
