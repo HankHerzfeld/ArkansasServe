@@ -243,6 +243,9 @@ const Api = (() => {
     logoUploadToken:  (tenantId, fileName)      => request('POST', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/logo-upload-token`, { fileName }),
     demoUsers:        ()                        => request('GET',  '/manage/backend/demo-users'),
     resetDemoUsers:   ()                        => request('POST', '/manage/backend/demo-users/reset'),
+    // #12 school/JDC event-approval policy: { default, byOrg:{orgId:policy}, byCategory:{cat:policy} }.
+    approvalPolicy:    (tenantId)       => request('GET', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/approval-policy`),
+    setApprovalPolicy: (tenantId, data) => request('PUT', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/approval-policy`, data),
   };
 
   // ── Impersonation / remote access (SuperAdmin, #26) ───────────────────────

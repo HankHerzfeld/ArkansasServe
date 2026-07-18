@@ -11,6 +11,10 @@ namespace ArkansasServe.Functions.Functions;
 
 public class ServiceLogFunctions(CosmosService cosmos, EmailService email, AuthConfig authConfig, ILogger<ServiceLogFunctions> logger)
 {
+	// Stamped as the reviewer on a log auto-approved by a school's #12 policy — a sentinel, not a
+	// person, so the audit trail distinguishes policy auto-approval from a human review.
+	private const string SystemPolicyReviewer = "system:school-policy";
+
 	[Function("CreateServiceLog")]
 	public async Task<HttpResponseData> CreateLog(
 		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "servicelogs")] HttpRequestData req)
@@ -32,22 +36,48 @@ public class ServiceLogFunctions(CosmosService cosmos, EmailService email, AuthC
 		body.SubmittedByUserId = ctx.UserId;
 		body.Status = "Pending";
 
+		// Load the event once — its title denormalizes onto the log, and its category feeds the
+		// school's approval policy below (#12).
+		Event? evt = null;
+		if (!string.IsNullOrWhiteSpace(body.EventId))
+			evt = await cosmos.GetEventAsync(body.EventId, orgId);
+
 		// Denormalize the event/org names so the student's dashboard and the report
 		// can render them without a per-row lookup. The client only sends ids; trust
 		// the server's copy of the title/name, not client-supplied strings.
-		if (string.IsNullOrWhiteSpace(body.EventTitle) && !string.IsNullOrWhiteSpace(body.EventId))
-		{
-			var evt = await cosmos.GetEventAsync(body.EventId, orgId);
-			if (evt != null) body.EventTitle = evt.Title;
-		}
+		if (string.IsNullOrWhiteSpace(body.EventTitle) && evt != null)
+			body.EventTitle = evt.Title;
 		if (string.IsNullOrWhiteSpace(body.OrganizationName))
 		{
 			var org = await cosmos.GetTenantAsync(orgId);
 			if (org != null) body.OrganizationName = org.Name;
 		}
 
+		// #12: the student's School/JDC may PREAPPROVE this org (and/or its category), in which
+		// case the hours auto-count instead of queueing for review. Anything else — the default,
+		// an unconfigured school, or a student with no school — keeps the Pending + queue path,
+		// so behaviour is unchanged until a school opts in.
+		if (!string.IsNullOrWhiteSpace(body.SchoolId))
+		{
+			var school = await cosmos.GetTenantAsync(body.SchoolId);
+			if (school?.ApprovalPolicy != null
+				&& school.ApprovalPolicy.Resolve(body.OrganizationId, evt?.Category) == ApprovalPolicies.Preapproved)
+			{
+				body.Status = "Approved";
+				body.ReviewedByUserId = SystemPolicyReviewer;
+				body.ReviewedAt = DateTime.UtcNow;
+				body.ReviewNote = "Auto-approved: this organization is preapproved by the school.";
+			}
+		}
+
 		var created = await cosmos.CreateServiceLogAsync(body);
-		await TryCreatePendingApprovalAsync(created);
+
+		// A preapproved log is already Approved — mirror the review outcome (notify/email the
+		// student; there is no pending pointer to remove). Everything else enters the queue.
+		if (string.Equals(created.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+			await TryReviewSideEffectsAsync(created);
+		else
+			await TryCreatePendingApprovalAsync(created);
 
 		return await HttpHelper.CreatedJson(req, created);
 	}
