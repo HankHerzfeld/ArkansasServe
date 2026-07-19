@@ -152,6 +152,17 @@ const Api = (() => {
     scrub:   (label) => request('POST', '/manage/backend/categories/scrub', { label }),
   };
 
+  // ── Tags / credentials (#11②) ─────────────────────────────────────────────
+  const Tags = {
+    // Tenant tag DEFINITIONS (OrganizationAdmin+).
+    list:      (tenantId)          => request('GET',  `/manage/backend/tenants/${encodeURIComponent(tenantId)}/user-tags`),
+    create:    (tenantId, data)    => request('POST', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/user-tags`, data),
+    update:    (tenantId, tagId, data) => request('PUT', `/manage/backend/tenants/${encodeURIComponent(tenantId)}/user-tags/${encodeURIComponent(tagId)}`, data),
+    // One member's STATE against a tag (GroupAdmin+). data: { status, note?, completedAt?, expiresAt? }
+    setMember: (memberId, orgId, tagId, data) =>
+      request('PUT', `/manage/volunteers/${encodeURIComponent(memberId)}/tags/${encodeURIComponent(tagId)}?organizationId=${encodeURIComponent(orgId)}`, data),
+  };
+
   // ── Admin oversight / assignments (#13) ───────────────────────────────────
   const Assignments = {
     // Volunteers assigned to me in this org, with my per-volunteer notify prefs.
@@ -321,5 +332,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, CheckIn, Categories, CategoryProposals, Geo, Assignments, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
+  return { Users, Events, Registrations, CheckIn, Categories, CategoryProposals, Geo, Tags, Assignments, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();

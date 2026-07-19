@@ -137,6 +137,48 @@
     <div id="groups-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No groups yet.</div>
   </div>
 
+  <!-- Credentials / tags (#11②) -->
+  <div class="card" id="tags-card" style="display:none;">
+    <div class="card-title">Credentials / Tags</div>
+    <p style="font-size:.85rem;color:var(--gray-600);margin:.3rem 0 1rem;">
+      Credentials your org tracks against people (waivers, background checks, training).
+      <strong>Enforcement</strong> decides what a missing one does: <em>Advisory</em> only flags;
+      <em>Block registration</em> stops same-org sign-up; <em>Block check-in</em> stops same-org
+      day-of check-in. Record who holds each from a volunteer's <strong>Credentials</strong> button below.
+    </p>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem;">
+      <div class="form-group" style="margin:0;">
+        <label for="tag-label">Label</label>
+        <input id="tag-label" type="text" placeholder="Waiver signed" maxlength="60">
+      </div>
+      <div class="form-group" style="margin:0;flex:1;min-width:180px;">
+        <label for="tag-desc">Description (optional)</label>
+        <input id="tag-desc" type="text" placeholder="Signed by a guardian for under-18s">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label for="tag-enforcement">Enforcement</label>
+        <select id="tag-enforcement">
+          <option value="advisory">Advisory — visible only</option>
+          <option value="blockRegistration">Block registration</option>
+          <option value="blockCheckIn">Block check-in</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label for="tag-expiry">Expires after (days)</label>
+        <input id="tag-expiry" type="number" min="1" placeholder="never" style="width:8rem;">
+      </div>
+      <button class="btn btn-primary btn-sm" id="tag-add" type="button">Add credential</button>
+    </div>
+    <div id="tags-status" class="alert alert-success" style="display:none;margin-bottom:.75rem;"></div>
+    <div id="tags-empty" style="display:none;color:var(--gray-600);font-size:.9rem;">No credentials defined yet.</div>
+    <div class="table-scroll">
+      <table class="table" id="tags-table" style="display:none;">
+        <thead><tr><th>Label</th><th>Enforcement</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+        <tbody id="tags-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="card" id="users-card" style="display:none;">
     <div class="card-title">User Access Management</div>
     <div class="table-filters" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.75rem;">
@@ -228,6 +270,7 @@
             <th>Email</th>
             <th>Groups</th>
             <th>Status</th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="volunteers-tbody"></tbody>
@@ -428,6 +471,21 @@
       <span id="db-status" style="font-size:.85rem;color:var(--gray-600);"></span>
     </div>
     <pre id="db-results" style="display:none;margin-top:1rem;padding:1rem;background:var(--gray-100);border-radius:var(--radius);overflow:auto;max-height:24rem;font-size:.8rem;white-space:pre;"></pre>
+  </div>
+</div>
+
+<!-- Per-member credentials (#11②) -->
+<div class="modal-overlay" id="credentials-modal">
+  <div class="modal">
+    <div class="modal-title">Credentials — <span id="cred-member-name"></span></div>
+    <div id="cred-empty" style="display:none;color:var(--gray-600);font-size:.9rem;margin:.5rem 0;">
+      This organization has no credentials defined yet. Add them in the <strong>Credentials / Tags</strong> card.
+    </div>
+    <div id="cred-list" style="display:flex;flex-direction:column;gap:.6rem;margin:.5rem 0 1rem;"></div>
+    <div id="cred-status" style="display:none;font-size:.82rem;margin-bottom:.5rem;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="cred-close" type="button">Close</button>
+    </div>
   </div>
 </div>
 

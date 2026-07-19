@@ -143,6 +143,14 @@
     safe(loadGroups);
     safe(loadUsers);
 
+    // #11②: the org's credential/tag DEFINITIONS come from the loaded tenant (so GroupAdmins can
+    // read them for the per-member modal without the OrgAdmin-only GET). The manager CARD is
+    // OrgAdmin+; the per-member Credentials action rides the Volunteers card (GroupAdmin+).
+    state.orgTags = (full && full.userTags) ? full.userTags.slice() : [];
+    const canManageTags = state.isSuperAdmin || Auth.adminRank(org.adminLevel) >= Auth.adminRank('OrganizationAdmin');
+    document.getElementById('tags-card').style.display = canManageTags ? 'block' : 'none';
+    renderTags();
+
     // Volunteers roster is available to GroupAdmin+ (and supers).
     const canVolunteers = state.isSuperAdmin || Auth.adminRank(org.adminLevel) >= Auth.adminRank('GroupAdmin');
     const volCard = document.getElementById('volunteers-card');
@@ -266,6 +274,17 @@
       tr.appendChild(createTextCell(v.email || ''));
       tr.appendChild(createTextCell((v.groupIds || []).join(', ')));
       tr.appendChild(createTextCell(v.isManaged ? 'managed (no login yet)' : 'active'));
+
+      // #11②: set this member's credential states.
+      const credTd = document.createElement('td');
+      const credBtn = document.createElement('button');
+      credBtn.className = 'btn btn-secondary btn-sm';
+      credBtn.type = 'button';
+      credBtn.textContent = 'Credentials';
+      credBtn.addEventListener('click', () => openCredentials(v));
+      credTd.appendChild(credBtn);
+      tr.appendChild(credTd);
+
       tbody.appendChild(tr);
     });
 
@@ -285,7 +304,7 @@
       },
       dataTables: {
         // Checkbox column: nothing to sort, nothing to search.
-        columnDefs: [{ targets: 0, orderable: false, searchable: false }],
+        columnDefs: [{ targets: [0, 6], orderable: false, searchable: false }],
         order: [[1, 'asc']], // name
       },
     });
@@ -521,6 +540,127 @@
     ['volf-search', 'volf-type', 'volf-status'].forEach(id =>
       document.getElementById(id).addEventListener('input', applyVolunteerFilters));
   })();
+
+  // ── Credentials / tags (#11②) ──────────────────────────────────────────────
+  function enforcementLabel(e) {
+    return e === 'blockRegistration' ? 'Block registration'
+      : e === 'blockCheckIn' ? 'Block check-in' : 'Advisory';
+  }
+
+  function flashTagStatus(msg, isError) {
+    const s = document.getElementById('tags-status');
+    s.className = isError ? 'alert alert-error' : 'alert alert-success';
+    s.textContent = msg; s.style.display = 'block';
+    if (!isError) setTimeout(() => { s.style.display = 'none'; }, 3500);
+  }
+
+  function renderTags() {
+    const table = document.getElementById('tags-table');
+    const empty = document.getElementById('tags-empty');
+    const tbody = document.getElementById('tags-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const tags = state.orgTags || [];
+    if (!tags.length) { table.style.display = 'none'; empty.style.display = 'block'; return; }
+    table.style.display = 'table'; empty.style.display = 'none';
+
+    tags.forEach(t => {
+      const archived = String(t.status).toLowerCase() === 'archived';
+      const tr = document.createElement('tr');
+      if (archived) tr.style.opacity = '.55';
+      tr.appendChild(createTextCell(t.label));
+      tr.appendChild(createTextCell(enforcementLabel(t.enforcement)));
+      tr.appendChild(createTextCell(t.expiresAfterDays ? `${t.expiresAfterDays} days` : 'never'));
+      tr.appendChild(createTextCell(archived ? 'archived' : 'active'));
+      const actTd = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-secondary btn-sm'; btn.type = 'button';
+      btn.textContent = archived ? 'Restore' : 'Archive';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const updated = await Api.Tags.update(state.tenantId, t.id, { status: archived ? 'active' : 'archived' });
+          state.orgTags = updated || state.orgTags;
+          renderTags();
+        } catch (err) { flashTagStatus(err.message || 'Could not update.', true); btn.disabled = false; }
+      });
+      actTd.appendChild(btn);
+      tr.appendChild(actTd);
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('tag-add')?.addEventListener('click', async () => {
+    const label = document.getElementById('tag-label').value.trim();
+    if (!label) { flashTagStatus('A label is required.', true); return; }
+    const days = document.getElementById('tag-expiry').value;
+    const payload = {
+      label,
+      description: document.getElementById('tag-desc').value.trim() || null,
+      enforcement: document.getElementById('tag-enforcement').value,
+      expiresAfterDays: days ? Number(days) : null,
+    };
+    const btn = document.getElementById('tag-add');
+    btn.disabled = true;
+    try {
+      const updated = await Api.Tags.create(state.tenantId, payload);
+      state.orgTags = updated || state.orgTags;
+      document.getElementById('tag-label').value = '';
+      document.getElementById('tag-desc').value = '';
+      document.getElementById('tag-expiry').value = '';
+      renderTags();
+      flashTagStatus(`Added "${label}".`, false);
+    } catch (err) { flashTagStatus(err.message || 'Could not add.', true); }
+    finally { btn.disabled = false; }
+  });
+
+  // Per-member credential states (the Credentials button in each volunteer row).
+  function openCredentials(member) {
+    document.getElementById('cred-member-name').textContent = member.displayName || member.email || member.id;
+    const list = document.getElementById('cred-list');
+    const empty = document.getElementById('cred-empty');
+    document.getElementById('cred-status').style.display = 'none';
+    list.innerHTML = '';
+    const activeTags = (state.orgTags || []).filter(t => String(t.status).toLowerCase() !== 'archived');
+    empty.style.display = activeTags.length ? 'none' : 'block';
+
+    const now = Date.now();
+    activeTags.forEach(t => {
+      const st = (member.tags || []).find(s => s.tagId === t.id);
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:.6rem;';
+      const name = document.createElement('span');
+      name.style.cssText = 'flex:1;font-size:.9rem;';
+      name.textContent = t.label + (t.enforcement !== 'advisory' ? ` · ${enforcementLabel(t.enforcement)}` : '');
+      const sel = document.createElement('select');
+      [['None', 'None'], ['Pending', 'Pending'], ['Complete', 'Complete']].forEach(([v, l]) => {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o);
+      });
+      sel.value = st?.status || 'None';
+      const hint = document.createElement('span');
+      hint.style.cssText = 'font-size:.75rem;color:var(--gray-600);white-space:nowrap;min-width:5rem;';
+      const setHint = s => { hint.textContent = (s && s.status === 'Complete') ? (s.expiresAt ? (new Date(s.expiresAt).getTime() > now ? `until ${new Date(s.expiresAt).toLocaleDateString()}` : 'expired') : 'no expiry') : ''; };
+      setHint(st);
+      sel.addEventListener('change', async () => {
+        sel.disabled = true;
+        const cs = document.getElementById('cred-status');
+        try {
+          const saved = await Api.Tags.setMember(member.id, state.tenantId, t.id, { status: sel.value });
+          member.tags = saved || [];
+          setHint((saved || []).find(s => s.tagId === t.id));
+          cs.style.color = 'var(--gray-600)'; cs.textContent = `Saved ${t.label}.`; cs.style.display = 'block';
+        } catch (err) {
+          cs.style.color = 'var(--danger,#b91c1c)'; cs.textContent = err.message || 'Could not save.'; cs.style.display = 'block';
+          sel.value = st?.status || 'None';
+        } finally { sel.disabled = false; }
+      });
+      row.append(name, sel, hint);
+      list.appendChild(row);
+    });
+    document.getElementById('credentials-modal').classList.add('open');
+  }
+  document.getElementById('cred-close')?.addEventListener('click', () =>
+    document.getElementById('credentials-modal').classList.remove('open'));
 
   // ── Category proposal queue (#10②, SuperAdmin) ──────────────────────────────
   async function loadCategoryProposals() {
