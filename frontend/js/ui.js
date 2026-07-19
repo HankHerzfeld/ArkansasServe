@@ -43,11 +43,17 @@ const UI = (() => {
     // Manage Events — a super legitimately creates/manages events in any org, so the
     // full tenant list is reach rather than noise.
     '/org-portal.html':    { minRole: 'EventAdmin',        orgTypes: null,         allTenants: true, showGroups: true },
-    // Approvals — School/JDC work. Hours are approved against the STUDENT'S school
-    // (`ServiceLog.schoolId`), so a Community Organization has no queue and no policy
-    // editor; offering one only ever opens an empty page. The page already hid its
-    // policy card for them (`policyAppliesToActiveOrg`) — this stops it being offered.
-    '/admin-portal.html':  { minRole: 'OrganizationAdmin', orgTypes: 'schoolLike', allTenants: true, showGroups: true },
+    // Approvals — approving hours. In PRINCIPLE this is School/JDC work (hours are approved
+    // against the student's school, `ServiceLog.schoolId`), so `orgTypes: 'schoolLike'` is the
+    // eventual right answer and the mechanism is built and tested for it.
+    //
+    // ⚠️ It is deliberately NOT applied yet: EVERY tenant in production is currently typed
+    // `Organization` — there is not one School or JDC doc — so the filter would drop all of
+    // them and leave a SuperAdmin unable to open Approvals at all. Schools are today modelled
+    // as Organizations, and approvals genuinely flow through them. Turn this on once real
+    // School/JDC tenants exist; the page's own `policyAppliesToActiveOrg` keeps hiding the
+    // policy card for Community Organizations in the meantime.
+    '/admin-portal.html':  { minRole: 'OrganizationAdmin', orgTypes: null,         allTenants: true, showGroups: true },
     // Admin Backend — tenant settings/roster/tags for any org. Groups are managed as
     // data here rather than used as a filter, hence no group selector (this replaces
     // the ad-hoc { showGroups: false } the page used to pass at its call site).
