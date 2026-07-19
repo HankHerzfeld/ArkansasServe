@@ -26,6 +26,34 @@ const UI = (() => {
     { label: 'Platform Admin', href: '/platform-admin.html', minRank: 4 }, // SuperAdmin
   ];
 
+  // ── Per-page scope declaration ──────────────────────────────────────────────
+  // Each scoped page states what its switcher should offer, instead of every page
+  // receiving one global list. Keyed by the same href as TABS above (TABS gates who
+  // may SEE the page; this gates which orgs the page is usable in — related, but not
+  // the same question, so they stay separate tables).
+  //
+  //   minRole    minimum role in an org for it to be offered here (supers exempt)
+  //   orgTypes   'schoolLike' | 'organization' | null — the kind of org this page works on
+  //   allTenants whether a SuperAdmin sees every tenant or just their memberships
+  //   showGroups whether the group selector appears
+  //
+  // A page absent from this table gets DEFAULTS: unfiltered, all tenants, groups shown —
+  // i.e. exactly today's behaviour, so adding a page here is opt-in.
+  const PAGE_SCOPE = {
+    // Manage Events — a super legitimately creates/manages events in any org, so the
+    // full tenant list is reach rather than noise.
+    '/org-portal.html':    { minRole: 'EventAdmin',        orgTypes: null,         allTenants: true, showGroups: true },
+    // Approvals — School/JDC work. Hours are approved against the STUDENT'S school
+    // (`ServiceLog.schoolId`), so a Community Organization has no queue and no policy
+    // editor; offering one only ever opens an empty page. The page already hid its
+    // policy card for them (`policyAppliesToActiveOrg`) — this stops it being offered.
+    '/admin-portal.html':  { minRole: 'OrganizationAdmin', orgTypes: 'schoolLike', allTenants: true, showGroups: true },
+    // Admin Backend — tenant settings/roster/tags for any org. Groups are managed as
+    // data here rather than used as a filter, hence no group selector (this replaces
+    // the ad-hoc { showGroups: false } the page used to pass at its call site).
+    '/admin-backend.html': { minRole: 'OrganizationAdmin', orgTypes: null,         allTenants: true, showGroups: false },
+  };
+
   // Tiny DOM helper (textContent only — never innerHTML with data).
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
@@ -241,9 +269,11 @@ const UI = (() => {
 
     const scopeBar = document.getElementById('scope-bar');
     if (scopeBar && Auth.adminRank(profile?.adminLevel || Auth.getAdminLevel()) > 0) {
+      // This page's declaration, overridable per call site for one-offs.
+      const cfg = { ...(PAGE_SCOPE[current] || {}), ...opts };
       try {
-        await Scope.init(currentUser);
-        mountScopeBar(scopeBar, opts.showGroups !== false);
+        await Scope.init(currentUser, cfg);
+        mountScopeBar(scopeBar, cfg.showGroups !== false);
       } catch (err) {
         console.error('[ui] scope init failed', err);
       }
@@ -369,6 +399,20 @@ const UI = (() => {
   function renderScopeBar(container, snap, showGroups = true) {
     if (!container) return;
     container.innerHTML = '';
+
+    // The page's own declaration filtered every org away — say so. Rendering nothing
+    // would leave an admin on a blank page with no clue why, which is how the old
+    // silent-empty-queue behaviour read.
+    if (snap && snap.filteredEmpty) {
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:.85rem;color:var(--gray-600);';
+      note.textContent = snap.config?.orgTypes === 'schoolLike'
+        ? 'This page applies to schools and juvenile-service organizations. You don\'t administer one.'
+        : 'You don\'t administer an organization that can use this page.';
+      container.appendChild(note);
+      return;
+    }
+
     if (!snap || !snap.org) return;
 
     const wrap = document.createElement('div');

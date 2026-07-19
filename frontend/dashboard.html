@@ -18,7 +18,9 @@
   <div class="page-header">
     <h1 id="greeting">My Dashboard</h1>
     <p>Track your community service hours and upcoming events.</p>
-    <div id="scope-bar" style="margin-top:.5rem;"></div>
+    <!-- No scope bar: dashboard.js reads no Scope.* state, so a switcher here filtered
+         nothing on this page while silently re-scoping every OTHER page via sessionStorage.
+         A per-organization dashboard view is its own piece of work. -->
   </div>
 
   <!-- First-login onboarding: shown to a self-registered student not yet in any organization -->

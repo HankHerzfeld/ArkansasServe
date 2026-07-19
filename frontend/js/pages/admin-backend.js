@@ -118,7 +118,8 @@
     // The shared scope switcher chooses which org's settings/groups/users to
     // manage — a SuperAdmin gets every tenant; an org admin gets their own org.
     // Groups are managed in full below, so the bar hides its group switcher here.
-    await UI.setupHeader('/admin-backend.html', context.user, { showGroups: false });
+    // Scope (incl. no group selector) is declared centrally in ui.js's PAGE_SCOPE.
+    await UI.setupHeader('/admin-backend.html', context.user);
     Scope.onChange(applyScope);
     applyScope(Scope.snapshot());
   }

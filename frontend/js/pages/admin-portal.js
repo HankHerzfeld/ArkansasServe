@@ -4,15 +4,39 @@
   let activeApproval = null;
   let approvedTodayCount = 0;
 
+  // Approvals is School/JDC work, and ui.js's PAGE_SCOPE narrows the switcher to those orgs.
+  // An OrganizationAdmin of a Community Organization only therefore has NO org to view here.
+  // Loading anyway would send a null orgId and render either an error or someone else's
+  // queue, so the page states the reason instead. The scope bar says the same thing.
+  function loadAll() {
+    if (Scope.filteredEmpty || !Scope.activeOrgId) { showNoSchoolState(); return; }
+    loadApprovals();
+    loadReport();
+    loadApprovalPolicy();
+  }
+
+  // The markup's own "All caught up!" text, kept so the no-school message below can be
+  // swapped in and back out — otherwise switching to a school afterwards would show
+  // "you don't administer one" over an empty-but-correct queue.
+  const APPROVALS_EMPTY_DEFAULT = document.getElementById('approvals-empty')?.textContent?.trim() || '';
+
+  function showNoSchoolState() {
+    document.getElementById('approvals-loading').style.display = 'none';
+    document.getElementById('approvals-table').style.display   = 'none';
+    document.getElementById('approval-policy-card').style.display = 'none';
+    const empty = document.getElementById('approvals-empty');
+    empty.style.display = 'block';
+    empty.textContent = 'Service hours are approved by a school or juvenile-service organization. '
+      + 'You don\'t administer one, so there is nothing to approve here.';
+  }
+
   Auth.requireAuth('OrganizationAdmin').then(async (p) => {
     profile = p;
     if (!profile) return;
     await UI.setupHeader('/admin-portal.html');
     // Reload when a SuperAdmin switches the active organization.
-    Scope.onChange(() => { loadApprovals(); loadReport(); loadApprovalPolicy(); });
-    loadApprovals();
-    loadReport();
-    loadApprovalPolicy();
+    Scope.onChange(loadAll);
+    loadAll();
   });
 
   // Refresh button (was an inline onclick; moved here so CSP can drop script 'unsafe-inline').
@@ -183,7 +207,9 @@
       document.getElementById('stat-approved-today').textContent = approvedTodayCount;
 
       if (approvals.length === 0) {
-        document.getElementById('approvals-empty').style.display = 'block';
+        const empty = document.getElementById('approvals-empty');
+        empty.textContent = APPROVALS_EMPTY_DEFAULT;
+        empty.style.display = 'block';
         return;
       }
 
