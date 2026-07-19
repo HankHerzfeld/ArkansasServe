@@ -64,6 +64,19 @@
       <div class="stat-number" id="stat-events">—</div>
       <div class="stat-label">Events Attended</div>
     </div>
+    <!-- Admin-only: shown when the person is an OrganizationAdmin+ in any org. -->
+    <div class="stat-card" id="stat-card-approvals" style="display:none;">
+      <div class="stat-number" id="stat-approvals">—</div>
+      <div class="stat-label">Awaiting Your Approval</div>
+    </div>
+  </div>
+
+  <!-- Per-organization breakdown. One card per membership; its CONTENT depends on the
+       person's role in THAT org, so someone who administers one org and volunteers in
+       another sees each correctly rather than one view winning. -->
+  <div id="org-section" style="display:none;">
+    <h2 style="font-size:1.05rem;margin:1.5rem 0 .75rem;color:var(--gray-700);">Your organizations</h2>
+    <div id="org-cards"></div>
   </div>
 
   <!-- Service Log History -->
@@ -183,6 +196,7 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/taxonomy.js"></script>
 <script src="/js/scope.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/pages/dashboard.js"></script>

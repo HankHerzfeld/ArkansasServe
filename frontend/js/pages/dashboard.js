@@ -73,22 +73,9 @@
       const orgsWrap = document.getElementById('profile-orgs');
       orgsWrap.innerHTML = '';
       if (memberships && memberships.length) {
-        const h = document.createElement('div');
-        h.style.cssText = 'color:var(--gray-600);font-size:.75rem;margin-bottom:.4rem;';
-        h.textContent = memberships.length > 1 ? 'Organizations' : 'Organization';
-        orgsWrap.appendChild(h);
-        const list = document.createElement('div');
-        list.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;';
-        memberships.forEach(m => {
-          const chip = document.createElement('span');
-          chip.className = 'event-badge';
-          // Name only — never fall back to organizationId. That fallback is what rendered a
-          // raw tenant GUID as if it were an organization name. The API omits memberships
-          // whose org no longer exists, so anything reaching here has a real name.
-          chip.textContent = `${m.organizationName} · ${prettyLevel(m.adminLevel)}`;
-          list.appendChild(chip);
-        });
-        orgsWrap.appendChild(list);
+        // Deliberately empty: the per-organization cards below now carry the org list with
+        // real content (your role, your hours there, who oversees you, admin figures). The
+        // chips that used to sit here said the same names twice on one screen.
       } else {
         // No assigned or joined organization. Say so plainly and point somewhere useful —
         // this state used to render nothing at all.
@@ -265,6 +252,168 @@
       }
     });
 
+    // ── Per-organization cards ────────────────────────────────────────────────
+    // One card per membership, whose CONTENT depends on the person's role in THAT org.
+    // A person is routinely an admin in one org and a plain volunteer in another, so a
+    // single global "admin view vs volunteer view" would be wrong for one of them.
+
+    function el(tag, props = {}, ...kids) {
+      const n = document.createElement(tag);
+      Object.entries(props).forEach(([k, v]) => {
+        if (v == null) return;
+        if (k === 'class') n.className = v;
+        else if (k === 'text') n.textContent = v;   // textContent only — never innerHTML with data
+        else if (k === 'style') n.style.cssText = v;
+        else n.setAttribute(k, v);
+      });
+      kids.filter(Boolean).forEach(c => n.appendChild(c));
+      return n;
+    }
+
+    // A labelled number that links where the admin would act on it.
+    function statTile(number, label, href) {
+      const box = el(href ? 'a' : 'div', {
+        href,
+        style: 'flex:1;min-width:7.5rem;padding:.6rem .75rem;border:1px solid var(--gray-200);'
+             + 'border-radius:var(--radius);text-decoration:none;color:inherit;display:block;',
+      });
+      box.appendChild(el('div', { text: String(number), style: 'font-size:1.35rem;font-weight:700;color:var(--green);' }));
+      box.appendChild(el('div', { text: label, style: 'font-size:.75rem;color:var(--gray-600);' }));
+      return box;
+    }
+
+    // Everything the admin half of a card needs, fetched per org. Each call is guarded
+    // by the role it actually requires and degrades to null rather than failing the card:
+    // a 403 from one stat must not blank the others.
+    async function loadAdminStats(orgId, myRank) {
+      const q = (cond, fn) => (cond ? fn().catch(() => null) : Promise.resolve(null));
+      const [approvals, assigned, events, roster] = await Promise.all([
+        q(myRank >= Auth.adminRank('OrganizationAdmin'), () => Api.Approvals.list(orgId)),
+        q(myRank >= Auth.adminRank('EventAdmin'),        () => Api.Assignments.mine(orgId)),
+        q(myRank >= Auth.adminRank('EventAdmin'),        () => Api.Events.listOrgEvents(orgId)),
+        // /manage/volunteers is GroupAdmin+ — asking as an EventAdmin would only ever 403.
+        q(myRank >= Auth.adminRank('GroupAdmin'),        () => Api.Volunteers.list({ organizationId: orgId })),
+      ]);
+      return { approvals, assigned, events, roster };
+    }
+
+    async function renderOrgCards(memberships, logs) {
+      const wrap = document.getElementById('org-cards');
+      const section = document.getElementById('org-section');
+      if (!wrap || !section || !memberships || !memberships.length) return;
+
+      section.style.display = 'block';
+      wrap.innerHTML = '';
+
+      // Who oversees me, keyed by org. Volunteer-side mirror of #13 (Api.Assignments.mine).
+      const overseerRows = await Api.Assignments.overseers().catch(() => []);
+      const overseersByOrg = Object.fromEntries((overseerRows || []).map(r => [r.organizationId, r.admins || []]));
+
+      // Collected so the overview's "Awaiting Your Approval" can total the SAME figures the
+      // cards show, rather than re-fetching them and risking a different number on one screen.
+      const adminStatPromises = [];
+
+      for (const m of memberships) {
+        const orgId = m.organizationId;
+        const myRank = Auth.adminRank(m.adminLevel);
+        const isAdminHere = myRank >= Auth.adminRank('EventAdmin');
+
+        const card = el('div', { class: 'card', style: 'margin-bottom:1rem;' });
+
+        // Header: org name, your role there, and the org's kind.
+        const head = el('div', { style: 'display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.75rem;' });
+        head.appendChild(el('a', {
+          href: `/organization.html?id=${encodeURIComponent(orgId)}`,
+          text: m.organizationName,
+          style: 'font-weight:600;font-size:1.05rem;color:var(--green);text-decoration:none;',
+        }));
+        if (m.adminLevel && m.adminLevel !== 'Student') {
+          head.appendChild(el('span', { class: 'status status-approved', text: prettyLevel(m.adminLevel) }));
+        }
+        if (m.type) {
+          head.appendChild(el('span', { text: Taxonomy.orgTypeLabel(m.type), style: 'font-size:.75rem;color:var(--gray-600);' }));
+        }
+        card.appendChild(head);
+
+        // ── Admin half ────────────────────────────────────────────────────────
+        if (isAdminHere) {
+          const tiles = el('div', { style: 'display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem;' });
+          tiles.appendChild(el('div', { text: 'Loading…', style: 'font-size:.85rem;color:var(--gray-600);' }));
+          card.appendChild(tiles);
+
+          // Fill in when the per-org calls land, so one slow org can't hold up the others.
+          const p = loadAdminStats(orgId, myRank);
+          adminStatPromises.push(p);
+          p.then(({ approvals, assigned, events, roster }) => {
+            tiles.innerHTML = '';
+            if (approvals) {
+              tiles.appendChild(statTile(approvals.length, 'Awaiting approval', '/admin-portal.html'));
+            }
+            if (assigned) {
+              tiles.appendChild(statTile(assigned.length, 'Assigned to me', '/org-portal.html'));
+            }
+            if (events) {
+              const upcoming = events.filter(e => new Date(e.startDateTime) >= new Date());
+              tiles.appendChild(statTile(upcoming.length, 'Upcoming events', '/org-portal.html'));
+            }
+            if (roster) {
+              tiles.appendChild(statTile(roster.length, 'Members', '/admin-backend.html'));
+            }
+            if (!tiles.children.length) {
+              tiles.appendChild(el('div', {
+                text: 'No admin figures available for this organization.',
+                style: 'font-size:.85rem;color:var(--gray-600);',
+              }));
+            }
+          });
+        }
+
+        // ── Volunteer half ────────────────────────────────────────────────────
+        // Hours are keyed on schoolId — the org that APPROVED them, i.e. the membership
+        // that credited the person. Hours served at an outside org still count here,
+        // matching how approval actually works; the history table below names the host.
+        const mine = (logs || []).filter(l => l.schoolId === orgId);
+        const approvedHrs = mine.filter(l => l.status === 'Approved').reduce((s, l) => s + l.hoursLogged, 0);
+        const pendingHrs  = mine.filter(l => l.status === 'Pending').reduce((s, l) => s + l.hoursLogged, 0);
+        const overseers   = overseersByOrg[orgId] || [];
+
+        // Shown when they have hours here, when they're not an admin here (a plain
+        // volunteer card would otherwise be empty), or when someone oversees them.
+        if (mine.length || !isAdminHere || overseers.length) {
+          const vol = el('div', { style: 'font-size:.9rem;color:var(--gray-700);' });
+          vol.appendChild(el('div', {
+            text: mine.length
+              ? `${approvedHrs.toFixed(1)} hours approved here${pendingHrs > 0 ? ` · ${pendingHrs.toFixed(1)} pending` : ''}`
+              : 'No service hours logged here yet.',
+          }));
+          if (overseers.length) {
+            const line = el('div', { style: 'margin-top:.35rem;font-size:.85rem;color:var(--gray-600);' });
+            line.appendChild(document.createTextNode(overseers.length > 1 ? 'Overseen by: ' : 'Overseen by '));
+            overseers.forEach((a, i) => {
+              if (i) line.appendChild(document.createTextNode(', '));
+              line.appendChild(el('a', { href: `mailto:${a.email}`, text: a.name }));
+            });
+            vol.appendChild(line);
+          }
+          card.appendChild(vol);
+        }
+
+        wrap.appendChild(card);
+      }
+
+      // Overview tile: hours waiting on this person across every org they can approve in.
+      // Only appears when they actually approve somewhere — for a pure volunteer it would
+      // always read 0, which is noise rather than information.
+      if (adminStatPromises.length) {
+        const all = await Promise.all(adminStatPromises);
+        const totals = all.map(s => s.approvals).filter(Boolean);
+        if (totals.length) {
+          document.getElementById('stat-approvals').textContent = String(totals.reduce((s, a) => s + a.length, 0));
+          document.getElementById('stat-card-approvals').style.display = '';
+        }
+      }
+    }
+
     async function loadDashboard() {
       try {
         const currentUser = await Api.Users.getMe();
@@ -299,20 +448,14 @@
           return;
         }
 
-        if (adminLevel !== 'Student') {
-          document.getElementById('stat-total').textContent = '—';
-          document.getElementById('stat-pending').textContent = '—';
-          document.getElementById('stat-events').textContent = '—';
-          document.getElementById('log-loading').style.display = 'none';
-          document.getElementById('log-empty').style.display = 'block';
-          document.getElementById('log-empty').textContent =
-            adminLevel === 'SuperAdmin'
-              ? 'SuperAdmin tools are available above. Use Platform Admin and Admin Backend to manage executive features.'
-              : 'Admin users can use the Admin Backend for scoped management tasks.';
-          return;
-        }
+        // Everyone gets their real hours now, admins included. This previously short-circuited
+        // for any non-Student and printed "Admin users can use the Admin Backend" over three
+        // em-dashes — so an admin who also volunteers was told their own hours didn't exist,
+        // and an admin who doesn't got a home screen with nothing on it.
+        const { logs, totalApprovedHours } = await Api.ServiceLogs.myLogs().catch(() => ({ logs: [], totalApprovedHours: 0 }));
 
-        const { logs, totalApprovedHours } = await Api.ServiceLogs.myLogs();
+        // Per-org cards, in parallel with the personal history below.
+        renderOrgCards(memberships, logs).catch(err => console.error('[dashboard] org cards', err));
 
         // Stats
         document.getElementById('stat-total').textContent   = (totalApprovedHours ?? 0).toFixed(1);

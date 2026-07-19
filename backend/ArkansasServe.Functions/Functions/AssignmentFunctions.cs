@@ -59,6 +59,59 @@ public class AssignmentFunctions(CosmosService cosmos, AuthConfig authConfig, IL
 	}
 
 	/// <summary>
+	/// GET /api/manage/me/overseers
+	/// The mirror of GetMyAssignedVolunteers: who oversees ME, in each org I belong to.
+	///
+	/// #13 stored `AssignedAdmins` on the volunteer's own per-org doc but only ever read it from
+	/// the ADMIN side, so a volunteer had no way to see who was responsible for their hours. The
+	/// dashboard's per-org cards need exactly that.
+	///
+	/// Deliberately its own endpoint rather than extra fields on /manage/me/memberships: scope.js
+	/// calls memberships on every scoped page, and this costs one read per assigned admin — a price
+	/// worth paying on the dashboard alone, not on every page load.
+	///
+	/// No org parameter and no admin check: the caller only ever reads their OWN assignment rows.
+	/// </summary>
+	[Function("GetMyOverseers")]
+	public async Task<HttpResponseData> GetMyOverseers(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/me/overseers")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);
+
+		// One entry per org, so the dashboard can key straight off organizationId.
+		var result = new List<object>();
+		foreach (var m in memberships)
+		{
+			var orgId = string.IsNullOrWhiteSpace(m.OrganizationId) ? m.TenantId : m.OrganizationId!;
+			if (string.IsNullOrWhiteSpace(orgId) || m.AssignedAdmins.Count == 0) continue;
+
+			var admins = new List<object>();
+			foreach (var a in m.AssignedAdmins)
+			{
+				if (string.IsNullOrWhiteSpace(a.AdminId)) continue;
+				var admin = await cosmos.GetUserByIdAsync(a.AdminId, orgId);
+				// An assignment pointing at a removed admin is stale, not an error — skip it
+				// rather than surfacing a blank row the volunteer cannot act on.
+				if (admin == null)
+				{
+					logger.LogWarning(
+						"Stale assignment: user {UserId} in org {OrgId} is assigned to missing admin {AdminId}",
+						m.Id, orgId, a.AdminId);
+					continue;
+				}
+				admins.Add(new { id = admin.Id, name = NameOf(admin), email = admin.Email });
+			}
+
+			if (admins.Count > 0) result.Add(new { organizationId = orgId, admins });
+		}
+
+		return await HttpHelper.OkJson(req, result);
+	}
+
+	/// <summary>
 	/// PATCH /api/manage/me/assignments/{volunteerId}?organizationId={org}
 	/// body: { notifyOnHours?, notifyOnApproval? } — the caller edits THEIR OWN prefs on one of
 	/// their assigned volunteers (not another admin's, and not the assignment's existence).
