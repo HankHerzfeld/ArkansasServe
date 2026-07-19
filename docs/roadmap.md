@@ -222,6 +222,14 @@ island.
 </details>
 
 ### Still open
+- **Scope bar shows the root partition as a duplicate "Arkansas Serve" (logged 2026-07-18).**
+  For a SuperAdmin the org switcher lists BOTH `arkansas-serve-root` (name "Arkansas Serve", the
+  internal platform partition) AND the real `arkansas-serve` org (also "Arkansas Serve") — two
+  identical entries; only the real one is wanted. **Cause:** `GetTenants` returns
+  `GetAllTenantsAsync()` unfiltered and `scope.js` maps them all for supers. Root is already
+  filtered out of the public org directory (`MembershipFunctions`) but NOT the super scope bar.
+  **Fix:** drop `arkansas-serve-root` from the super org list in `scope.js` (small, safe) —
+  root's public profile was migrated to the real org, so it need not be scope-selectable.
 - **Orphaned membership data.** ✅ **Deleted 2026-07-15 on owner authorization.** 3 rows
   removed; `Users` went 18 → 15, and the stranded partition now holds 0.
   - **The old description here was wrong in a way worth recording.** These rows did *not*
@@ -329,6 +337,13 @@ island.
   0 in a desktop browser, so the check substituted real insets into the shipped rules.
 
 ### Events & scheduling
+- **"Spots left" should be per-shift when an event has shifts (logged 2026-07-18).** For a
+  shifted event the availability shown (event card / detail / sign-up) uses the OVERALL
+  `maxSlots`/`currentSlots`, so it doesn't line up with the per-shift `capacity`/`filled` — it
+  should report availability **by shift** (each shift's own remaining), since sign-up already
+  reserves per shift. Mostly a display/UX change: the per-shift counters already exist on the
+  model (`shifts[].capacity`/`filled`); the overall counter can stay as a fallback for
+  no-shift events.
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
   re-creating it each time. *Scoped 2026-07-15; ① and ② landed, ③ (create-form UI) remains.*
   - **Occurrences are MATERIALISED as real Event docs, and the data model decided that.**
