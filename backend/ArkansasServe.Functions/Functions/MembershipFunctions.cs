@@ -55,6 +55,11 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 			{
 				organizationId = orgId,
 				organizationName = tenant.Name,
+				// The org's KIND (School / JDC / Organization). The tenant doc is already loaded
+				// here, so this is free — and without it the per-page scope filter (ui.js
+				// PAGE_SCOPE `orgTypes`) can only narrow a SuperAdmin's list, since everyone
+				// else's orgs come from memberships and carried no type at all.
+				type = tenant.Type,
 				status = tenant.Status,
 				rbacEnabled = tenant.RbacEnabled,
 				allowGroupAdminAddVolunteers = tenant.AllowGroupAdminAddVolunteers,
