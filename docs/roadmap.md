@@ -1,6 +1,6 @@
 # Arkansas Serve — Priorities & Roadmap
 
-_Last updated 2026-07-18._ Consolidated list of completed and upcoming priorities.
+_Last updated 2026-07-19._ Consolidated list of completed and upcoming priorities.
 Detailed context for shipped work lives in the referenced PRs and companion docs
 (`production-cutover-plan.md`, `manual-verification-checklist.md`).
 
@@ -222,6 +222,20 @@ island.
 </details>
 
 ### Still open
+- **⚠️ `PUT /events/{id}` is a full replace that looks like a patch (logged 2026-07-19).**
+  Found the hard way while verifying #101 in prod: sending `{ organizationId, shifts }` to update
+  only the shifts **wiped `title`, `description`, `location`, `category`, `maxSlots` and
+  `startDateTime`** (the last to `0001-01-01`, which silently dropped the event out of the
+  upcoming-events list). The request record deserialises every omitted field to its default and
+  `UpdateEvent` copies those defaults onto the stored doc. The roadmap's #9 note — "`UpdateEvent`
+  copies field-by-field rather than replacing, so `seriesId`/`recurrence` survive" — is true only
+  of fields absent from the request *type*; anything present in the type but omitted from the
+  *body* is zeroed.
+  - **Not currently biting:** `org-portal.js` always sends the complete payload, so no UI path
+    hits it. It is a landmine for the next caller (and for anyone scripting against the API),
+    not a live defect. Damage was to a throwaway test event only.
+  - **Fix when convenient:** make the update fields nullable and copy only what was supplied, or
+    document the endpoint as PUT-means-replace and reject partial bodies outright.
 - **Scope bar shows the root partition as a duplicate "Arkansas Serve" (logged 2026-07-18).**
   For a SuperAdmin the org switcher lists BOTH `arkansas-serve-root` (name "Arkansas Serve", the
   internal platform partition) AND the real `arkansas-serve` org (also "Arkansas Serve") — two
@@ -337,13 +351,33 @@ island.
   0 in a desktop browser, so the check substituted real insets into the shipped rules.
 
 ### Events & scheduling
-- **"Spots left" should be per-shift when an event has shifts (logged 2026-07-18).** For a
-  shifted event the availability shown (event card / detail / sign-up) uses the OVERALL
-  `maxSlots`/`currentSlots`, so it doesn't line up with the per-shift `capacity`/`filled` — it
-  should report availability **by shift** (each shift's own remaining), since sign-up already
-  reserves per shift. Mostly a display/UX change: the per-shift counters already exist on the
-  model (`shifts[].capacity`/`filled`); the overall counter can stay as a fallback for
-  no-shift events.
+- **"Spots left" per-shift** — ✅ **SHIPPED 2026-07-19 (PR #101).** Availability now reports the
+  **tighter of the two capacity gates** the server already enforces, rather than the overall
+  counter alone:
+
+  ```
+  remaining = min(overall remaining, sum of per-shift remaining)
+  ```
+
+  - **Both gates were always real.** `AdjustSlotsAsync` refuses a sign-up that would push
+    `currentSlots` past `maxSlots` *or* a shift's `filled` past its `capacity`. Four surfaces
+    read only the first: the card, the detail page's "Spots left" fact, the "only with spots
+    left" filter and the "most spots left" sort. So the number could contradict the per-shift
+    rows printed directly beneath it.
+  - **Capacity 0 = uncapped is modelled as `Infinity`,** so it drops out of the `min()` and the
+    no-shift case reduces to *exactly* the previous expression. A generalisation, not a branch
+    on "does it have shifts" — which is why 15 of 16 live shifted events were unaffected.
+  - **Verified in prod against real data, then against a constructed worst case.** Of 16
+    shifted events, one changed: an event with `maxSlots: 0` but a real shift cap of 9 showed
+    *no availability at all* and now reads "7 spots left across 1 shift". The case live data
+    did not cover (overall open, every shift full) was built as a temp event and filled with
+    three real walk-ins: overall said "7 spots left" while 2/2 and 1/1 shifts meant nobody
+    could sign up. It now reads "0 spots left across 2 shifts" and is correctly excluded by
+    "only with spots left". Temp event + 3 walk-in records deleted afterwards; verified 0
+    leftovers.
+  - Also converged the three duplicated per-shift `capacity > 0 ? …` expressions (shift list,
+    sign-up selector, group-registration selector) onto the shared helper, and clamped the
+    card's count, which was raw subtraction and could render negative.
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
   re-creating it each time. *Scoped 2026-07-15; ① and ② landed, ③ (create-form UI) remains.*
   - **Occurrences are MATERIALISED as real Event docs, and the data model decided that.**
