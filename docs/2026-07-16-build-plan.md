@@ -225,8 +225,35 @@ approval; send a direct notification → it lands.
 
 ---
 
+## #11② — Tag admin UI (+ finish the gate)  ·  ~3-4 days  ·  TEED UP 2026-07-18
+Tag BACKEND already shipped (2026-07-15): definitions API `GET/POST/PUT
+/manage/backend/tenants/{id}/user-tags` (OrgAdmin+) + per-person state `PUT
+/manage/volunteers/{memberId}/tags/{tagId}` (GroupAdmin+). `blockCheckIn` enforcement shipped
+with #14 (same-org). Missing: any frontend, `Api.Tags` helpers, and the `blockRegistration` gate.
+
+**Decisions locked 2026-07-18:**
+- **Build the `blockRegistration` gate too**, not UI-only. Add it in `RegisterEvent`, mirroring
+  #14's same-org `BlockedByTagsAsync` (refuse sign-up naming the missing tag; cross-org registrants
+  skip, per the locked cross-org decision). Completes the enforcement story so the UI can offer all
+  three levels honestly.
+- **Per-member tag state lives in the admin-backend Volunteers card** (GroupAdmin+, matching
+  `SetVolunteerTag`) — a per-volunteer "Credentials" action, not User Access Management.
+
+**Build:**
+1. `Api.Tags` — wrap the existing endpoints (list/create/update tenant tags; set member state).
+2. **Tag definitions manager** — new admin-backend card (OrgAdmin+, like Nested Groups): list +
+   create/edit/archive with label, description, enforcement (advisory / blockRegistration /
+   blockCheckIn, each clearly explained), and optional `expiresAfterDays`.
+3. **Per-member state** — Credentials action in the Volunteers card → set None/Pending/Complete
+   (+ note/date) via `SetVolunteerTag`; render the live current/expired read from `IsCurrentAt`.
+4. **`blockRegistration` gate** in `RegisterEvent` (+ group registration), same-org only.
+5. Verify in prod: define a `blockRegistration` tag → a same-org member without it is refused at
+   sign-up naming the tag → record the tag Complete → sign-up succeeds; advisory only flags.
+
+Build note: confirm `Api.Volunteers.list` returns each member's `.tags` for the current-state
+read, or fetch per-member on opening the Credentials modal.
+
 ## Not in this cycle (unchanged from triage)
-- **#11② admin UI** can be built now; the **gate** ships with #14 per the locked decision.
 - **#17 / #19 / #21** now have their tech decisions (free maps / ACS email / palette tokens) but
   still want a short design pass before building.
 - **#18** waits on #16 + #17. **#1/#2** wait on counsel. **#22-24** stay deferred to scale.

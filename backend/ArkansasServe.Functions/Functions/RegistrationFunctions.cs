@@ -38,6 +38,18 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		if (await cosmos.IsAlreadyRegisteredAsync(body.EventId, ctx.UserId, self?.Id))
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Already registered for this event");
 
+		// #11②: same-org blockRegistration gate. A registrant in the event's OWN org must hold
+		// every tag that org marks blockRegistration; a cross-org registrant has no doc here to
+		// carry a tag state, so is never blocked (the locked cross-org decision).
+		if (self != null && string.Equals(ctx.TenantId, evt.OrganizationId, StringComparison.OrdinalIgnoreCase))
+		{
+			var org = await cosmos.GetTenantAsync(evt.OrganizationId);
+			var missing = TagGate.MissingTags(org, self, TagEnforcement.BlockRegistration, DateTime.UtcNow);
+			if (missing.Count > 0)
+				return await HttpHelper.Error(req, HttpStatusCode.Conflict,
+					$"Can't sign up yet — still needed: {string.Join(", ", missing)}. Ask an admin to record it, then try again.");
+		}
+
 		// If the event has shifts, the volunteer must choose one that isn't full.
 		if (evt.Shifts.Count > 0)
 		{
@@ -289,6 +301,24 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			if (!string.Equals(u.Status, "active", StringComparison.OrdinalIgnoreCase))
 				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"{DisplayNameOf(u)} is not an active member");
 			members.Add((r, u));
+		}
+
+		// #11②: same-org blockRegistration gate. Only registrants IN THE EVENT'S OWN org are
+		// gated (a cross-org group has no docs here to carry tag state). All-or-nothing, like the
+		// rest of this endpoint: if anyone is short a required tag, nobody is registered.
+		if (string.Equals(body.RegistrantOrganizationId, evt.OrganizationId, StringComparison.OrdinalIgnoreCase))
+		{
+			var gateOrg = await cosmos.GetTenantAsync(evt.OrganizationId);
+			var now = DateTime.UtcNow;
+			var blocked = new List<string>();
+			foreach (var (_, user) in members)
+			{
+				var missing = TagGate.MissingTags(gateOrg, user, TagEnforcement.BlockRegistration, now);
+				if (missing.Count > 0) blocked.Add($"{DisplayNameOf(user)} ({string.Join(", ", missing)})");
+			}
+			if (blocked.Count > 0)
+				return await HttpHelper.Error(req, HttpStatusCode.Conflict,
+					$"Can't sign up — still needed: {string.Join("; ", blocked)}. Record the tag(s), then try again.");
 		}
 
 		// Nobody in the group may already hold a live registration. One read of the event's

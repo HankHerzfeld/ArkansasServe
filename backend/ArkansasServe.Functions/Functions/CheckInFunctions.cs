@@ -353,22 +353,11 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 		if (!string.Equals(reg.SchoolId, evt.OrganizationId, StringComparison.OrdinalIgnoreCase))
 			return (false, null);
 
-		var tenant = await cosmos.GetTenantAsync(evt.OrganizationId);
-		var gating = tenant?.UserTags
-			.Where(t => string.Equals(t.Enforcement, TagEnforcement.BlockCheckIn, StringComparison.OrdinalIgnoreCase)
-				&& string.Equals(t.Status, "active", StringComparison.OrdinalIgnoreCase))
-			.ToList() ?? [];
-		if (gating.Count == 0) return (false, null);
-
-		var memberId = reg.MemberId;
-		var member = string.IsNullOrWhiteSpace(memberId) ? null : await cosmos.GetUserByIdAsync(memberId, evt.OrganizationId);
+		var member = string.IsNullOrWhiteSpace(reg.MemberId) ? null : await cosmos.GetUserByIdAsync(reg.MemberId, evt.OrganizationId);
 		if (member == null) return (false, null); // no doc to evaluate → don't block on a lookup miss
 
-		var now = DateTime.UtcNow;
-		var missing = gating
-			.Where(t => !member.Tags.Any(s => string.Equals(s.TagId, t.Id, StringComparison.OrdinalIgnoreCase) && s.IsCurrentAt(now)))
-			.Select(t => t.Label)
-			.ToList();
+		var tenant = await cosmos.GetTenantAsync(evt.OrganizationId);
+		var missing = TagGate.MissingTags(tenant, member, TagEnforcement.BlockCheckIn, DateTime.UtcNow);
 		if (missing.Count == 0) return (false, null);
 
 		return (true, $"Cannot check in yet — still needed: {string.Join(", ", missing)}. An event admin can record it and try again.");
