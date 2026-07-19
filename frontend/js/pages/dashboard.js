@@ -357,7 +357,10 @@
               tiles.appendChild(statTile(upcoming.length, 'Upcoming events', '/org-portal.html'));
             }
             if (roster) {
-              tiles.appendChild(statTile(roster.length, 'Members', '/admin-backend.html'));
+              // "Volunteers", not "Members": GetVolunteersByTenantAsync filters
+              // AdminLevel == "Student", so admins are excluded. Labelling this "Members"
+              // read as 1 in an org holding four people.
+              tiles.appendChild(statTile(roster.length, 'Volunteers', '/admin-backend.html'));
             }
             if (!tiles.children.length) {
               tiles.appendChild(el('div', {
@@ -399,6 +402,23 @@
         }
 
         wrap.appendChild(card);
+      }
+
+      // Hours credited by an org the person is NOT a member of belong to no card, so the
+      // cards would silently sum to less than the "Total Approved Hours" tile above — two
+      // numbers on one screen that don't reconcile. Happens when a membership is removed or
+      // its org is deleted (live example: an approved log whose schoolId names a tenant that
+      // no longer exists). Say so rather than letting the arithmetic look wrong; the history
+      // table below lists the logs themselves.
+      const orgIds = new Set(memberships.map(m => m.organizationId));
+      const unmatched = (logs || []).filter(l => l.status === 'Approved' && !orgIds.has(l.schoolId));
+      if (unmatched.length) {
+        const hrs = unmatched.reduce((s, l) => s + l.hoursLogged, 0);
+        wrap.appendChild(el('div', {
+          style: 'font-size:.85rem;color:var(--gray-600);margin:-.25rem 0 1rem;',
+          text: `${hrs.toFixed(1)} approved hour${hrs === 1 ? '' : 's'} were credited by an organization `
+              + `you're no longer a member of. They count towards your total above and appear in your history below.`,
+        }));
       }
 
       // Overview tile: hours waiting on this person across every org they can approve in.
