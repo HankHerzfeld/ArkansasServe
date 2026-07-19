@@ -38,10 +38,8 @@
   // "tutoring little rock" found nothing unless it appeared verbatim in one field.
   //
   // Row order mirrors allEvents, so a row index maps straight back to an event.
-  // maxSlots === 0 means "no cap", matching how the card renders spots left — so an
-  // uncapped event always counts as having room rather than as being full.
-  const openSpots = (evt) => (evt.maxSlots > 0 ? Math.max(0, evt.maxSlots - evt.currentSlots) : Infinity);
-  const hasSpotsLeft = (evt) => openSpots(evt) > 0;
+  // Spots left comes from Availability, which honours per-shift capacity when the event
+  // has shifts (see availability.js) and treats an uncapped event as having room.
 
   // Local calendar day for an event, as yyyy-mm-dd, to compare against the date inputs.
   // Deliberately NOT toISOString(), which converts to UTC and would drift an evening
@@ -60,7 +58,6 @@
 
     events.forEach(e => {
       const tr = document.createElement('tr');
-      const spots = openSpots(e);
       const cells = [
         e.title,
         e.organizationName,
@@ -71,7 +68,7 @@
         // chronological order, so no custom comparator is needed.
         e.startDateTime ? new Date(e.startDateTime).toISOString() : '',
         // Uncapped events sort as the roomiest rather than as zero.
-        spots === Infinity ? '999999' : String(spots),
+        Availability.sortKey(e),
       ];
       cells.forEach(v => {
         const td = document.createElement('td');
@@ -108,7 +105,7 @@
         const county = document.getElementById('filter-county').value.trim().toLowerCase();
         if (county && !(evt.county || '').toLowerCase().includes(county)) return false;
 
-        if (document.getElementById('filter-open-only').checked && !hasSpotsLeft(evt)) return false;
+        if (document.getElementById('filter-open-only').checked && !Availability.hasRoom(evt)) return false;
 
         // Inclusive on both ends: "From 1 Mar / To 1 Mar" means events ON 1 March.
         const day = localDayKey(evt.startDateTime);
@@ -237,7 +234,8 @@
 
       const meta = document.createElement('div');
       meta.className = 'card-meta';
-      meta.textContent = `📍 ${evt.location} · 📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · ⏱ ${evt.hoursValue} hour${evt.hoursValue !== 1 ? 's' : ''} credit${evt.maxSlots > 0 ? ` · ${evt.maxSlots - evt.currentSlots} spots left` : ''}`;
+      const spotsLabel = Availability.label(evt);
+      meta.textContent = `📍 ${evt.location} · 📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · ⏱ ${evt.hoursValue} hour${evt.hoursValue !== 1 ? 's' : ''} credit${spotsLabel ? ` · ${spotsLabel}` : ''}`;
       card.appendChild(meta);
 
       const orgName = document.createElement('p');

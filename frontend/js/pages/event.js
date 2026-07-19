@@ -162,7 +162,9 @@
       addFact('Where', mapLink);
     }
     if (evt.hoursValue != null) addFact('Service credit', `${evt.hoursValue} hour${evt.hoursValue === 1 ? '' : 's'}`);
-    if (evt.maxSlots > 0) addFact('Spots left', String(Math.max(0, evt.maxSlots - (evt.currentSlots || 0))));
+    // Per-shift when the event has shifts: the Shifts section below breaks the same number
+    // down, so reading the overall counter here would contradict it (see availability.js).
+    if (!Availability.isUncapped(evt)) addFact('Spots left', Availability.label(evt));
     root.appendChild(section('Details', facts));
 
     // Shifts (only when present).
@@ -173,7 +175,8 @@
         const parts = [s.label];
         if (s.startDateTime) parts.push(new Date(s.startDateTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }));
         row.appendChild(elem('div', { text: parts.filter(Boolean).join(' · ') }));
-        const spots = s.capacity > 0 ? `${Math.max(0, s.capacity - (s.filled || 0))} spot${(s.capacity - (s.filled || 0)) === 1 ? '' : 's'} left` : 'Open';
+        const left = Availability.shiftRemaining(s);
+        const spots = left === Availability.UNCAPPED ? 'Open' : `${left} spot${left === 1 ? '' : 's'} left`;
         row.appendChild(elem('div', { text: spots, style: 'color:var(--gray-600);' }));
         list.appendChild(row);
       });
@@ -276,8 +279,9 @@
       const sel = elem('select', { id: 'signup-shift' });
       sel.appendChild(elem('option', { value: '', text: 'Select…' }));
       evt.shifts.forEach(s => {
-        const full = s.capacity > 0 && (s.filled || 0) >= s.capacity;
-        const left = s.capacity > 0 ? ` (${Math.max(0, s.capacity - (s.filled || 0))} left)` : '';
+        const remaining = Availability.shiftRemaining(s);
+        const full = remaining === 0;
+        const left = remaining === Availability.UNCAPPED ? '' : ` (${remaining} left)`;
         const when = s.startDateTime ? ` — ${new Date(s.startDateTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}` : '';
         const opt = elem('option', { value: s.id, text: `${s.label}${when}${full ? ' — FULL' : left}` });
         if (full) opt.setAttribute('disabled', 'true');
@@ -514,12 +518,12 @@
         const sel = elem('select', { id: 'group-shift' });
         sel.appendChild(elem('option', { value: '', text: 'Select…' }));
         group.evt.shifts.forEach(s => {
-          const left = s.capacity > 0 ? Math.max(0, s.capacity - (s.filled || 0)) : null;
-          const full = s.capacity > 0 && left === 0;
+          const remaining = Availability.shiftRemaining(s);
+          const full = remaining === 0;
           const when = s.startDateTime ? ` — ${new Date(s.startDateTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}` : '';
           const opt = elem('option', {
             value: s.id,
-            text: `${s.label}${when}${full ? ' — FULL' : left != null ? ` (${left} left)` : ''}`,
+            text: `${s.label}${when}${full ? ' — FULL' : remaining === Availability.UNCAPPED ? '' : ` (${remaining} left)`}`,
           });
           if (full) opt.setAttribute('disabled', 'true');
           sel.appendChild(opt);
