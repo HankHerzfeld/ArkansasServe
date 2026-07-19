@@ -171,6 +171,8 @@ const Api = (() => {
     setPrefs: (volunteerId, orgId, data) => request('PATCH', `/manage/me/assignments/${encodeURIComponent(volunteerId)}?organizationId=${encodeURIComponent(orgId)}`, data),
     // Send a direct in-app message to all my assigned volunteers. data: { organizationId, message }
     notify:   (data) => request('POST', '/manage/me/assigned-volunteers/notify', data),
+    // The mirror of `mine`: who oversees ME, per org — [{ organizationId, admins:[{id,name,email}] }].
+    overseers: () => request('GET', '/manage/me/overseers'),
   };
 
   // ── Geo (#16) ─────────────────────────────────────────────────────────────
