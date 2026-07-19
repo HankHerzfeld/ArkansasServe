@@ -205,7 +205,18 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			// Locate the event by its OWN org (partition key). Fall back to SchoolId for
 			// pre-existing registrations saved before OrganizationId was recorded.
 			var (freshEvt, etag) = await cosmos.GetEventWithETagAsync(reg.EventId, reg.OrganizationId ?? reg.SchoolId);
-			if (freshEvt == null) break;
+			if (freshEvt == null)
+			{
+				// The registration is ALREADY cancelled at this point, so giving up here leaks a
+				// slot permanently: the seat is never returned and the event advertises less room
+				// than it has. It used to break silently, which is how drift accumulated with no
+				// trace of where. Reconcile with POST /manage/backend/events/{id}/reconcile-slots.
+				logger.LogError(
+					"Slot leak: cancelled registration {RegId} but its event {EventId} was not found in partition {OrgId}; "
+					+ "CurrentSlots/shift Filled are now over-counted. Reconcile the event's slots.",
+					reg.Id, reg.EventId, reg.OrganizationId ?? reg.SchoolId);
+				break;
+			}
 
 			if (freshEvt.CurrentSlots > 0) freshEvt.CurrentSlots--;
 			if (!string.IsNullOrWhiteSpace(reg.ShiftId))
@@ -222,12 +233,120 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			}
 			catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
 			{
+				// Same leak as above, by a different route: the cancellation is already written,
+				// so exhausting the retries means the seat is never given back. Error, not
+				// Warning — this silently corrupts advertised availability and nothing else
+				// notices. (Cancel deliberately still returns 204: the cancellation itself DID
+				// succeed, and reporting failure would be a worse lie than the drift.)
 				if (attempt == maxRetries - 1)
-					logger.LogWarning("Failed to decrement slot count for event {EventId} after {Retries} retries", reg.EventId, maxRetries);
+					logger.LogError(
+						"Slot leak: cancelled registration {RegId} but failed to decrement event {EventId} after {Retries} "
+						+ "retries; CurrentSlots/shift Filled are now over-counted. Reconcile the event's slots.",
+						reg.Id, reg.EventId, maxRetries);
 			}
 		}
 
 		return req.CreateResponse(HttpStatusCode.NoContent);
+	}
+
+	/// <summary>
+	/// POST /api/manage/backend/events/{id}/reconcile-slots?organizationId={org}
+	///
+	/// Recomputes an event's `CurrentSlots` and each shift's `Filled` from the registrations that
+	/// actually exist, and reports what changed. SuperAdmin only.
+	///
+	/// WHY THIS IS NEEDED. The counters are maintained incrementally, and the cancel path writes
+	/// the cancellation FIRST and then decrements — so any failure after that first write (event
+	/// not found in its partition, or five ETag conflicts) leaves the seat permanently taken by
+	/// nobody. Both paths return 204, so nothing surfaces it. Live example on the day this was
+	/// written: an event with ONE active registration whose `currentSlots` and `shifts[0].filled`
+	/// both read 2, advertising one fewer place than it had.
+	///
+	/// Deliberately over-counting is the SAFE direction of that bug (turning people away rather
+	/// than over-booking), which is why the write order is not being inverted here — but it still
+	/// needs a way back. Registrations are partitioned by eventId, so the recount is a single
+	/// -partition read, and `GetRegistrationsByEventAsync` already excludes cancelled rows.
+	///
+	/// Idempotent: running it on a healthy event reports no change and writes nothing.
+	/// </summary>
+	[Function("ReconcileEventSlots")]
+	public async Task<HttpResponseData> ReconcileEventSlots(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/backend/events/{id}/reconcile-slots")] HttpRequestData req,
+		string id)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "SuperAdmin only");
+
+		var orgId = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["organizationId"] ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(orgId))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "organizationId is required");
+
+		var regs = await cosmos.GetRegistrationsByEventAsync(id);
+
+		const int maxRetries = 5;
+		for (var attempt = 0; attempt < maxRetries; attempt++)
+		{
+			var (evt, etag) = await cosmos.GetEventWithETagAsync(id, orgId);
+			if (evt == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
+
+			var before = new { currentSlots = evt.CurrentSlots, shifts = evt.Shifts.Select(s => new { s.Id, s.Label, s.Filled }).ToList() };
+
+			var trueTotal = regs.Count;
+			// A registration with no ShiftId counts towards the event total but towards no shift,
+			// which is correct for an unshifted event and for a legacy row saved before shifts.
+			var byShift = regs.Where(r => !string.IsNullOrWhiteSpace(r.ShiftId))
+				.GroupBy(r => r.ShiftId!)
+				.ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+			var changed = evt.CurrentSlots != trueTotal;
+			evt.CurrentSlots = trueTotal;
+			foreach (var shift in evt.Shifts)
+			{
+				var actual = byShift.TryGetValue(shift.Id, out var n) ? n : 0;
+				if (shift.Filled != actual) changed = true;
+				shift.Filled = actual;
+			}
+
+			// Keep Status honest with the corrected count, the same way the register/cancel
+			// paths do — otherwise a repaired event could stay flagged "Full" with room in it.
+			if (evt.MaxSlots > 0)
+			{
+				var shouldBeFull = evt.CurrentSlots >= evt.MaxSlots;
+				var newStatus = shouldBeFull ? "Full"
+					: string.Equals(evt.Status, "Full", StringComparison.OrdinalIgnoreCase) ? "Open"
+					: evt.Status;
+				if (!string.Equals(newStatus, evt.Status, StringComparison.Ordinal)) changed = true;
+				evt.Status = newStatus;
+			}
+
+			if (!changed)
+				return await HttpHelper.OkJson(req, new { eventId = id, changed = false, activeRegistrations = trueTotal, before });
+
+			try
+			{
+				await cosmos.UpdateEventAsync(evt, etag);
+				logger.LogInformation(
+					"[Slots] {Actor} reconciled event {EventId}: currentSlots {Old} -> {New} across {Regs} active registrations",
+					ctx.UserId, id, before.currentSlots, evt.CurrentSlots, trueTotal);
+				return await HttpHelper.OkJson(req, new
+				{
+					eventId = id,
+					changed = true,
+					activeRegistrations = trueTotal,
+					before,
+					after = new { currentSlots = evt.CurrentSlots, shifts = evt.Shifts.Select(s => new { s.Id, s.Label, s.Filled }).ToList() },
+				});
+			}
+			catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+			{
+				if (attempt == maxRetries - 1)
+					return await HttpHelper.Error(req, HttpStatusCode.Conflict, "The event is being updated by someone else. Try again.");
+			}
+		}
+
+		return await HttpHelper.Error(req, HttpStatusCode.Conflict, "The event is being updated by someone else. Try again.");
 	}
 
 	// ── POST /api/registrations/group ─────────────────────────────────────────

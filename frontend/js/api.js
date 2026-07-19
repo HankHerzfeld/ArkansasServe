@@ -110,6 +110,10 @@ const Api = (() => {
 
   // ── Registrations ─────────────────────────────────────────────────────────
   const Registrations = {
+    // SuperAdmin repair: recompute an event's currentSlots + per-shift filled from the
+    // registrations that actually exist. Returns { changed, activeRegistrations, before, after }.
+    reconcileSlots: (eventId, orgId) =>
+      request('POST', `/manage/backend/events/${encodeURIComponent(eventId)}/reconcile-slots?organizationId=${encodeURIComponent(orgId)}`),
     // data: { eventId, organizationId, shiftId?, answers? }
     create: (data) => request('POST', '/registrations', data),
     // Sign several roster members up at once. All-or-nothing: if the group doesn't fit,
