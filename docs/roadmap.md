@@ -512,6 +512,18 @@ island.
   with an **optional custom address** path (no auto-populate) that still shows a **previewed
   Google Map**.
 
+### Dashboard
+- **Per-organization dashboard, differentiated by role (logged 2026-07-19).** The dashboard is
+  effectively the home screen, and today it is one undifferentiated view. Wanted: an **overview**,
+  then a **by-organization breakdown** showing each org the person belongs to and the admin
+  overseeing them there. **Volunteer and admin dashboards should NOT be identical** — the two use
+  the screen for different things, so they need different content rather than one layout with
+  rows hidden.
+  - Context: PR #103 removed the dashboard's scope bar, because `dashboard.js` read no `Scope.*`
+    state — the switcher filtered nothing there while silently re-scoping every other page. A
+    per-org dashboard is the real answer to what that bar looked like it was doing.
+  - Needs a design pass before building (what an admin's home screen leads with vs a volunteer's).
+
 ### Organization & user model
 - **Richer org taxonomy** — ✅ **Vocabulary + fields done 2026-07-15.** Self-define-with-
   approval is the remaining piece (owner-requested; its own PR).
@@ -692,6 +704,37 @@ island.
     **not** count as a match — otherwise a query matching nothing would leave one tab on
     screen with no explanation and look broken rather than empty.
   - The group selector remains a dropdown; only the org switcher changed.
+- **Scope-bar option #2 — per-page scope config** — ✅ **SHIPPED 2026-07-19 (PR #103, fix #104).**
+  Each scoped page declares what its switcher should offer (`PAGE_SCOPE` in `ui.js`, keyed by the
+  same href as `TABS`) instead of every page receiving one globally-resolved list:
+  `{ minRole, orgTypes, allTenants, showGroups }`. A page absent from the table keeps today's
+  behaviour, so adding one is opt-in.
+  - **`minRole` is the substance.** `scope.js` mapped EVERY membership regardless of role, so
+    someone who is an OrganizationAdmin at their school and a plain volunteer elsewhere was
+    *offered* the volunteer org on an admin page; picking it gives an empty view that reads as
+    broken. `bestAdminOrgId` already stopped them *landing* there — nothing stopped the list
+    offering it. **Latent, not live:** only one multi-org person exists today and both their
+    memberships are Student, so they see no scope bar at all. It arrives with the schools.
+  - **The dashboard's scope bar is gone.** `dashboard.js` reads no `Scope.*` state, so the
+    switcher filtered nothing on that page while silently re-scoping every OTHER page through
+    `sessionStorage`. Per-org dashboard content is its own item (below).
+  - **Backend:** `GetMyMemberships` now projects `tenant.Type` — free (the tenant doc is already
+    loaded) and necessary, because without it `orgTypes` could only ever narrow a SuperAdmin's
+    list; everyone else's orgs come from memberships, which carried no type. An org whose type is
+    **unknown always passes**, so pre-deploy memberships are still offered.
+  - ⚠️ **`orgTypes` is BUILT AND TESTED BUT DELIBERATELY NOT APPLIED (PR #104).** Approvals was
+    declared `orgTypes: 'schoolLike'` on sound reasoning — hours approve against the student's
+    school (`ServiceLog.schoolId`), so a Community Organization has no queue. It was wrong against
+    live data: **every tenant in production is typed `Organization`; there is not one School or
+    JDC doc.** Schools are currently modelled as Organizations and approvals flow through them, so
+    the filter dropped all five tenants and left a SuperAdmin unable to open Approvals at all.
+    Caught in the prod clickthrough *after* the SWA deploy had landed; reverted to `orgTypes: null`
+    within minutes. **Turn it on when real School/JDC tenants exist.**
+    - *The lesson, which is the reusable part:* the 15-case local harness invented
+      `School`/`JDC`/`Organization` tenants and proved the filter handles them correctly — which it
+      does. It never asked whether those types exist in this deployment. A fixture that builds its
+      own world can only prove internal consistency. Same lesson as the group-registration note
+      above: found by running it against production, not by review.
 - **Per-school branding / customizable CSS** — schools choose a **logo and color palette** that
   applies to their assigned users; assignable to school-scoped accounts.
 
