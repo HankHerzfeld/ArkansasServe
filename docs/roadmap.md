@@ -513,16 +513,44 @@ island.
   Google Map**.
 
 ### Dashboard
-- **Per-organization dashboard, differentiated by role (logged 2026-07-19).** The dashboard is
-  effectively the home screen, and today it is one undifferentiated view. Wanted: an **overview**,
-  then a **by-organization breakdown** showing each org the person belongs to and the admin
-  overseeing them there. **Volunteer and admin dashboards should NOT be identical** — the two use
-  the screen for different things, so they need different content rather than one layout with
-  rows hidden.
-  - Context: PR #103 removed the dashboard's scope bar, because `dashboard.js` read no `Scope.*`
-    state — the switcher filtered nothing there while silently re-scoping every other page. A
-    per-org dashboard is the real answer to what that bar looked like it was doing.
-  - Needs a design pass before building (what an admin's home screen leads with vs a volunteer's).
+- **Per-organization, role-aware dashboard** — ✅ **SHIPPED 2026-07-19 (PR #106, fixes #107).**
+  An overview, then **one card per organization whose content depends on the person's role in
+  THAT org**. Someone is routinely an admin in one org and a plain volunteer in another, so a
+  single global admin-vs-volunteer mode would have been wrong for one of them (owner decision).
+  - **What it replaced was close to empty for an admin.** Any non-Student short-circuited to
+    three em-dashes plus "Admin users can use the Admin Backend for scoped management tasks."
+    So an admin who *also* volunteers was told their own hours didn't exist, and an admin who
+    doesn't got a home screen with nothing actionable on it.
+  - **Admin half** (per org, each figure linking where you'd act on it): awaiting approval
+    (OrgAdmin+), volunteers assigned to me (EventAdmin+), upcoming events (EventAdmin+),
+    volunteers (GroupAdmin+). Each call is gated by the role it *actually* requires —
+    `/manage/volunteers` is GroupAdmin+, so asking as an EventAdmin would only ever 403 — and
+    degrades to null rather than failing the card, so one 403 cannot blank the others.
+  - **Volunteer half:** hours approved/pending in that org, and who oversees you there
+    (name + email, owner decision).
+  - **Hours key: `ServiceLog.schoolId`** — the org that APPROVED them — so hours served at an
+    outside org still count under the membership that credited them, matching how approval
+    works. The history table continues to name the HOST org per row, so both readings are on
+    one screen (owner decision: "show both").
+  - **New `GET /manage/me/overseers`.** #13 stored `assignedAdmins` on the volunteer's own
+    per-org doc but only ever read it from the ADMIN side, so a volunteer had no way to see who
+    was responsible for their hours. Deliberately its own endpoint rather than extra fields on
+    `/manage/me/memberships`, which `scope.js` calls on every scoped page — one read per
+    assigned admin is worth paying on the dashboard alone. A stale assignment naming a removed
+    admin is skipped and logged, not surfaced as a blank row.
+  - **Two things the prod clickthrough caught (PR #107), both invisible to a code read:**
+    - The roster tile said **"Members" and read 1 for an org holding four people** —
+      `GetVolunteersByTenantAsync` filters `AdminLevel == "Student"`, so it counts volunteers
+      and excludes admins. Relabelled to match what it returns.
+    - **Hours credited by an org you are no longer a member of belonged to no card**, so the
+      cards summed to less than the "Total Approved Hours" tile directly above them — the exact
+      "two numbers on one screen" failure the shared-figure design was meant to avoid. There is
+      a live instance: an approved 2.0h log whose `schoolId` names a deleted tenant. A line
+      under the cards now accounts for the difference.
+  - Verified in prod as SuperAdmin and, via impersonation, as a volunteer with an assigned
+    admin (test assignment created and removed afterwards; impersonation stopped).
+  - *Note:* impersonation is **demo-users-only**, so a non-demo account cannot be used to
+    exercise a volunteer view — set the case up on a demo user instead.
 
 ### Organization & user model
 - **Richer org taxonomy** — ✅ **Vocabulary + fields done 2026-07-15.** Self-define-with-
