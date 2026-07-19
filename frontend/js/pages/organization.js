@@ -2,7 +2,20 @@
   let profile = null;
   let org = null;
 
-  const orgId = new URLSearchParams(location.search).get('id');
+  // A link built from an `arkansas-serve-root` membership (a SuperAdmin's dashboard card, a
+  // bookmark) names the internal platform partition, whose profile 404s by design. Its public
+  // face is the real `arkansas-serve` org, so resolve to that instead of showing an error for
+  // a page that plainly exists. See js/orgs.js — the backend guard is deliberately untouched.
+  const requestedOrgId = new URLSearchParams(location.search).get('id');
+  const orgId = Orgs.canonicalOrgId(requestedOrgId);
+
+  // Canonicalise the address bar so the URL matches what is on screen — otherwise sharing or
+  // re-bookmarking from here would propagate the internal id again.
+  if (requestedOrgId && orgId !== requestedOrgId) {
+    const url = new URL(location.href);
+    url.searchParams.set('id', orgId);
+    history.replaceState(null, '', url);
+  }
 
   Auth.requireAuth().then((p) => {
     profile = p;

@@ -323,7 +323,9 @@
         // Header: org name, your role there, and the org's kind.
         const head = el('div', { style: 'display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.75rem;' });
         head.appendChild(el('a', {
-          href: `/organization.html?id=${encodeURIComponent(orgId)}`,
+          // Canonical id: a SuperAdmin's membership is `arkansas-serve-root`, whose org page
+          // 404s on purpose. Link to its public counterpart rather than a dead page.
+          href: `/organization.html?id=${encodeURIComponent(Orgs.canonicalOrgId(orgId))}`,
           text: m.organizationName,
           style: 'font-weight:600;font-size:1.05rem;color:var(--green);text-decoration:none;',
         }));
