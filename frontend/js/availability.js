@@ -70,6 +70,16 @@ const Availability = (() => {
     return `${spots} across ${count} shift${count === 1 ? '' : 's'}`;
   }
 
+  // Compact form for a value rendered under its own "Spots left" heading, where the full
+  // label would stutter ("Spots left / 3 spots left across 2 shifts").
+  function countLabel(evt) {
+    const left = remaining(evt);
+    if (left === UNCAPPED) return null;
+    if (!hasShifts(evt)) return String(left);
+    const count = evt.shifts.length;
+    return `${left} across ${count} shift${count === 1 ? '' : 's'}`;
+  }
+
   // Sortable key for the DataTables mirror, which compares strings. Uncapped events
   // sort as the roomiest rather than as zero.
   function sortKey(evt) {
@@ -87,6 +97,7 @@ const Availability = (() => {
     hasRoom,
     hasShifts,
     label,
+    countLabel,
     sortKey,
   };
 })();

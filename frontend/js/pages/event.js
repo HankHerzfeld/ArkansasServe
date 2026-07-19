@@ -164,7 +164,7 @@
     if (evt.hoursValue != null) addFact('Service credit', `${evt.hoursValue} hour${evt.hoursValue === 1 ? '' : 's'}`);
     // Per-shift when the event has shifts: the Shifts section below breaks the same number
     // down, so reading the overall counter here would contradict it (see availability.js).
-    if (!Availability.isUncapped(evt)) addFact('Spots left', Availability.label(evt));
+    if (!Availability.isUncapped(evt)) addFact('Spots left', Availability.countLabel(evt));
     root.appendChild(section('Details', facts));
 
     // Shifts (only when present).
