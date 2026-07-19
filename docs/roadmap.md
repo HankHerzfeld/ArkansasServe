@@ -222,6 +222,27 @@ island.
 </details>
 
 ### Still open
+- **Root org page resolves to its public counterpart** — ✅ **Fixed 2026-07-19 (PR #110).**
+  `organization.html?id=arkansas-serve-root` showed "Could not load this organization":
+  `GetOrgProfile` 404s the internal platform partition **on purpose**, since publishing it
+  would put the SuperAdmin roster on a public page.
+  - **The broken link was introduced by #106.** The per-org dashboard card links to
+    `/organization.html?id=<membership orgId>`, and a SuperAdmin's membership *is*
+    `arkansas-serve-root`. The public directory already filtered root out, so that card was
+    the only in-app route to the URL.
+  - **Resolved, not unhidden.** `js/orgs.js` holds both ids + `canonicalOrgId()`; the org page
+    resolves the requested id and canonicalises the address bar (`replaceState`) so sharing
+    stops propagating the internal id; the dashboard links canonically. **The backend guard is
+    untouched** — root remains unservable (re-verified in prod after the change) and no
+    SuperAdmin names reach the page. This only decides which id to *ask for*.
+  - *Related cleanup still open:* `RootTenantId` is duplicated across ~5 frontend files;
+    `js/orgs.js` is the natural home to converge them on.
+- **⚠️ `gh run list --commit` needs the FULL 40-char SHA (logged 2026-07-19).** With a short
+  SHA it returns an empty list and exit 0 — indistinguishable from "no run exists". Measured:
+  `--commit 5e39ecb` → 0 rows; `--commit $(git rev-parse 5e39ecb)` → 2 rows, same commit. This
+  is why `scripts/wait-for-deploy.sh` rev-parses first and asserts 40 chars; removing that
+  would turn it into a script that always claims nothing deployed. See Testing Notes in
+  `.github/copilot-instructions.md`.
 - **⚠️ `PUT /events/{id}` is a full replace that looks like a patch (logged 2026-07-19).**
   Found the hard way while verifying #101 in prod: sending `{ organizationId, shifts }` to update
   only the shifts **wiped `title`, `description`, `location`, `category`, `maxSlots` and

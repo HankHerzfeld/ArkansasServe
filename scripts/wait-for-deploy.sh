@@ -26,7 +26,15 @@
 #
 set -euo pipefail
 
+# LOAD-BEARING: `gh run list --commit` matches only the FULL 40-char SHA. Given a short
+# one it returns an empty list with exit 0 — indistinguishable from "no run exists" — so
+# this script would sit in phase 1 and then wrongly report that nothing was ever built.
+# Do not "simplify" this rev-parse away, and do not pass "$1" straight through.
 SHA="$(git rev-parse "${1:-HEAD}")"
+if [ ${#SHA} -ne 40 ]; then
+  echo "ERROR: could not resolve '${1:-HEAD}' to a full 40-char SHA (got '$SHA')." >&2
+  exit 1
+fi
 SHORT="${SHA:0:7}"
 
 # Deploy workflows this repo runs on push to main. A frontend-only change still starts
