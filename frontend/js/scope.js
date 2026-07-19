@@ -12,6 +12,13 @@
 const Scope = (() => {
   const KEYS = { org: 'as_active_org', group: 'as_active_group' };
 
+  // The internal platform partition. It carries the name "Arkansas Serve" (same as the real,
+  // browsable `arkansas-serve` org), so leaving it in a SuperAdmin's tenant list showed the org
+  // switcher TWO identical "Arkansas Serve" entries. It is already hidden from the public org
+  // directory; hide it from the scope bar too — its public profile was migrated to the real org,
+  // so it need not be scope-selectable.
+  const ROOT_TENANT_ID = 'arkansas-serve-root';
+
   const state = {
     ready: false,
     isSuperAdmin: false,
@@ -87,14 +94,16 @@ const Scope = (() => {
     state.isSuperAdmin = level === 'SuperAdmin';
 
     if (state.isSuperAdmin) {
-      // Supers can act in any tenant.
+      // Supers can act in any tenant — except the internal root partition (see ROOT_TENANT_ID).
       const tenants = await Api.Admin.getTenants().catch(() => []);
-      state.orgs = (tenants || []).map(t => ({
-        id: t.id,
-        name: t.name || t.id,
-        groups: mapGroups(t.groups),
-        raw: t,
-      }));
+      state.orgs = (tenants || [])
+        .filter(t => t.id !== ROOT_TENANT_ID)
+        .map(t => ({
+          id: t.id,
+          name: t.name || t.id,
+          groups: mapGroups(t.groups),
+          raw: t,
+        }));
     } else {
       // Everyone else: the orgs they actually hold a membership in (multi-org).
       const memberships = await Api.Memberships.list().catch(() => []);
