@@ -400,6 +400,43 @@ chore(deps): bump Microsoft.Azure.Cosmos to 3.47.0
 
 ## 🧪 Testing Notes
 
+### Verifying a deploy — pin to the merge commit's SHA
+
+Verification means **deploy to prod and click through**. When waiting for that deploy,
+**always pin on the merge commit's SHA**:
+
+```bash
+scripts/wait-for-deploy.sh          # defaults to HEAD
+scripts/wait-for-deploy.sh <sha>
+```
+
+**Never** wait on "the newest run":
+
+```bash
+gh run list --workflow=... --event=push --limit 1   # ❌ WRONG
+```
+
+That asks *what is the newest run*, not *what happened to my commit*. GitHub does not
+create the run the moment a merge lands, so in the gap the newest run is still the
+**previous** commit's — which is already green. You read `success`, conclude the change
+is live, and verify against a build that does not contain it. This has produced a
+confident "deployed and verified" report about a fix still sitting in the queue.
+
+Two related traps the script also guards:
+
+- **No run at all is not success.** A merge to `main` has landed with GitHub firing no
+  push workflow whatsoever (commit `821c02b`, 2026-07-19). The change sat undeployed
+  behind a merged, green-looking PR. Re-trigger with an empty commit if it happens.
+- **Deployed is not served.** Cloudflare and the browser disk cache both hold the old
+  file. After the run succeeds, fetch the served file cache-busted and grep for the new
+  code before believing a clickthrough:
+  ```bash
+  curl -s "https://arkansasserve.com/js/<file>.js?cb=$(date +%s)" -H 'Cache-Control: no-cache' | grep <new code>
+  ```
+  Backend routes are cache-independent — probe those directly instead.
+
+### Other
+
 - Test all HTTP functions locally with `func start` before pushing
 - Verify role enforcement by testing each endpoint with a token for each role
 - Test the Change Feed by submitting a service log and confirming a PendingApproval document appears
