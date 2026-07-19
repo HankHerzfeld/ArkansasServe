@@ -80,9 +80,24 @@ Gated on data volume, must land **before any org nears ~1,200 rows**. Nothing de
 ## 7. Small logged findings (cheap cleanup, unfixed)
 
 SuperAdmin sees "Sign Up" on events (token-vs-membership bug) · 2 orgs still hold lowercase
-`"organization"` (harmless) · event `bada594a` has empty `organizationId` · event `9f618807`
-over-counts slots by 1 · `TenantIds.IsReserved` dead code · `RootTenantId` duplicated across
-files · toast helper copied ~5×.
+`"organization"` (harmless — `arkansas-serve-root` + `Test O3 Tenant`, re-confirmed 2026-07-19)
+· event `bada594a` has empty `organizationId` · ~~event `9f618807` over-counts slots by 1~~
+**✅ fixed 2026-07-19 (PR #112) — it was a live defect, not residue; see below** ·
+`TenantIds.IsReserved` dead code · `RootTenantId` duplicated across files (`js/orgs.js` from
+PR #110 is now the natural home to converge on) · toast helper copied ~5×.
+
+**Why the slot finding was mis-filed as cheap cleanup.** It read as one stale row, but
+`CancelRegistration` writes the cancellation **first** and then decrements, and two paths
+abandon the decrement after that write — the event not being found in
+`reg.OrganizationId ?? reg.SchoolId` (which had **no log at all**), and five ETag conflicts
+(logged at Warning). Both still return `204`, so a leaked seat was invisible by construction.
+PR #101's per-shift availability then made the drift user-facing: the event advertised 7 spots
+where 8 existed. Both paths now log at Error, and
+`POST /manage/backend/events/{id}/reconcile-slots` (SuperAdmin) recomputes the counters from
+the registrations that actually exist. The write order was deliberately **not** inverted —
+over-counting turns people away, under-counting over-books, and the safe direction was kept.
+Verified in prod: idempotent on 5 healthy events (`changed:false`, no writes), repaired
+`9f618807` 2→1 on both counters, second run `changed:false`, card now reads 8.
 
 ---
 
