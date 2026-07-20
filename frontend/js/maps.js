@@ -42,11 +42,30 @@ const Maps = (() => {
       return new Promise((resolve) => {
         const script = document.createElement('script');
         // `loading=async` is what Google asks for and silences its console warning.
-        // `places` is needed for Autocomplete; geocoding is in the core library.
         script.src = 'https://maps.googleapis.com/maps/api/js'
           + `?key=${encodeURIComponent(cfg.apiKey)}&libraries=places&loading=async&v=weekly`;
         script.async = true;
-        script.onload  = () => resolve(window.google?.maps || null);
+
+        // ⚠️ onload IS NOT READY. With `loading=async` the script that arrives is only the
+        // BOOTSTRAP: `window.google.maps` exists immediately, but `google.maps.Map` and
+        // `google.maps.places` are still being fetched. Resolving on onload therefore hands
+        // callers a namespace whose constructors are undefined — "maps.Map is not a
+        // constructor", and `places` undefined for Autocomplete.
+        //
+        // This failed ASYMMETRICALLY and that is why it survived a first pass: `Geocoder` is
+        // part of the core bundle and was usually ready, so geocoding worked while the map and
+        // autocomplete threw. Await the libraries explicitly.
+        script.onload = async () => {
+          try {
+            const g = window.google?.maps;
+            if (!g?.importLibrary) { resolve(g || null); return; }   // older bootstrap: already whole
+            await Promise.all([g.importLibrary('maps'), g.importLibrary('places')]);
+            resolve(window.google.maps);
+          } catch (err) {
+            console.warn('[maps] Google Maps libraries failed to load', err);
+            resolve(null);
+          }
+        };
         // Resolve null rather than reject: a blocked or failed script must degrade, not throw
         // into every caller. The most likely cause is a CSP or referrer-restriction mismatch.
         script.onerror = () => { console.warn('[maps] Google Maps failed to load'); resolve(null); };
@@ -109,7 +128,11 @@ const Maps = (() => {
   // keeps whatever manual behaviour it already had.
   async function attachAutocomplete(input, onPlace) {
     const maps = await load();
-    if (!maps || !input) return false;
+    // Belt and braces: load() now awaits the places library, but a caller must never get an
+    // EXCEPTION out of an enhancement. Missing constructor -> return false and let the form keep
+    // manual entry, exactly as when there is no key at all. This threw before, and because
+    // org-portal called it with .then() and no .catch it surfaced as an unhandled rejection.
+    if (!maps || !input || !maps.places?.Autocomplete) return false;
 
     const ac = new maps.places.Autocomplete(input, {
       componentRestrictions: { country: 'us' },
