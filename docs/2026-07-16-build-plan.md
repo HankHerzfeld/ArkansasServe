@@ -6,9 +6,14 @@ are inlined. Confirm scope on each item before building, per the roadmap's stand
 
 Decisions locked 2026-07-16:
 - **Tag gating** → state on the registration record (`EventRegistration`); ship same-org-only first, extend cross-org with #14/#19.
-- **Maps** → free stack (Leaflet + OSM tiles, Nominatim optional); ZIP search needs no API. No Google billing.
+- ~~**Maps** → free stack (Leaflet + OSM tiles, Nominatim optional); ZIP search needs no API. No Google billing.~~
+  ⚠️ **SUPERSEDED 2026-07-19** — the owner has a Google Maps API key and full stack access, so the
+  no-billing constraint that forced the free stack no longer applies. See
+  `2026-07-19-design-decisions.md`. (ZIP search itself still needs no API and is unchanged.)
 - **Waiver channel** → Azure Communication Services, **email-only** for v1; SMS decided later.
-- **Branding** → fixed palette tokens + logo, hex-validated; no arbitrary CSS.
+- ~~**Branding** → fixed palette tokens + logo, hex-validated; no arbitrary CSS.~~
+  ⚠️ **REVISED 2026-07-19** — still no arbitrary CSS, but ALL tokens are overridable rather than a
+  fixed subset, with a generated palette and contrast warnings. See `2026-07-19-design-decisions.md`.
 
 ---
 
