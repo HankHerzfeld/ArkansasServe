@@ -4,6 +4,12 @@ _Last updated 2026-07-19._ Consolidated list of completed and upcoming prioritie
 Detailed context for shipped work lives in the referenced PRs and companion docs
 (`production-cutover-plan.md`, `manual-verification-checklist.md`).
 
+> **Design decisions for the NEXT cycle live in `2026-07-19-design-decisions.md`** — #17/#18 maps,
+> #19 waivers, #20 parental oversight and #21 branding are no longer design-gated. It **supersedes
+> `2026-07-16-build-plan.md` on two points**: maps moved from the free Leaflet/OSM stack to Google
+> (the owner has a key, so the no-billing constraint is gone), and branding moved from a fixed
+> token subset to all-tokens-overridable with a generated palette.
+
 ---
 
 ## ✅ Completed (recent)
