@@ -35,7 +35,22 @@ const EventMap = (() => {
     if (!maps) return false;
 
     onSelect = onEventSelect || null;
-    map = new maps.Map(container, {
+    // Construction is wrapped because mount() is a PREDICATE its caller branches on: when it
+    // threw instead of returning false, the caller's `if (!ok)` never ran, so the `maps-off`
+    // class was never applied and an empty pane was left on screen. Fail closed.
+    try {
+      map = buildMap(maps, container);
+    } catch (err) {
+      console.warn('[eventmap] map construction failed', err);
+      map = null;
+      return false;
+    }
+    infoWindow = new maps.InfoWindow();
+    return true;
+  }
+
+  function buildMap(maps, container) {
+    return new maps.Map(container, {
       center: AR_CENTER,
       zoom: AR_ZOOM,
       mapTypeControl: false,
@@ -45,8 +60,6 @@ const EventMap = (() => {
       // convention and prevents trapping the reader mid-page.
       gestureHandling: 'cooperative',
     });
-    infoWindow = new maps.InfoWindow();
-    return true;
   }
 
   const isMounted = () => map != null;

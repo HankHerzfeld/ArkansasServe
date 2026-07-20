@@ -40,35 +40,54 @@ const Maps = (() => {
       if (window.google?.maps) return window.google.maps;
 
       return new Promise((resolve) => {
-        const script = document.createElement('script');
-        // `loading=async` is what Google asks for and silences its console warning.
-        script.src = 'https://maps.googleapis.com/maps/api/js'
-          + `?key=${encodeURIComponent(cfg.apiKey)}&libraries=places&loading=async&v=weekly`;
-        script.async = true;
-
-        // ⚠️ onload IS NOT READY. With `loading=async` the script that arrives is only the
-        // BOOTSTRAP: `window.google.maps` exists immediately, but `google.maps.Map` and
-        // `google.maps.places` are still being fetched. Resolving on onload therefore hands
-        // callers a namespace whose constructors are undefined — "maps.Map is not a
-        // constructor", and `places` undefined for Autocomplete.
+        // ⚠️ DO NOT RESOLVE ON script.onload. Two separate failures came from trying:
         //
-        // This failed ASYMMETRICALLY and that is why it survived a first pass: `Geocoder` is
-        // part of the core bundle and was usually ready, so geocoding worked while the map and
-        // autocomplete threw. Await the libraries explicitly.
-        script.onload = async () => {
+        //   1. With `loading=async` the file that arrives is only the BOOTSTRAP. On a COLD
+        //      load, `google.maps.importLibrary` does not exist yet at onload — so a guard
+        //      like `if (!importLibrary) resolve(namespace)` hands back an EMPTY namespace and
+        //      callers get "maps.Map is not a constructor".
+        //   2. Even once importLibrary exists, `google.maps.Map` and `.places` do not until
+        //      the libraries are imported.
+        //
+        // It also failed ASYMMETRICALLY, which is how it survived a spot check: `Geocoder`
+        // resolves earlier than the rest, so geocoding worked while the map and autocomplete
+        // threw — one passing path is not a working feature.
+        //
+        // `callback=` is the only signal Google guarantees fires when the API is genuinely
+        // ready; importLibrary is safe to use from inside it.
+        const CB = '__arkansasServeMapsReady';
+        window[CB] = async () => {
           try {
-            const g = window.google?.maps;
-            if (!g?.importLibrary) { resolve(g || null); return; }   // older bootstrap: already whole
-            await Promise.all([g.importLibrary('maps'), g.importLibrary('places')]);
+            const g = window.google.maps;
+            // Import everything this app constructs, rather than trusting which pieces the
+            // core bundle happens to attach: Map/InfoWindow, Marker, Autocomplete, Geocoder.
+            await Promise.all([
+              g.importLibrary('maps'),
+              g.importLibrary('marker'),
+              g.importLibrary('places'),
+              g.importLibrary('geocoding'),
+            ]);
             resolve(window.google.maps);
           } catch (err) {
             console.warn('[maps] Google Maps libraries failed to load', err);
             resolve(null);
+          } finally {
+            delete window[CB];
           }
         };
+
+        const script = document.createElement('script');
+        script.src = 'https://maps.googleapis.com/maps/api/js'
+          + `?key=${encodeURIComponent(cfg.apiKey)}&libraries=places,marker,geocoding`
+          + `&loading=async&v=weekly&callback=${CB}`;
+        script.async = true;
         // Resolve null rather than reject: a blocked or failed script must degrade, not throw
         // into every caller. The most likely cause is a CSP or referrer-restriction mismatch.
-        script.onerror = () => { console.warn('[maps] Google Maps failed to load'); resolve(null); };
+        script.onerror = () => {
+          console.warn('[maps] Google Maps failed to load');
+          delete window[CB];
+          resolve(null);
+        };
         document.head.appendChild(script);
       });
     })();
