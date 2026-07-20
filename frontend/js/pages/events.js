@@ -209,7 +209,6 @@
   }
 
   async function setupMap() {
-    const pane = document.getElementById('events-map-pane');
     const toggle = document.getElementById('view-toggle');
     // Mount fails when GoogleMaps__ApiKey is unset. Hide the map UI entirely rather than
     // leaving a grey box and a toggle that does nothing.
@@ -222,9 +221,16 @@
         setTimeout(() => card.classList.remove('map-active'), 1600);
       },
     });
-    if (!ok) { if (pane) pane.style.display = 'none'; if (toggle) toggle.style.display = 'none'; return; }
-
     const split = document.getElementById('events-split');
+    if (!ok) {
+      // A CLASS, not an inline style: the wide-screen layout rules are more specific than an
+      // inline `display:none` would be able to beat without `!important`, and an !important
+      // fight is what left an empty grey pane the first time round.
+      split?.classList.add('maps-off');
+      if (toggle) toggle.style.display = 'none';
+      return;
+    }
+
     const wide = window.matchMedia('(min-width: 1024px)');
     // The toggle only means anything when a single pane is visible; at wide sizes both are.
     const syncToggle = () => { if (toggle) toggle.style.display = wide.matches ? 'none' : 'flex'; };

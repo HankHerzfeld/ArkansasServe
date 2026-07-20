@@ -559,28 +559,38 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
 
 /* ── Events split view (#18) ───────────────────────────────────────────────────
    Single column by default (phone-first, which is where this app mostly runs);
-   the map becomes a second pane only when there is genuinely room for both. */
+   the map becomes a second pane only when there is genuinely room for both.
+
+   NO `!important` HERE. An earlier cut forced the pane visible at the wide breakpoint
+   with `!important`, which beat the inline `display:none` the JS sets when Maps fails
+   to load — so an unconfigured or blocked map left an empty 650px grey box, the exact
+   thing the degrade path exists to prevent. Visibility is driven by classes on the
+   container instead, so JS and CSS cannot fight. */
 #events-split { display: block; }
 #events-map { width: 100%; height: 60vh; min-height: 320px; border-radius: var(--radius); }
 
-/* Small screens: one pane at a time, driven by the List/Map toggle. */
+/* Narrow screens: list first, one pane at a time via the List/Map toggle. */
+#events-map-pane { display: none; }
 #events-split.show-map #events-list-pane { display: none; }
-#events-split.show-map #events-map-pane  { display: block !important; }
+#events-split.show-map #events-map-pane  { display: block; }
+
+/* Maps unavailable: the pane never shows, at any width. Last rule + highest specificity
+   wins over the wide-screen rules below without needing `!important`. */
+#events-split.maps-off #events-map-pane { display: none; }
 
 @media (min-width: 1024px) {
   /* Wide: both panes, list scrolling against a map that stays put. The toggle hides
      itself here (see events.js) because there is nothing left to toggle. */
-  #events-split { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.25rem; align-items: start; }
-  #events-split #events-map-pane { display: block !important; }
-  #events-split #events-list-pane { display: block !important; }
+  #events-split:not(.maps-off) { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.25rem; align-items: start; }
+  #events-split:not(.maps-off) #events-map-pane  { display: block; }
+  #events-split:not(.maps-off) #events-list-pane { display: block; }
   /* Sticky under the 60px header so the map stays beside whatever the reader scrolls to.
      max() keeps it clear of a notch on a landscape phone-sized viewport. */
-  #events-map-pane { position: sticky; top: max(4.5rem, calc(env(safe-area-inset-top) + 4.5rem)); }
-  #events-map { height: calc(100vh - 8rem); }
+  #events-split:not(.maps-off) #events-map-pane { position: sticky; top: max(4.5rem, calc(env(safe-area-inset-top) + 4.5rem)); }
+  #events-split:not(.maps-off) #events-map { height: calc(100vh - 8rem); }
   /* The list pane is narrower than the page, so the auto-fill grid would otherwise
      leave a single stretched column. */
-  #events-split .event-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  #events-split:not(.maps-off) .event-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 }
 
-/* Hover pairing between a card and its pin. */
 .event-card.map-active { border-left-color: var(--amber); background: var(--amber-pale); }
