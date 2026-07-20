@@ -180,6 +180,12 @@ const Api = (() => {
   };
 
   // ── Geo (#16) ─────────────────────────────────────────────────────────────
+  const Config = {
+    // Google Maps browser key from the Function App setting. { enabled, apiKey }.
+    // enabled:false when unset — callers degrade to the bundled ZIP dataset (#16).
+    maps: () => request('GET', '/config/maps'),
+  };
+
   const Geo = {
     // Resolve an AR ZIP to { zip, city, county, latitude, longitude }. Rejects on an
     // unknown/out-of-state ZIP (backend 404) so the caller can fall back to manual entry.
@@ -338,5 +344,5 @@ const Api = (() => {
     dismiss: (id) => request('DELETE', `/manage/events/crawl/${encodeURIComponent(id)}`),
   };
 
-  return { Users, Events, Registrations, CheckIn, Categories, CategoryProposals, Geo, Tags, Assignments, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
+  return { Users, Events, Registrations, CheckIn, Categories, CategoryProposals, Config, Geo, Tags, Assignments, ServiceLogs, Approvals, Reports, Notifications, Memberships, Orgs, Volunteers, Matrix, Admin, AdminBackend, Impersonation, Db, Crawler };
 })();

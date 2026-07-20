@@ -18,11 +18,17 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 	private const int MaxCategoryLabelLength = 60;
 
 	/// <summary>
-	/// Fills the structured-address parts from a recognised AR ZIP (#16). Coordinates are the
-	/// ZIP centroid and are authoritative, so they are always (re)stamped from the lookup;
-	/// city and county are only filled when the caller left them blank, so a deliberate
-	/// correction ("the venue is really in the next town") is preserved. An unknown or
-	/// out-of-state ZIP is left exactly as sent — manual entry still works.
+	/// Fills the structured-address parts from a recognised AR ZIP (#16). City and county are
+	/// only filled when the caller left them blank, so a deliberate correction ("the venue is
+	/// really in the next town") is preserved. An unknown or out-of-state ZIP is left exactly as
+	/// sent — manual entry still works.
+	///
+	/// ⚠️ COORDINATES ARE A FALLBACK, NOT AUTHORITATIVE — changed 2026-07-19 with #17.
+	/// This method used to (re)stamp Latitude/Longitude from the ZIP unconditionally, which was
+	/// correct while the bundled dataset was the ONLY source: a ZIP centroid beat nothing. Now
+	/// the event form geocodes the street address client-side, and a centroid must never
+	/// overwrite a real one — every event in a ZIP shares its centroid, so doing so would have
+	/// silently undone #17 on every save while looking like it worked.
 	/// </summary>
 	private void ApplyZipAutofill(Event e)
 	{
@@ -36,8 +42,9 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 
 		if (string.IsNullOrWhiteSpace(e.City)) e.City = info.City;
 		if (string.IsNullOrWhiteSpace(e.County)) e.County = info.County;
-		e.Latitude = info.Lat;
-		e.Longitude = info.Lng;
+		// Only when we have nothing better. A geocoded address wins over the centroid.
+		e.Latitude ??= info.Lat;
+		e.Longitude ??= info.Lng;
 	}
 
 	[Function("GetEvents")]
@@ -442,14 +449,24 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 
 		existing.Title = body.Title;
 		existing.Description = body.Description;
+		var priorZip = (existing.Zip ?? string.Empty).Trim();
 		existing.Location = body.Location;
 		existing.Zip = body.Zip;
 		existing.City = body.City;
 		existing.County = body.County;
-		// Coordinates are derived, not sent by the form; ApplyZipAutofill (re)stamps them from
-		// the ZIP below, so carry the prior values forward rather than letting the body null them.
+		// The form now sends geocoded coordinates (#17); carry the prior values forward when it
+		// doesn't, rather than letting the body null them.
 		existing.Latitude = body.Latitude ?? existing.Latitude;
 		existing.Longitude = body.Longitude ?? existing.Longitude;
+		// If the ZIP MOVED and no fresh coordinates came with it, whatever we hold now describes
+		// the old place. Drop it so ApplyZipAutofill re-stamps the new centroid — otherwise the
+		// `??=` fallback would preserve a coordinate the admin just contradicted.
+		var zipChanged = !string.Equals(priorZip, (body.Zip ?? string.Empty).Trim(), StringComparison.Ordinal);
+		if (zipChanged && body.Latitude == null && body.Longitude == null)
+		{
+			existing.Latitude = null;
+			existing.Longitude = null;
+		}
 		ApplyZipAutofill(existing);
 		existing.StartDateTime = body.StartDateTime;
 		existing.EndDateTime = body.EndDateTime;
