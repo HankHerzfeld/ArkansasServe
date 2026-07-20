@@ -22,6 +22,9 @@
       allEvents = await Api.Events.list();
       document.getElementById('events-loading').style.display = 'none';
       buildSearchIndex(allEvents);
+      // After the index, so the first pin draw uses the filtered set. Not awaited: a slow
+      // Maps load must not hold up the cards.
+      setupMap().catch(err => console.warn('[events] map setup failed', err));
       renderEvents(allEvents);
     } catch (err) {
       document.getElementById('events-loading').innerHTML =
@@ -180,12 +183,68 @@
   // ORDER DataTables has applied — which is what makes the sort dropdown work on cards.
   function renderMatchingEvents() {
     const dt = DT.instance('events-index');
-    if (!dt) return renderEvents(allEvents);
+    if (!dt) { renderEvents(allEvents); renderMap(allEvents); return; }
     const matched = dt.rows({ search: 'applied' }).indexes().toArray()
       .map(i => allEvents[i])
       .filter(Boolean);
+    // Cards and map take the SAME array. The map is a second rendering of this result set,
+    // never its own query — which is what stops the two views ever disagreeing.
     renderEvents(matched);
+    renderMap(matched);
     updateFilterCount(matched.length);
+  }
+
+  // ── Map pane (#18) ──────────────────────────────────────────────────────────
+  async function renderMap(events) {
+    if (!EventMap.isMounted()) return;
+    const { plotted, missing } = await EventMap.render(events);
+    const note = document.getElementById('events-map-note');
+    if (!note) return;
+    // Be explicit about events that could not be placed — silently plotting 3 of 11 would
+    // read as "there are only 3 events here".
+    const parts = [];
+    if (plotted) parts.push(`${plotted} event${plotted === 1 ? '' : 's'} shown`);
+    if (missing) parts.push(`${missing} without a location yet — see the list`);
+    note.textContent = parts.join(' · ');
+  }
+
+  async function setupMap() {
+    const pane = document.getElementById('events-map-pane');
+    const toggle = document.getElementById('view-toggle');
+    // Mount fails when GoogleMaps__ApiKey is unset. Hide the map UI entirely rather than
+    // leaving a grey box and a toggle that does nothing.
+    const ok = await EventMap.mount(document.getElementById('events-map'), {
+      onEventSelect: (id) => {
+        const card = document.querySelector(`[data-event-id="${CSS.escape(id)}"]`);
+        if (!card) return;
+        card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        card.classList.add('map-active');
+        setTimeout(() => card.classList.remove('map-active'), 1600);
+      },
+    });
+    if (!ok) { if (pane) pane.style.display = 'none'; if (toggle) toggle.style.display = 'none'; return; }
+
+    const split = document.getElementById('events-split');
+    const wide = window.matchMedia('(min-width: 1024px)');
+    // The toggle only means anything when a single pane is visible; at wide sizes both are.
+    const syncToggle = () => { if (toggle) toggle.style.display = wide.matches ? 'none' : 'flex'; };
+    syncToggle();
+    wide.addEventListener('change', syncToggle);
+
+    const setView = (showMap) => {
+      split.classList.toggle('show-map', showMap);
+      document.getElementById('view-list').className = `btn btn-sm ${showMap ? 'btn-secondary' : 'btn-primary'}`;
+      document.getElementById('view-map').className  = `btn btn-sm ${showMap ? 'btn-primary' : 'btn-secondary'}`;
+      document.getElementById('view-list').setAttribute('aria-pressed', String(!showMap));
+      document.getElementById('view-map').setAttribute('aria-pressed', String(showMap));
+      // Google needs a resize nudge when a hidden map becomes visible, or it renders a
+      // grey strip sized to the pane's collapsed dimensions.
+      if (showMap) window.google?.maps?.event?.trigger(document.getElementById('events-map'), 'resize');
+    };
+    document.getElementById('view-list').addEventListener('click', () => setView(false));
+    document.getElementById('view-map').addEventListener('click', () => setView(true));
+
+    renderMatchingEvents();   // draw pins for whatever is already filtered
   }
 
   function updateFilterCount(shown) {
@@ -210,6 +269,10 @@
     events.forEach(evt => {
       const card = document.createElement('div');
       card.className = 'card event-card';
+      // Pairs the card with its pin (#18). Set unconditionally — harmless without a map.
+      card.dataset.eventId = evt.id;
+      card.addEventListener('mouseenter', () => EventMap.highlight(evt.id));
+      card.addEventListener('mouseleave', () => EventMap.clearHighlight());
 
       if (evt.photoUrl) {
         const img = document.createElement('img');

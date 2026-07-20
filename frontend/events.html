@@ -88,12 +88,30 @@
     </div>
   </div>
 
+  <!-- List / Map toggle (#18). Hidden entirely when Maps is unconfigured, and on wide screens
+       where both panes are shown side by side. -->
+  <div id="view-toggle" style="display:none;gap:.35rem;margin-bottom:.75rem;">
+    <button class="btn btn-sm btn-primary"   id="view-list" type="button" aria-pressed="true">List</button>
+    <button class="btn btn-sm btn-secondary" id="view-map"  type="button" aria-pressed="false">Map</button>
+  </div>
+
   <!-- Loading / empty / grid -->
   <div id="events-loading" class="loading-state"><div class="spinner"></div><p>Loading events…</p></div>
   <div id="events-empty" class="card" style="display:none;text-align:center;color:var(--gray-600);">
     No upcoming events found. Check back soon!
   </div>
-  <div class="event-grid" id="events-grid" style="display:none;"></div>
+
+  <!-- Split: cards and map render from the SAME filtered result set, so they can never
+       disagree. `events-split` is single-column until the wide breakpoint (see main.css). -->
+  <div id="events-split">
+    <div id="events-list-pane">
+      <div class="event-grid" id="events-grid" style="display:none;"></div>
+    </div>
+    <div id="events-map-pane" style="display:none;">
+      <div id="events-map" role="application" aria-label="Map of volunteer events"></div>
+      <div id="events-map-note" style="font-size:.75rem;color:var(--gray-600);margin-top:.4rem;"></div>
+    </div>
+  </div>
 
   <!-- Search index (never shown).
        Events stay CARDS — a card carries the image, date, org and spare places far better
@@ -140,6 +158,8 @@
 <script src="/js/categories.js"></script>
 <script src="/js/taxonomy.js"></script>
 <script src="/js/availability.js"></script>
+<script src="/js/maps.js"></script>
+<script src="/js/eventmap.js"></script>
 <script src="/js/scope.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/pages/events.js"></script>
