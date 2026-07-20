@@ -107,7 +107,10 @@
     <div id="events-list-pane">
       <div class="event-grid" id="events-grid" style="display:none;"></div>
     </div>
-    <div id="events-map-pane" style="display:none;">
+    <!-- No inline display: an inline style beats every stylesheet rule short of !important,
+         so it silently pinned this pane shut at the wide breakpoint and was what pushed the
+         first cut into an !important fight with its own JS. main.css hides it by default. -->
+    <div id="events-map-pane">
       <div id="events-map" role="application" aria-label="Map of volunteer events"></div>
       <div id="events-map-note" style="font-size:.75rem;color:var(--gray-600);margin-top:.4rem;"></div>
     </div>
