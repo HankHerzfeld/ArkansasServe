@@ -280,6 +280,41 @@
     if ((e.target.value || '').replace(/\D/g, '').length === 5) autofillFromZip();
   });
 
+  // ── Address autocomplete + real coordinates (#17) ───────────────────────────
+  // LAYERED ON TOP of the ZIP path above, never replacing it. #16's bundled dataset resolves a
+  // ZIP to its CENTROID, so every event in one ZIP shares a point; a geocoded street address
+  // gives the actual venue. But the ZIP path needs no key, no network and no billing, so it
+  // stays the floor: if Maps is unconfigured or blocked, the form behaves exactly as before.
+  //
+  // Precision is recorded so the map can be honest about which it has — pre-#17 events keep
+  // centroid coordinates until someone re-saves them, so the dataset is mixed by design.
+  let addressPrecision = null;   // 'exact' once geocoded; null = ZIP centroid / unknown
+
+  function applyPlace(p) {
+    if (p.lat != null && p.lng != null) {
+      document.getElementById('evt-latitude').value  = p.lat;
+      document.getElementById('evt-longitude').value = p.lng;
+      addressPrecision = 'exact';
+    }
+    // Only fill what Google actually returned — never blank a value the admin typed.
+    if (p.zip)    document.getElementById('evt-zip').value    = p.zip;
+    if (p.city)   document.getElementById('evt-city').value   = p.city;
+    if (p.county) document.getElementById('evt-county').value = p.county;
+    setZipHint(`Located ${p.formatted || 'this address'}. Edit any field if the venue differs.`);
+  }
+
+  Maps.attachAutocomplete(document.getElementById('evt-location'), applyPlace)
+    .then(ok => { if (!ok) console.info('[org-portal] maps unavailable — ZIP lookup still active'); });
+
+  // Typed an address without picking a suggestion? Geocode it on blur so coordinates are still
+  // captured. Silent on failure: the ZIP path has already filled city/county.
+  document.getElementById('evt-location').addEventListener('blur', async () => {
+    const addr = document.getElementById('evt-location').value.trim();
+    if (!addr || addressPrecision === 'exact') return;
+    const p = await Maps.geocode(addr).catch(() => null);
+    if (p) applyPlace(p);
+  });
+
   function openEventModal(evt = null) {
     document.getElementById('event-modal-title').textContent = evt ? 'Edit Event' : 'New Event';
     document.getElementById('edit-event-id').value   = evt?.id || '';
@@ -292,6 +327,12 @@
     document.getElementById('evt-zip').value          = evt?.zip || '';
     document.getElementById('evt-city').value         = evt?.city || '';
     document.getElementById('evt-county').value       = evt?.county || '';
+    document.getElementById('evt-latitude').value     = evt?.latitude ?? '';
+    document.getElementById('evt-longitude').value    = evt?.longitude ?? '';
+    // Reset per-open: a stored coordinate may be a #16 ZIP centroid rather than a geocoded
+    // address, and we cannot tell which from the value alone. Treating it as unknown lets the
+    // blur handler re-geocode and upgrade it; treating it as exact would freeze the centroid in.
+    addressPrecision = null;
     setZipHint('');
     document.getElementById('evt-hours').value       = evt?.hoursValue ?? 2;
     document.getElementById('evt-slots').value       = evt?.maxSlots ?? 0;
@@ -520,6 +561,10 @@
       zip:           document.getElementById('evt-zip').value.replace(/\D/g, '').slice(0, 5) || null,
       city:          document.getElementById('evt-city').value.trim() || null,
       county:        document.getElementById('evt-county').value.trim() || null,
+      // null (not 0) when absent, so the server keeps whatever #16's ZIP lookup resolved rather
+      // than pinning the event to the Gulf of Guinea.
+      latitude:      parseFloat(document.getElementById('evt-latitude').value)  || null,
+      longitude:     parseFloat(document.getElementById('evt-longitude').value) || null,
       hoursValue:    Number(document.getElementById('evt-hours').value),
       maxSlots:      Number(document.getElementById('evt-slots').value),
       category:      Categories.valueFrom(document.getElementById('evt-category'), document.getElementById('evt-category-propose')),

@@ -98,6 +98,10 @@
       </div>
     </div>
     <div id="evt-zip-hint" style="display:none;font-size:.8rem;margin-top:-.5rem;margin-bottom:.75rem;"></div>
+    <!-- Set by Places autocomplete / geocoding (#17). Empty when Maps is unconfigured, in which
+         case the server keeps whatever the bundled ZIP dataset resolved (#16). -->
+    <input type="hidden" id="evt-latitude">
+    <input type="hidden" id="evt-longitude">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
       <div class="form-group">
         <label>Hours Credit</label>
@@ -254,6 +258,7 @@
 <script src="/js/vendor/msal-browser.min.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
+<script src="/js/maps.js"></script>
 <script src="/js/categories.js"></script>
 <script src="/js/taxonomy.js"></script>
 <script src="/js/scope.js"></script>
