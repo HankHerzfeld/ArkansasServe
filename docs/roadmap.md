@@ -1,6 +1,6 @@
 # Arkansas Serve — Priorities & Roadmap
 
-_Last updated 2026-07-19._ Consolidated list of completed and upcoming priorities.
+_Last updated 2026-07-21._ Consolidated list of completed and upcoming priorities.
 Detailed context for shipped work lives in the referenced PRs and companion docs
 (`production-cutover-plan.md`, `manual-verification-checklist.md`).
 
@@ -674,6 +674,35 @@ island.
     scrub** (PR #95) — `POST /manage/backend/categories/scrub { label }` removes a label's
     approved-new / alias / proposal records: the un-approve path #10②'s self-define categories
     lacked.
+- **Arkansas Serve as ONE organization** — ⚠️ **SUPERSEDED 2026-07-21 (owner decision).** The
+  two-org split described below was **reversed**. There is now a single `arkansas-serve-root`
+  tenant that is *both* the platform's host partition **and** its public, browsable
+  organization. The separate `arkansas-serve` org was deleted; do not re-create it.
+  - **What changed in code:** the guards that made root "not an org" are gone — it is listed in
+    the public directory, its org page renders, and `JoinOrg` no longer hard-refuses it.
+    Self-join is governed by the ordinary `AllowSelfJoin` flag (**set to false**: assign-only,
+    matching what the deleted org used), not by a hardcoded rule an admin cannot change.
+    `scope.js` and the group-registration picker no longer filter it out, and `js/orgs.js` —
+    the root→public alias added in PR #110 — was **deleted** as it now aliases a thing to
+    itself.
+  - **The one special case that REMAINS, for a different reason.** Root still cannot be
+    deleted. Not because it "isn't an organization" — it is — but because the **category
+    vocabulary (#10②) is stored on this tenant document** (no new Cosmos container was
+    available). Deleting it would destroy every approved category and alias platform-wide.
+  - **The stated reason for the original split did not hold up.** The note below argues that
+    unhiding root "would have published the SuperAdmin partition — Demo SuperAdmin 1/2 would
+    appear on the public roster". `GetOrgProfile` returns **no member roster at all** — only
+    name, type, description, mission, website, logo, contact details, address, `allowSelfJoin`
+    and upcoming events. There was no roster to publish. The owner also judged the visibility
+    concern a non-issue independently.
+  - **SuperAdmins need no data change.** `ResolveActorInOrgAsync` already grants a global super
+    full admin rights in every org including this one, so they act as org admins here already.
+    Rewriting their `adminLevel` to `OrganizationAdmin` would have *removed* their
+    platform-wide powers (Platform Admin, tenant creation, DB console, impersonation), which
+    all check the real level.
+
+<details><summary>Original 2026-07-15 two-org design (superseded — retained for the reasoning)</summary>
+
 - **Arkansas Serve as a distinct organization** — ✅ **Done 2026-07-15.** Seeded as a real,
   browsable org (`arkansas-serve`) with its own org page, kept **separate** from
   `arkansas-serve-root`.
@@ -705,6 +734,8 @@ island.
     `true` → true).
   - *Not done here:* it hosts events like any other org (nothing extra was needed — events
     are org-scoped already), but it has none yet.
+
+</details>
 
 ### Approvals & compliance
 - **School approval tags for events** — ✅ **SHIPPED 2026-07-18 (PR #92).** A School/JDC tenant

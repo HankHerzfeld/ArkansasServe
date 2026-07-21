@@ -4,19 +4,14 @@
 
   // Orgs whose roster the viewer may sign up as a group. Mirrors scope.js's rule, which is
   // the app's existing answer to "which orgs can this person act in":
-  //   SuperAdmin → every tenant (they can act in any org; their own membership is the
-  //                arkansas-serve-root host org, whose roster is admins, not volunteers —
-  //                so memberships alone would leave them with an empty list and no way out)
+  //   SuperAdmin → every tenant (they can act in any org; their own membership is Arkansas
+  //                Serve, so memberships alone would leave them with a single-entry list)
   //   everyone else → the orgs they hold EventAdmin+ in
   // Membership-based, not token-based: a membership admin carries no admin claim on their
   // token, which is exactly the mistake Finding 9 documented.
   let groupAdminOrgs = [];
   // OrganizationAdmin+ in THIS event's org — the level required to delete a whole series.
   let canDeleteSeries = false;
-  // The reserved platform/host partition. Matches platform-admin.js, which hardcodes the
-  // same id to hide Delete for it. Not a joinable org and never a volunteer roster.
-  const ROOT_ORG_ID = 'arkansas-serve-root';
-
   const params = new URLSearchParams(location.search);
   const eventId = params.get('id');
   const orgId = params.get('organizationId') || '';
@@ -53,11 +48,9 @@
       if (me.adminLevel === 'SuperAdmin') {
         const tenants = await Api.Admin.getTenants().catch(() => []);
         groupAdminOrgs = (tenants || [])
-          // The host org is never a useful choice: its roster is platform admins, not
-          // volunteers, so it is always empty here — and since the public "Arkansas Serve"
-          // org shares its name, offering both puts two identical entries in the picker with
-          // no way to tell them apart. The org directory omits it for the same reason.
-          .filter(t => t.id !== ROOT_ORG_ID)
+          // Arkansas Serve is offered like any other org. It was excluded when a duplicate
+          // "Arkansas Serve" org existed and its own roster held only platform admins; it is
+          // now the single real org and can carry volunteers like anywhere else.
           .map(t => ({ id: t.id, name: t.name || t.id }));
       } else {
         const memberships = await Api.Memberships.list();
@@ -442,9 +435,8 @@
   async function openGroup(evt) {
     group.evt = evt;
     // Default to the event's own org when the viewer can act there — for a SuperAdmin the
-    // list is every tenant, and its first entry is arbitrary (quite possibly the
-    // arkansas-serve-root host org, whose roster is admins rather than volunteers, i.e. an
-    // empty list and an apparently broken dialog). The org hosting the event is the far
+    // list is every tenant and its first entry is arbitrary, so landing on one whose roster
+    // happens to be empty reads as a broken dialog. The org hosting the event is the far
     // likelier intent; otherwise fall back to the first they can act in.
     group.orgId = groupAdminOrgs.some(o => o.id === evt.organizationId)
       ? evt.organizationId

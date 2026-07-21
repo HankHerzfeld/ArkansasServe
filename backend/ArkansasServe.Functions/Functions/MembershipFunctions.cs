@@ -11,9 +11,6 @@ namespace ArkansasServe.Functions.Functions;
 
 public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthConfig authConfig, ILogger<MembershipFunctions> logger)
 {
-	// The platform/root tenant is never a joinable organization.
-	private const string RootTenantId = "arkansas-serve-root";
-
 	// Every organization the current person belongs to (one membership per org),
 	// enriched with the org name and its groups so the client can build the
 	// multi-org and group switchers.
@@ -89,9 +86,13 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 			.Select(m => string.IsNullOrWhiteSpace(m.OrganizationId) ? m.TenantId : m.OrganizationId!)
 			.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+		// Arkansas Serve (the `arkansas-serve-root` tenant) is listed like any other org.
+		// It used to be excluded because a SECOND, browsable "Arkansas Serve" org existed and
+		// the two would have appeared as duplicates. That second org is gone (owner decision,
+		// 2026-07-21): there is now ONE Arkansas Serve, which is both the platform's own
+		// organization and its host partition.
 		var orgs = (await cosmos.GetAllTenantsAsync())
-			.Where(t => string.Equals(t.Status, "active", StringComparison.OrdinalIgnoreCase)
-				&& !string.Equals(t.Id, RootTenantId, StringComparison.OrdinalIgnoreCase))
+			.Where(t => string.Equals(t.Status, "active", StringComparison.OrdinalIgnoreCase))
 			.Select(t => new
 			{
 				id = t.Id,
@@ -118,7 +119,7 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		if (string.IsNullOrWhiteSpace(id) || string.Equals(id, RootTenantId, StringComparison.OrdinalIgnoreCase))
+		if (string.IsNullOrWhiteSpace(id))
 			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Organization not found");
 
 		var tenant = await cosmos.GetTenantAsync(id);
@@ -181,8 +182,9 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "organizationId is required");
 
 		var orgId = body.OrganizationId.Trim();
-		if (string.Equals(orgId, RootTenantId, StringComparison.OrdinalIgnoreCase))
-			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot join this organization");
+		// No special case for Arkansas Serve any more. Whether it accepts self sign-up is the
+		// `AllowSelfJoin` flag, enforced below like every other org — a hardcoded refusal here
+		// would be a second, invisible rule saying the same thing in a way no admin can change.
 
 		var tenant = await cosmos.GetTenantAsync(orgId);
 		if (tenant == null || !string.Equals(tenant.Status, "active", StringComparison.OrdinalIgnoreCase))

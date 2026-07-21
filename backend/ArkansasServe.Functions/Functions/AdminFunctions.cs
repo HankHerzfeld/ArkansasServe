@@ -114,8 +114,18 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		if (ctx == null) return authError!;
 		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
 
+		// ⚠️ THE LAST REMAINING SPECIAL CASE FOR THIS TENANT, and the reason changed on
+		// 2026-07-21. It is no longer "root is not a real organization" — Arkansas Serve is now
+		// an ordinary browsable org that happens to live in this partition. It is undeletable
+		// because THE CATEGORY VOCABULARY IS STORED ON THIS DOCUMENT (#10②: no new Cosmos
+		// container was available, so the singleton lives here). Deleting it would silently
+		// destroy every approved category and alias platform-wide.
+		//
+		// The other historic guards (hidden from the directory, org page 404, join refused) are
+		// gone. Do not restore them; do not remove this one.
 		if (string.Equals(id, RootTenantId, StringComparison.OrdinalIgnoreCase))
-			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "The root tenant cannot be deleted");
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
+				"Arkansas Serve cannot be deleted — it stores the platform's shared category vocabulary.");
 
 		var tenant = await cosmos.GetTenantAsync(id);
 		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Tenant not found");
