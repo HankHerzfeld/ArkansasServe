@@ -202,8 +202,16 @@
     if (!note) return;
     // Be explicit about events that could not be placed — silently plotting 3 of 11 would
     // read as "there are only 3 events here".
+    //
+    // The zero case needs saying OUT LOUD rather than omitting: `if (plotted)` used to skip
+    // the count entirely, so filtering down to only un-geocoded events left a blank map above
+    // the words "1 without a location yet" and no statement that nothing was plotted. An empty
+    // map with no explanation is the same failure as a wrong count.
+    if (plotted === 0 && missing === 0) { note.textContent = 'No events match these filters.'; return; }
     const parts = [];
-    if (plotted) parts.push(`${plotted} event${plotted === 1 ? '' : 's'} shown`);
+    parts.push(plotted === 0
+      ? 'Nothing to show on the map'
+      : `${plotted} event${plotted === 1 ? '' : 's'} shown`);
     if (missing) parts.push(`${missing} without a location yet — see the list`);
     note.textContent = parts.join(' · ');
   }
