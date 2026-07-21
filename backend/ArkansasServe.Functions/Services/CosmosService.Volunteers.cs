@@ -196,10 +196,20 @@ public partial class CosmosService
         return memberships.Any(m => AdminLevels.AtLeast(m.AdminLevel, minLevel));
     }
 
+    // The Users container also holds GUARDIAN documents (#20), in the reserved `guardians`
+    // partition. Any cross-partition query over this container must exclude them or they
+    // surface as ghost members: no name, no organization, and — because a guardian does carry
+    // an email — matching the role matrix's search box.
+    //
+    // Existing member documents have NO docType field at all, so the test must tolerate it
+    // being undefined; `c.docType != 'guardian'` alone would silently drop every real member.
+    private const string ExcludeGuardians = "(NOT IS_DEFINED(c.docType) OR c.docType != 'guardian')";
+
     // Every user document across all orgs — for the SuperAdmin role matrix.
     public async Task<List<User>> GetAllUsersAsync(CancellationToken cancellationToken = default)
     {
-        var query = Users.GetItemLinqQueryable<User>().ToFeedIterator();
+        var query = Users.GetItemQueryIterator<User>(
+            new QueryDefinition($"SELECT * FROM c WHERE {ExcludeGuardians}"));
         var results = new List<User>();
         while (query.HasMoreResults)
             results.AddRange(await query.ReadNextAsync(cancellationToken));
@@ -220,9 +230,12 @@ public partial class CosmosService
     {
         var hasSearch = !string.IsNullOrWhiteSpace(search);
 
-        var queryText = "SELECT * FROM c";
+        // Guardians share this container and must never appear in the role matrix — note the
+        // parentheses around the search: without them, OR would bind loosely and re-admit every
+        // guardian whose email matched.
+        var queryText = $"SELECT * FROM c WHERE {ExcludeGuardians}";
         if (hasSearch)
-            queryText += " WHERE CONTAINS(LOWER(c.displayName), @q) OR CONTAINS(LOWER(c.email), @q)";
+            queryText += " AND (CONTAINS(LOWER(c.displayName), @q) OR CONTAINS(LOWER(c.email), @q))";
         queryText += " ORDER BY c.displayName";
 
         var queryDef = new QueryDefinition(queryText);

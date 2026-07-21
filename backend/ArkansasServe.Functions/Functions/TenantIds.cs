@@ -22,8 +22,22 @@ public static class TenantIds
 	// which silently invented an organization out of the identity provider's own GUID.
 	public const string Unassigned = "unassigned";
 
+	// Where GUARDIAN records live (#20). A guardian is deliberately NOT an organization member
+	// and NOT an Entra account: they are a person outside the platform who oversees a minor,
+	// reachable only by a signed one-time link.
+	//
+	// They share the Users CONTAINER because containers are Bicep-defined and the deploy does
+	// not run Bicep — a new container cannot be added without infra work. A reserved partition
+	// is the same device `Unassigned` already uses, and it isolates them cleanly: every member
+	// query is either partition-scoped (an org id, never "guardians") or keyed on ExternalId
+	// (which a guardian has none of), so a guardian document can never surface as a member.
+	// Guardian reads additionally filter on `docType` so that isolation does not rest on
+	// partition naming alone.
+	public const string Guardians = "guardians";
+
 	// True for any partition that is not a joinable organization.
 	public static bool IsReserved(string? tenantId) =>
 		string.Equals(tenantId, Root, StringComparison.OrdinalIgnoreCase)
-		|| string.Equals(tenantId, Unassigned, StringComparison.OrdinalIgnoreCase);
+		|| string.Equals(tenantId, Unassigned, StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(tenantId, Guardians, StringComparison.OrdinalIgnoreCase);
 }
