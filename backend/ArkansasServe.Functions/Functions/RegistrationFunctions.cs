@@ -48,6 +48,18 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			if (missing.Count > 0)
 				return await HttpHelper.Error(req, HttpStatusCode.Conflict,
 					$"Can't sign up yet — still needed: {string.Join(", ", missing)}. Ask an admin to record it, then try again.");
+
+			// #20: guardian consent. Same same-org reasoning as the tag gate above — consent is
+			// recorded per (guardian, minor, org), so a cross-org registrant has no consent
+			// record here to evaluate. Only read guardians when the person is actually a minor;
+			// for everyone else this is a decision requiring no I/O at all.
+			if (IntakeValidation.IsMinor(self))
+			{
+				var guardians = await cosmos.GetGuardiansForMinorAsync(self.Id, evt.OrganizationId);
+				var consent = GuardianGate.Evaluate(self, org, guardians, evt.OrganizationId);
+				if (consent != GuardianGate.Outcome.Allowed)
+					return await HttpHelper.Error(req, HttpStatusCode.Conflict, GuardianGate.MessageFor(consent));
+			}
 		}
 
 		// If the event has shifts, the volunteer must choose one that isn't full.
@@ -438,6 +450,24 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			if (blocked.Count > 0)
 				return await HttpHelper.Error(req, HttpStatusCode.Conflict,
 					$"Can't sign up — still needed: {string.Join("; ", blocked)}. Record the tag(s), then try again.");
+
+			// #20: guardian consent, same all-or-nothing rule. Naming WHO is blocked and WHY
+			// matters more here than on the single path — an admin signing up twenty students
+			// cannot act on "someone needs consent". Only minors are looked up.
+			var consentBlocked = new List<string>();
+			foreach (var (_, user) in members)
+			{
+				if (!IntakeValidation.IsMinor(user)) continue;
+				var guardians = await cosmos.GetGuardiansForMinorAsync(user.Id, evt.OrganizationId);
+				var outcome = GuardianGate.Evaluate(user, gateOrg, guardians, evt.OrganizationId);
+				if (outcome == GuardianGate.Outcome.Withdrawn)
+					consentBlocked.Add($"{DisplayNameOf(user)} (guardian withdrew consent)");
+				else if (outcome == GuardianGate.Outcome.Missing)
+					consentBlocked.Add($"{DisplayNameOf(user)} (no guardian consent on file)");
+			}
+			if (consentBlocked.Count > 0)
+				return await HttpHelper.Error(req, HttpStatusCode.Conflict,
+					$"Can't sign up — {string.Join("; ", consentBlocked)}. Nobody was signed up.");
 		}
 
 		// Nobody in the group may already hold a live registration. One read of the event's

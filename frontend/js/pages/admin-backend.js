@@ -182,6 +182,8 @@
     document.getElementById('tenant-allow-groupadmin-volunteers').checked = tenant.allowGroupAdminAddVolunteers !== false;
     document.getElementById('tenant-allow-profile-self-edit').checked = tenant.allowProfileSelfEdit !== false;
     document.getElementById('tenant-allow-self-join').checked = tenant.allowSelfJoin !== false;
+    // Defaults OFF, so an absent field must read false — the inverse of allowSelfJoin above.
+    document.getElementById('tenant-require-guardian-consent').checked = tenant.requireGuardianConsent === true;
     document.getElementById('tenant-description').value   = tenant.description || '';
     document.getElementById('tenant-mission').value       = tenant.mission || '';
 
@@ -866,6 +868,7 @@
         allowGroupAdminAddVolunteers: document.getElementById('tenant-allow-groupadmin-volunteers').checked,
         allowProfileSelfEdit: document.getElementById('tenant-allow-profile-self-edit').checked,
         allowSelfJoin: document.getElementById('tenant-allow-self-join').checked,
+        requireGuardianConsent: document.getElementById('tenant-require-guardian-consent').checked,
         description:  document.getElementById('tenant-description').value.trim(),
         mission:      document.getElementById('tenant-mission').value.trim(),
         website:      document.getElementById('tenant-website').value.trim(),
