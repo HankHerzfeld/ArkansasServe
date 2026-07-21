@@ -65,6 +65,19 @@ public class Guardian
 	[JsonPropertyName("magicLink")]
 	public MagicLinkState? MagicLink { get; set; }
 
+	/// <summary>
+	/// The short-lived session minted when a link is redeemed.
+	///
+	/// WHY THIS HAS TO EXIST. The magic link is single-use and is consumed by redemption, so
+	/// without a session the guardian lands on their page holding no credential and cannot
+	/// submit anything. The alternative — leaving the link live so it can also authorise the
+	/// submission — would turn a seven-day forwardable email into standing access to a child's
+	/// consent, which is exactly what single-use was chosen to prevent. So the link buys one
+	/// thing: a brief working session.
+	/// </summary>
+	[JsonPropertyName("session")]
+	public GuardianSessionState? Session { get; set; }
+
 	[JsonPropertyName("createdAt")]
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -183,4 +196,24 @@ public class MagicLinkState
 	/// unexpired is still spent, and a link that is merely unconsumed is still stale.
 	/// </summary>
 	public bool IsLive(DateTime now) => ConsumedAt == null && ExpiresAt > now;
+}
+
+/// <summary>
+/// A guardian's working session, minted at redemption. Deliberately SHORT: it exists to cover
+/// one sitting at the consent page, not to be a login. Hashed for the same reason the link is —
+/// the Users container is readable through the SuperAdmin DB console.
+/// </summary>
+public class GuardianSessionState
+{
+	/// <summary>Base64 SHA-256 of the raw session token.</summary>
+	[JsonPropertyName("tokenHash")]
+	public string TokenHash { get; set; } = string.Empty;
+
+	[JsonPropertyName("issuedAt")]
+	public DateTime IssuedAt { get; set; } = DateTime.UtcNow;
+
+	[JsonPropertyName("expiresAt")]
+	public DateTime ExpiresAt { get; set; }
+
+	public bool IsLive(DateTime now) => ExpiresAt > now;
 }

@@ -141,23 +141,219 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 			return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, $"{reason} Please ask the organization for a new one.");
 		}
 
+		// The link is now spent, so mint the short working session that lets them actually
+		// submit a decision — see GuardianSessionState for why this is not optional.
+		var sessionToken = GuardianLinkService.IssueSession(guardian!, DateTime.UtcNow);
 		await cosmos.UpsertGuardianAsync(guardian!);
 		logger.LogInformation("[Guardian] {GuardianId} redeemed a link", guardian!.Id);
 
 		return await HttpHelper.OkJson(req, new
 		{
+			sessionToken,
+			sessionExpiresAt = guardian.Session!.ExpiresAt,
 			guardianId = guardian.Id,
 			name = guardian.Name,
 			email = guardian.Email,
 			reason = guardian.MagicLink?.Reason,
-			children = guardian.Links.Select(l => new
-			{
-				minorUserId = l.MinorUserId,
-				organizationId = l.OrganizationId,
-				minorName = l.MinorName,
-				consent = ConsentView(guardian, l),
-			}),
+			children = await ChildrenViewAsync(guardian),
 		});
+	}
+
+	/// <summary>
+	/// POST /api/guardian/consent
+	/// body: { sessionToken, minorUserId, organizationId, action: "grant" | "revoke" }
+	///
+	/// ANONYMOUS, authorised by the short session minted at redemption — a guardian has no
+	/// account. The session is checked against the links the guardian actually holds, so a valid
+	/// session can only ever act on that guardian's own children in the orgs they are linked to.
+	///
+	/// REVOKING IS NOT JUST A FLAG. Withdrawal cancels the minor's FUTURE registrations in that
+	/// organization and notifies the org, because a consent switch that changed nothing on the
+	/// ground would be the same kind of lie as an enforcement setting that does not enforce.
+	/// Past and in-progress registrations are left alone: they already happened.
+	/// </summary>
+	[Function("SetGuardianConsent")]
+	public async Task<HttpResponseData> SetGuardianConsent(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "guardian/consent")] HttpRequestData req)
+	{
+		var body = await HttpHelper.ReadBody<ConsentRequest>(req);
+		if (body == null || string.IsNullOrWhiteSpace(body.SessionToken))
+			return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Your session has ended. Please use a fresh link.");
+		if (string.IsNullOrWhiteSpace(body.MinorUserId) || string.IsNullOrWhiteSpace(body.OrganizationId))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "minorUserId and organizationId are required");
+		if (!string.Equals(body.Action, "grant", StringComparison.OrdinalIgnoreCase)
+			&& !string.Equals(body.Action, "revoke", StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "action must be 'grant' or 'revoke'");
+
+		var now = DateTime.UtcNow;
+		var guardian = await cosmos.GetGuardianBySessionHashAsync(GuardianLinkService.HashToken(body.SessionToken.Trim()));
+		if (guardian?.Session == null || !guardian.Session.IsLive(now))
+			return await HttpHelper.Error(req, HttpStatusCode.Unauthorized, "Your session has ended. Please use a fresh link.");
+
+		// The session proves WHO; the links prove WHAT they may act on. Without this a valid
+		// session could set consent for any child in any organization.
+		var link = guardian.Links.FirstOrDefault(l =>
+			string.Equals(l.MinorUserId, body.MinorUserId, StringComparison.OrdinalIgnoreCase)
+			&& string.Equals(l.OrganizationId, body.OrganizationId, StringComparison.OrdinalIgnoreCase));
+		if (link == null)
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You are not listed as a guardian for that person.");
+
+		var granting = string.Equals(body.Action, "grant", StringComparison.OrdinalIgnoreCase);
+		var consent = guardian.Consents.FirstOrDefault(c =>
+			string.Equals(c.MinorUserId, body.MinorUserId, StringComparison.OrdinalIgnoreCase)
+			&& string.Equals(c.OrganizationId, body.OrganizationId, StringComparison.OrdinalIgnoreCase));
+		if (consent == null)
+		{
+			consent = new GuardianConsent { MinorUserId = body.MinorUserId, OrganizationId = body.OrganizationId };
+			guardian.Consents.Add(consent);
+		}
+
+		if (granting)
+		{
+			consent.Status = GuardianConsentStatus.Granted;
+			consent.GrantedAt = now;
+			consent.RevokedAt = null;
+			consent.DocumentVersion = PolicyVersions.Current;
+			// Evidence is taken from the connection, never from the body — a client-supplied
+			// address is not evidence of anything.
+			consent.AttestedFromIp = ClientIpOf(req);
+		}
+		else
+		{
+			consent.Status = GuardianConsentStatus.Revoked;
+			consent.RevokedAt = now;
+		}
+
+		await cosmos.UpsertGuardianAsync(guardian);
+
+		var cancelled = 0;
+		if (!granting)
+			cancelled = await CancelFutureRegistrationsAsync(body.MinorUserId, body.OrganizationId, link.MinorName, guardian, now);
+
+		logger.LogInformation(
+			"[Guardian] {GuardianId} set consent {Action} for {MinorId} in {OrgId}; {Cancelled} future registration(s) cancelled",
+			guardian.Id, body.Action, body.MinorUserId, body.OrganizationId, cancelled);
+
+		return await HttpHelper.OkJson(req, new
+		{
+			status = consent.Status,
+			grantedAt = consent.GrantedAt,
+			revokedAt = consent.RevokedAt,
+			active = consent.IsActive(),
+			registrationsCancelled = cancelled,
+		});
+	}
+
+	/// <summary>
+	/// Cancels the minor's future registrations in one organization and tells the people who
+	/// need to know. Returns how many were cancelled.
+	///
+	/// Slot counters are put right by RECOMPUTING each affected event from its registrations
+	/// rather than decrementing by hand — hand-decrementing is exactly the path whose failure
+	/// modes produced the drift fixed in PR #112, and a bulk cancel would multiply it.
+	/// </summary>
+	private async Task<int> CancelFutureRegistrationsAsync(
+		string minorUserId, string organizationId, string? minorName, Guardian guardian, DateTime now)
+	{
+		var regs = await cosmos.GetActiveRegistrationsByMemberAsync(minorUserId);
+		var affectedEvents = new Dictionary<string, string>();   // eventId -> orgId
+		var cancelled = 0;
+
+		foreach (var reg in regs)
+		{
+			var orgId = reg.OrganizationId ?? reg.SchoolId;
+			// Consent is per-organization, so a withdrawal for one org must not touch a
+			// sign-up made through another.
+			if (!string.Equals(orgId, organizationId, StringComparison.OrdinalIgnoreCase)) continue;
+
+			var evt = await cosmos.GetEventAsync(reg.EventId, orgId);
+			// Already-attended events are left alone: they happened, and rewriting the past
+			// would also strip hours the volunteer earned.
+			if (evt == null || evt.StartDateTime <= now) continue;
+
+			reg.Status = "Cancelled";
+			await cosmos.UpdateRegistrationAsync(reg);
+			affectedEvents[reg.EventId] = orgId!;
+			cancelled++;
+
+			await NotifyOrgAdminsAsync(orgId!, evt.Title, minorName ?? "A volunteer", guardian);
+		}
+
+		foreach (var (eventId, orgId) in affectedEvents)
+		{
+			try { await cosmos.ReconcileEventSlotsAsync(eventId, orgId); }
+			catch (Exception ex)
+			{
+				// A failed recount leaves the event OVER-counted, which turns people away
+				// rather than over-booking — the safe direction — and reconcile-slots repairs it.
+				logger.LogError(ex, "[Guardian] slot recount failed for event {EventId} after consent withdrawal", eventId);
+			}
+		}
+
+		return cancelled;
+	}
+
+	private async Task NotifyOrgAdminsAsync(string orgId, string eventTitle, string minorName, Guardian guardian)
+	{
+		try
+		{
+			var members = await cosmos.GetUsersByTenantAsync(orgId);
+			var admins = members.Where(m => AdminLevels.AtLeast(m.AdminLevel, AdminLevels.EventAdmin));
+			foreach (var admin in admins)
+			{
+				await cosmos.CreateNotificationAsync(new Notification
+				{
+					UserId = admin.Id,
+					Type = "guardian_consent_withdrawn",
+					Message = $"{minorName}'s guardian withdrew consent — their registration for \"{eventTitle}\" was cancelled.",
+				});
+			}
+		}
+		catch (Exception ex)
+		{
+			// Never fail the withdrawal because a notice could not be delivered: the consent
+			// decision is the thing that must stick.
+			logger.LogError(ex, "[Guardian] could not notify admins in {OrgId} of a consent withdrawal", orgId);
+		}
+	}
+
+	private static string? ClientIpOf(HttpRequestData req)
+	{
+		if (req.Headers.TryGetValues("X-Forwarded-For", out var xff))
+		{
+			// Azure appends :port and may chain proxies; the first entry is the client.
+			var first = xff.FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim();
+			if (!string.IsNullOrWhiteSpace(first)) return first.Split(':')[0];
+		}
+		return null;
+	}
+
+	/// <summary>
+	/// The children view, with each organization's REAL NAME resolved.
+	///
+	/// A guardian must never be shown a raw tenant id — the platform has already shipped that
+	/// bug once (a membership chip reading as a GUID) and a stranger to the system has no way at
+	/// all to interpret one. If the tenant cannot be read the link is still listed, because
+	/// hiding a child would be worse than naming their organization vaguely.
+	/// </summary>
+	private async Task<List<object>> ChildrenViewAsync(Guardian guardian)
+	{
+		var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		foreach (var orgId in guardian.Links.Select(l => l.OrganizationId).Distinct(StringComparer.OrdinalIgnoreCase))
+		{
+			if (string.IsNullOrWhiteSpace(orgId)) continue;
+			var tenant = await cosmos.GetTenantAsync(orgId);
+			if (!string.IsNullOrWhiteSpace(tenant?.Name)) names[orgId] = tenant!.Name;
+		}
+
+		return guardian.Links.Select(l => (object)new
+		{
+			minorUserId = l.MinorUserId,
+			organizationId = l.OrganizationId,
+			organizationName = names.TryGetValue(l.OrganizationId ?? string.Empty, out var n) ? n : "this organization",
+			minorName = l.MinorName,
+			consent = ConsentView(guardian, l),
+		}).ToList();
 	}
 
 	private static object? ConsentView(Guardian g, GuardianLink l)
@@ -178,4 +374,7 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 		string OrganizationId, string MinorUserId, string Email, string? Name, string? Phone, string? Reason);
 
 	private sealed record RedeemRequest(string Token);
+
+	private sealed record ConsentRequest(
+		string SessionToken, string MinorUserId, string OrganizationId, string Action);
 }

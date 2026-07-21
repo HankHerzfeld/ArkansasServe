@@ -63,6 +63,29 @@ public class GuardianLinkService
     }
 
     /// <summary>
+    /// How long a redeemed link's working session lasts. Long enough to read the wording and
+    /// decide, short enough that a shared screen or an abandoned tab is not a standing
+    /// credential. This is NOT a login and must not drift towards one.
+    /// </summary>
+    public const int SessionLifetimeMinutes = 30;
+
+    /// <summary>
+    /// Mints the session that redemption hands back, replacing any previous one. Returns the raw
+    /// token; like the link token, only its hash is persisted.
+    /// </summary>
+    public static string IssueSession(Guardian guardian, DateTime now)
+    {
+        var token = NewToken();
+        guardian.Session = new GuardianSessionState
+        {
+            TokenHash = HashToken(token),
+            IssuedAt = now,
+            ExpiresAt = now.AddMinutes(SessionLifetimeMinutes),
+        };
+        return token;
+    }
+
+    /// <summary>
     /// Why a presented token was refused. The CALLER decides how much of this to tell the
     /// browser — "expired" and "already used" are safe and helpful to a parent, but they are
     /// only ever reported for a token that genuinely matched a record.
