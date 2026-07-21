@@ -105,6 +105,25 @@ public class Tenant : CosmosDocument
 	public bool AllowSelfJoin { get; set; } = true;
 
 	/// <summary>
+	/// Whether a minor must have GUARDIAN CONSENT on file before they can register (#20).
+	///
+	/// DEFAULTS TO FALSE — "allow until a guardian is attached" (owner decision): whether
+	/// consent is required is a tenant-by-tenant policy, and a platform-wide default of true
+	/// would lock every existing minor out of every event the moment this shipped.
+	///
+	/// ⚠️ THIS FLAG DOES NOT GOVERN WITHDRAWAL. An explicitly REVOKED consent blocks
+	/// registration whatever this is set to. Absence of consent is permissive; a guardian
+	/// actively saying no is a decision, and withdrawal already cancels existing future
+	/// registrations — letting the same person sign up again the next minute would make the
+	/// withdrawal meaningless.
+	///
+	/// Defaults to false the same way AllowSelfJoin defaults to true: a Tenant doc written
+	/// before this field existed deserialises to false, so no org silently starts blocking.
+	/// </summary>
+	[JsonPropertyName("requireGuardianConsent")]
+	public bool RequireGuardianConsent { get; set; } = false;
+
+	/// <summary>
 	/// The credentials this org tracks against its people — see <see cref="TenantUserTag"/>.
 	/// The definitions; a person's state against them lives on their User doc.
 	///

@@ -532,6 +532,9 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		if (body.AllowGroupAdminAddVolunteers.HasValue) tenant.AllowGroupAdminAddVolunteers = body.AllowGroupAdminAddVolunteers.Value;
 		if (body.AllowProfileSelfEdit.HasValue) tenant.AllowProfileSelfEdit = body.AllowProfileSelfEdit.Value;
 		if (body.AllowSelfJoin.HasValue) tenant.AllowSelfJoin = body.AllowSelfJoin.Value;
+		// #20. Nullable so an omitted field never silently flips a consent policy: a partial
+		// tenant update must not be able to switch guardian enforcement on or off by accident.
+		if (body.RequireGuardianConsent.HasValue) tenant.RequireGuardianConsent = body.RequireGuardianConsent.Value;
 
 		// ── Taxonomy ────────────────────────────────────────────────────────────
 		// Normalise on write so the stored casing converges on the canonical value, even
@@ -781,7 +784,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 
 	private sealed record UpdateTenantRequest(
 		string? Name, string? Status, bool? RbacEnabled, bool? AllowGroupAdminAddVolunteers, bool? AllowProfileSelfEdit,
-		bool? AllowSelfJoin, string? Type, string? ServiceCategory, bool? FaithBased,
+		bool? AllowSelfJoin, bool? RequireGuardianConsent, string? Type, string? ServiceCategory, bool? FaithBased,
 		string? Description, string? Mission, string? Website,
 		string? ContactEmail, string? ContactPhone, string? Address, string? LogoUrl, string? LogoBlobName);
 }
