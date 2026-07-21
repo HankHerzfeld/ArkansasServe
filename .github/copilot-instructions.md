@@ -435,6 +435,28 @@ Two related traps the script also guards:
   ```
   Backend routes are cache-independent — probe those directly instead.
 
+### Waiting on anything — cap it at 30 minutes
+
+Every background wait or poll must carry a **hard timeout**, and `scripts/wait-for-deploy.sh`
+enforces one across both its phases:
+
+```bash
+scripts/wait-for-deploy.sh                       # 30-minute cap (DEPLOY_WAIT_TIMEOUT=1800)
+DEPLOY_WAIT_TIMEOUT=2700 scripts/wait-for-deploy.sh   # raise it deliberately, per invocation
+```
+
+**Never hand-roll an uncapped loop:**
+
+```bash
+until [ "$(gh run view $R --json status --jq .status)" = completed ]; do sleep 20; done  # ❌
+```
+
+Polling costs time whether or not anything is happening, and an unbounded wait on a job that
+will never finish burns it for nothing. A deploy that has not completed in half an hour is
+**stuck, not slow** — fail and report rather than keep watching. Azure SWA has produced exactly
+that here: a run that polled `InProgress` for ten minutes before admitting *"Unsure if
+deployment was successful or not."*
+
 ### Other
 
 - Test all HTTP functions locally with `func start` before pushing

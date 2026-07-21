@@ -41,8 +41,34 @@ SHORT="${SHA:0:7}"
 # both, so both are waited on; adjust here if the pipeline gains another.
 WORKFLOWS=("Azure Static Web Apps CI/CD" "Build and deploy dotnet core app to Azure Function App - func-arkansas-serve-arksrv")
 
-APPEAR_TIMEOUT=${APPEAR_TIMEOUT:-300}   # how long to wait for runs to be CREATED
-FINISH_TIMEOUT=${FINISH_TIMEOUT:-1800}  # how long to wait for them to finish
+# ⏱ HARD OVERALL CAP — 30 minutes, covering BOTH phases together.
+#
+# Waiting is not free: every polling loop is billed session time, and an uncapped wait on a
+# deploy that will never finish burns it for nothing. A deploy that has not completed in half
+# an hour is not slow, it is broken, and the right response is to fail and say so rather than
+# keep watching. Azure SWA has already produced exactly this: a run that polled "InProgress"
+# for ten minutes and then admitted it did not know whether it had succeeded.
+#
+# Raise it deliberately per invocation if a specific job genuinely needs longer:
+#   DEPLOY_WAIT_TIMEOUT=2700 scripts/wait-for-deploy.sh
+DEPLOY_WAIT_TIMEOUT=${DEPLOY_WAIT_TIMEOUT:-1800}
+
+# Phase budgets. APPEAR is short because a run that has not been CREATED within a few minutes
+# almost certainly never will be (a merge that fires no workflow has happened here before).
+# Neither phase may exceed the overall cap, and their sum is enforced against it below.
+APPEAR_TIMEOUT=${APPEAR_TIMEOUT:-300}
+FINISH_TIMEOUT=${FINISH_TIMEOUT:-$DEPLOY_WAIT_TIMEOUT}
+
+START_TS=$(date +%s)
+# Fails the whole script the moment the overall budget is spent, whichever phase is running.
+check_overall_budget() {
+  local elapsed=$(( $(date +%s) - START_TS ))
+  if [ "$elapsed" -ge "$DEPLOY_WAIT_TIMEOUT" ]; then
+    echo "ERROR: gave up waiting on $SHORT after ${elapsed}s (cap ${DEPLOY_WAIT_TIMEOUT}s)." >&2
+    echo "       A deploy this slow is stuck, not slow. Check the run, then re-trigger." >&2
+    exit 1
+  fi
+}
 
 runs_for_sha() {
   gh run list --commit "$SHA" --event push --limit 20 \
@@ -62,6 +88,7 @@ while :; do
     echo "       Do NOT treat this as deployed — a merge that triggers no run has happened here before." >&2
     exit 1
   fi
+  check_overall_budget
   sleep 10; waited=$((waited + 10))
 done
 
@@ -76,6 +103,7 @@ while :; do
     jq -r '.[] | "  \(.workflowName): \(.status)"' <<<"$json" >&2
     exit 1
   fi
+  check_overall_budget
   sleep 15; waited=$((waited + 15))
 done
 
