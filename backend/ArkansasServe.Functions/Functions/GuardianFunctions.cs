@@ -317,15 +317,36 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 		}
 	}
 
+	/// <summary>
+	/// The client address from X-Forwarded-For, port stripped.
+	///
+	/// ⚠️ IPv6 IS WHY THIS IS NOT A ONE-LINER. Azure appends :port, so the obvious
+	/// `split(':')[0]` works for `1.2.3.4:443` and DESTROYS `2600:1700:…:443`, which it
+	/// truncates to "2600". Observed in prod on the first real consent record — the evidence
+	/// this field exists to preserve was reduced to a single hextet, and it would have looked
+	/// like a plausible value forever.
+	///
+	/// A colon count distinguishes the cases: IPv4-with-port has exactly one, bare IPv6 has
+	/// several, and a bracketed IPv6 carries its own delimiters.
+	/// </summary>
 	private static string? ClientIpOf(HttpRequestData req)
 	{
-		if (req.Headers.TryGetValues("X-Forwarded-For", out var xff))
+		if (!req.Headers.TryGetValues("X-Forwarded-For", out var xff)) return null;
+
+		// Proxies chain left-to-right; the first entry is the original client.
+		var first = xff.FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim();
+		if (string.IsNullOrWhiteSpace(first)) return null;
+
+		// Bracketed IPv6: "[2600:1700::1]:443"
+		if (first.StartsWith('['))
 		{
-			// Azure appends :port and may chain proxies; the first entry is the client.
-			var first = xff.FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim();
-			if (!string.IsNullOrWhiteSpace(first)) return first.Split(':')[0];
+			var close = first.IndexOf(']');
+			return close > 1 ? first[1..close] : first;
 		}
-		return null;
+
+		// Exactly one colon means IPv4 with a port. Several means a bare IPv6 address, which
+		// must be kept whole. None means a bare IPv4.
+		return first.Count(c => c == ':') == 1 ? first.Split(':')[0] : first;
 	}
 
 	/// <summary>
