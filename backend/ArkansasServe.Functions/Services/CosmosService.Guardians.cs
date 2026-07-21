@@ -79,6 +79,31 @@ public partial class CosmosService
         return null;
     }
 
+    /// <summary>
+    /// Finds a guardian by the HASH of a presented SESSION token. Same shape as the link
+    /// lookup, and same reason: the raw value is never stored, so a miss is indistinguishable
+    /// from a value that never existed.
+    /// </summary>
+    public async Task<Guardian?> GetGuardianBySessionHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(tokenHash)) return null;
+
+        var query = Users.GetItemQueryIterator<Guardian>(
+            new QueryDefinition(
+                "SELECT * FROM c WHERE c.docType = @t AND c.session.tokenHash = @h")
+                .WithParameter("@t", GuardianDocType.Value)
+                .WithParameter("@h", tokenHash),
+            requestOptions: new QueryRequestOptions { PartitionKey = GuardianPartition });
+
+        while (query.HasMoreResults)
+        {
+            var page = await query.ReadNextAsync(cancellationToken);
+            var hit = page.FirstOrDefault();
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
     public async Task<Guardian> UpsertGuardianAsync(Guardian guardian, CancellationToken cancellationToken = default)
     {
         // Defended rather than assumed: a guardian written into the wrong partition, or without
@@ -90,6 +115,80 @@ public partial class CosmosService
 
         var res = await Users.UpsertItemAsync(guardian, GuardianPartition, cancellationToken: cancellationToken);
         return res.Resource;
+    }
+
+    /// <summary>
+    /// A member's non-cancelled registrations. Registrations are partitioned by /eventId, so
+    /// this is necessarily CROSS-PARTITION — acceptable because it runs only on consent
+    /// withdrawal, never on a hot path, and a single family's registrations are few.
+    /// </summary>
+    public async Task<List<EventRegistration>> GetActiveRegistrationsByMemberAsync(string memberId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(memberId)) return [];
+
+        var query = Registrations.GetItemQueryIterator<EventRegistration>(
+            new QueryDefinition("SELECT * FROM c WHERE c.memberId = @m AND c.status != 'Cancelled'")
+                .WithParameter("@m", memberId));
+
+        var results = new List<EventRegistration>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+        return results;
+    }
+
+    /// <summary>
+    /// Recomputes an event's CurrentSlots and per-shift Filled from the registrations that
+    /// actually exist, and returns whether anything changed.
+    ///
+    /// Shared deliberately. Cancelling registrations in bulk (consent withdrawal) could
+    /// decrement counters by hand, but that is the very code path whose failure modes produced
+    /// the slot drift in PR #112. Recomputing from the source of truth cannot drift, and it
+    /// means the withdrawal cascade and the SuperAdmin repair endpoint can never disagree.
+    /// </summary>
+    public async Task<bool> ReconcileEventSlotsAsync(string eventId, string organizationId, CancellationToken cancellationToken = default)
+    {
+        var regs = await GetRegistrationsByEventAsync(eventId, cancellationToken);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var (evt, etag) = await GetEventWithETagAsync(eventId, organizationId);
+            if (evt == null) return false;
+
+            var byShift = regs.Where(r => !string.IsNullOrWhiteSpace(r.ShiftId))
+                .GroupBy(r => r.ShiftId!)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+            var changed = evt.CurrentSlots != regs.Count;
+            evt.CurrentSlots = regs.Count;
+            foreach (var shift in evt.Shifts)
+            {
+                var actual = byShift.TryGetValue(shift.Id, out var n) ? n : 0;
+                if (shift.Filled != actual) changed = true;
+                shift.Filled = actual;
+            }
+
+            if (evt.MaxSlots > 0)
+            {
+                var newStatus = evt.CurrentSlots >= evt.MaxSlots ? "Full"
+                    : string.Equals(evt.Status, "Full", StringComparison.OrdinalIgnoreCase) ? "Open"
+                    : evt.Status;
+                if (!string.Equals(newStatus, evt.Status, StringComparison.Ordinal)) changed = true;
+                evt.Status = newStatus;
+            }
+
+            if (!changed) return false;
+
+            try
+            {
+                await UpdateEventAsync(evt, etag);
+                return true;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+            {
+                // Retry against a fresh read.
+            }
+        }
+        return false;
     }
 
     /// <summary>Every guardian linked to a given minor, in a given org. Usually one, sometimes two.</summary>

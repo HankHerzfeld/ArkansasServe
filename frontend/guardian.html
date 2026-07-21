@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Guardian Consent — Arkansas Serve</title>
+  <meta name="description" content="Review and manage consent for a young person's volunteering with Arkansas Serve.">
+  <link rel="stylesheet" href="/styles/main.css">
+  <meta name="theme-color" content="#2d6a4f">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <!-- Deliberately NO manifest and NO app shell: a guardian has no account, so offering the
+       installable app or a nav bar full of pages they cannot open would only mislead. -->
+  <meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+
+<div class="container" style="max-width:44rem;">
+  <div class="page-header" style="margin-top:1.5rem;">
+    <h1 style="color:var(--green);">Arkansas Serve</h1>
+    <p id="intro">Checking your link…</p>
+  </div>
+
+  <!-- Link could not be used. The ONLY action available is asking for a new one, so this
+       state says exactly that rather than leaving a dead end. -->
+  <div class="card" id="link-error" style="display:none;border-left:4px solid var(--amber);">
+    <div class="card-title">This link can't be used</div>
+    <p id="link-error-text" style="color:var(--gray-700);font-size:.95rem;"></p>
+    <p style="color:var(--gray-600);font-size:.9rem;margin-top:.5rem;">
+      Links are single-use and expire after 7 days. Contact the organization that invited you
+      and ask them to send a new one.
+    </p>
+  </div>
+
+  <div id="content" style="display:none;">
+    <div class="card">
+      <div class="card-title">Your details</div>
+      <div id="guardian-details" style="font-size:.95rem;color:var(--gray-700);"></div>
+      <p id="reason-line" style="display:none;font-size:.9rem;color:var(--gray-600);margin-top:.5rem;"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Young people you oversee</div>
+      <p style="font-size:.9rem;color:var(--gray-600);margin:.25rem 0 1rem;">
+        Consent covers that organization's volunteering on an ongoing basis. Some events still
+        ask separately — an overnight or multi-day event, or one the organization has flagged.
+      </p>
+      <div id="children"></div>
+    </div>
+
+    <p id="session-note" style="font-size:.8rem;color:var(--gray-600);text-align:center;"></p>
+  </div>
+</div>
+
+<script src="/js/guardian.js"></script>
+</body>
+</html>
