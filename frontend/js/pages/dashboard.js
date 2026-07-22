@@ -58,9 +58,13 @@
       details.innerHTML = '';
       const rows = [];
       if (user.phone) rows.push(['Phone', user.phone]);
-      // Grade is a school-grade level — meaningful only for a Student personType. Without this
-      // gate a non-student (e.g. a SuperAdmin carrying a stray grade value) showed "Grade 17".
-      if (user.grade && user.personType === 'Student') rows.push(['Grade', user.grade]);
+      // Grade is a school-grade level — meaningful only for a Student, and only worth surfacing to
+      // a plain volunteer. An org-level admin (e.g. the SuperAdmin owner, whose account still
+      // carried a stray "Grade 17" from test setup) never shows it, whatever their personType.
+      if (user.grade && user.personType === 'Student'
+          && Auth.adminRank(user.adminLevel) < Auth.adminRank('OrganizationAdmin')) {
+        rows.push(['Grade', user.grade]);
+      }
       rows.forEach(([label, val]) => {
         const wrap = document.createElement('div');
         const l = document.createElement('div');
