@@ -1,6 +1,8 @@
 # Arkansas Serve — Priorities & Roadmap
 
-_Last updated 2026-07-21._ Consolidated list of completed and upcoming priorities.
+_Last updated 2026-07-22._ Consolidated list of completed and upcoming priorities.
+_2026-07-22 refresh: marked Maps #17/#18 and the recurring create-form (③) shipped, and the
+scope-bar root-duplicate resolved, after a live prod audit — see `2026-07-22-feature-audit.md`._
 Detailed context for shipped work lives in the referenced PRs and companion docs
 (`production-cutover-plan.md`, `manual-verification-checklist.md`).
 
@@ -263,14 +265,15 @@ island.
     not a live defect. Damage was to a throwaway test event only.
   - **Fix when convenient:** make the update fields nullable and copy only what was supplied, or
     document the endpoint as PUT-means-replace and reject partial bodies outright.
-- **Scope bar shows the root partition as a duplicate "Arkansas Serve" (logged 2026-07-18).**
-  For a SuperAdmin the org switcher lists BOTH `arkansas-serve-root` (name "Arkansas Serve", the
-  internal platform partition) AND the real `arkansas-serve` org (also "Arkansas Serve") — two
-  identical entries; only the real one is wanted. **Cause:** `GetTenants` returns
-  `GetAllTenantsAsync()` unfiltered and `scope.js` maps them all for supers. Root is already
-  filtered out of the public org directory (`MembershipFunctions`) but NOT the super scope bar.
-  **Fix:** drop `arkansas-serve-root` from the super org list in `scope.js` (small, safe) —
-  root's public profile was migrated to the real org, so it need not be scope-selectable.
+- **Scope bar showed the root partition as a duplicate "Arkansas Serve" (logged 2026-07-18).**
+  ✅ **Resolved by the single-org collapse (PR #124, 2026-07-21); confirmed in prod 2026-07-22.**
+  The duplicate existed because there were *two* "Arkansas Serve" tenants — `arkansas-serve-root`
+  (the internal platform partition) and the separate public `arkansas-serve` org — and `scope.js`
+  mapped both for supers. #124 deleted the separate org and made root itself the single browsable
+  organization, so there is only one "Arkansas Serve" left to list. The authed Super Admin scope
+  bar now reads **Arkansas Serve · Demo Community Organization (Alpha) · Demo Partner Organization
+  (Beta)** — one clean entry, no duplicate. The originally-proposed fix (filtering root out of the
+  super list) is moot; root is now a legitimate, scope-selectable org.
 - **Orphaned membership data.** ✅ **Deleted 2026-07-15 on owner authorization.** 3 rows
   removed; `Users` went 18 → 15, and the stranded partition now holds 0.
   - **The old description here was wrong in a way worth recording.** These rows did *not*
@@ -406,7 +409,11 @@ island.
     sign-up selector, group-registration selector) onto the shared helper, and clamped the
     card's count, which was raw subtraction and could render negative.
 - **Recurring / regularly-scheduled events** — let an event repeat on a schedule rather than
-  re-creating it each time. *Scoped 2026-07-15; ① and ② landed, ③ (create-form UI) remains.*
+  re-creating it each time. *Scoped 2026-07-15; ① and ② landed. ③ (create-form UI) is now
+  deployed — the New Event form on `org-portal.html` carries a "Repeat this event on a schedule"
+  control (verified present in prod 2026-07-22). ⚠️ **Full end-to-end series creation was NOT
+  exercised** in that pass — confirm the toggle writes a valid `RecurrenceRule` and materialises
+  occurrences before calling this fully closed.*
   - **Occurrences are MATERIALISED as real Event docs, and the data model decided that.**
     `EventRegistrations` is partitioned by `/eventId`, so a computed occurrence has no id to
     partition by; and the capacity counters (`currentSlots`, `shifts[].filled`) live on the
@@ -524,8 +531,13 @@ island.
     version would drift every evening event in Arkansas onto the next day and quietly drop it
     from a "1 March" filter.
   - *Not covered here:* ZIP/county and map-based selection are the two items below.
-- **Search map** — plots service locations with date/availability, **color-coded by tag**, with
-  the same filter controls as the list view.
+- **Search map** — ✅ **SHIPPED 2026-07-20 (PR #116, #18).** A split map view on `events.html`:
+  side-by-side list + Google Map on large screens, a list/map toggle on phones, sharing PR #70's
+  filter/sort stack untouched (the map draws whatever survived the filter). Coincident
+  ZIP-centroid pins fan out. Degrades cleanly with no key. Verified rendering live in prod
+  2026-07-22 with the current single event. ⚠️ **The "color-coded by tag" goal is unverified** —
+  only one event exists in prod, so the per-tag colour coding could not be exercised; confirm once
+  multiple tagged events are live.
 - **ZIP / geo search** — ✅ **SHIPPED 2026-07-18 (PR #91).** Events gained `zip`/`city`/`county`
   (+`latitude`/`longitude`) alongside free-text `location`, resolved from a **bundled Arkansas ZIP
   dataset** (706 ZIPs, all 75 counties; GeoNames CC BY 4.0) — **no external geocoding API, no
@@ -535,9 +547,19 @@ island.
   with the maps items (#17/#18).*
 
 ### Addresses & mapping
-- **Address auto-populate** in the event and organization creation portals (Google Maps API),
-  with an **optional custom address** path (no auto-populate) that still shows a **previewed
-  Google Map**.
+- **Address auto-populate** — ✅ **SHIPPED 2026-07-20 (PR #115, #17).** Google Maps stack
+  (Maps JavaScript + Geocoding + Places) behind a single **referrer-restricted browser key** in
+  the `GoogleMaps__ApiKey` Function App setting (rotates without a redeploy; no server key — Y1 has
+  no stable outbound IPs). Address autocomplete on the event-create Location field; **geocoding runs
+  client-side at event save** and stores real `latitude`/`longitude` on the event. The free-text /
+  custom-address path still previews a map. Degrades cleanly with no key. Verified live 2026-07-22.
+  - ⚠️ **Set a budget alert** — geocoding now bills per event *save* (map loads bill per session).
+    Inside the free tier at current volume, but no longer $0-by-construction the way the bundled ZIP
+    dataset was.
+  - Real geocoded coordinates supersede ZIP centroids going forward; **pre-#16 events keep centroid
+    coordinates until re-saved**, so plan for a mixed-precision dataset.
+  - *Not re-verified this pass:* Places autocomplete was not exercised by live typing, and the
+    organization-create portal's autocomplete was not checked — only event-create.
 
 ### Dashboard
 - **Per-organization, role-aware dashboard** — ✅ **SHIPPED 2026-07-19 (PR #106, fixes #107).**
