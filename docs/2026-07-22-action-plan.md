@@ -56,17 +56,19 @@ Follow-up (behaviour, separate PRs): the gate that reads `RequiresFreshGuardianA
 `UpdateEvent` merge line that lets an admin set it, the doc-upload endpoint + SAS signing for
 `DocumentBlobName`, and the client palette generator for `Branding`.
 
-### 1b · The one unmade schema decision — cross-org tag gating (#11)
+### 1b · Cross-org tag gating (#11) — DECIDED: same-org-only (owner, 2026-07-22)
 
-**Blocks more registration code.** Today `TagGate` is same-org-only. The options differ in whether
-they rewrite existing rows:
+**Resolved as same-org-only** — the no-schema-change option, and already the implemented
+behaviour: `RegistrationFunctions` and `CheckInFunctions` apply the tag gate (and guardian
+consent) only when the registrant's tenant equals the event's org; a cross-org sign-up has no
+User doc in the event's org to carry a tag state, so it **proceeds ungated** rather than being
+blocked. No code change, no schema change, no backfill. `User.tags` comment updated to record it;
+every other reference already said "the locked cross-org decision".
 
-- **same-org-only** (today) — no schema change.
-- **tag-on-registration** — adds fields to `EventRegistration` → retrofitting migrates every
-  existing registration row.
-- **managed-record** — materialises a User doc in the event's org.
+Rejected alternatives (both rewrite existing data): **tag-on-registration** (adds tag state to
+every `EventRegistration` row) and **managed-record** (materialises a User doc in the event's org).
 
-Every registration written before this is decided is a potential backfill. **Decide first.**
+This unblocks further registration work — no more rows accrue that a later decision would migrate.
 
 ### 1c · Converge legacy forks before they compound
 
@@ -127,4 +129,5 @@ Background-check → tag convergence (rewrites live User records); denominationa
 3. **Group-reg: write `memberId` on every new registration** (§1c) — stop widening the fork even
    before backfilling.
 
-Gate before writing more registration code: **the cross-org tag-gating decision** (§1b).
+~~Gate before writing more registration code: the cross-org tag-gating decision (§1b).~~
+**Resolved 2026-07-22 — same-org-only (§1b); registration work is unblocked.**
