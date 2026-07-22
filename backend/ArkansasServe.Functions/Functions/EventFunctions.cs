@@ -439,8 +439,14 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
 		if (ctx == null) return authError!;
 
-		var body = await HttpHelper.ReadBody<Event>(req);
-		if (body == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
+		// #139 landmine fix: PUT here is a MERGE, not a blind full-replace. We read the raw JSON
+		// alongside the typed body so we only touch fields the caller actually SENT — an omitted
+		// field is preserved, never reset to a type default (a body without startDateTime used to
+		// stamp 0001-01-01 and make the event vanish from every date-ordered list). The org form
+		// still sends the whole event, so its behaviour is unchanged; a partial caller is now safe.
+		var (body, incoming) = await HttpHelper.ReadBodyWithRaw<Event>(req);
+		if (body == null || incoming == null) return await HttpHelper.Error(req, HttpStatusCode.BadRequest, "Invalid request body");
+		bool Has(string key) => incoming.ContainsKey(key);
 
 		var existing = await cosmos.GetEventAsync(id, body.OrganizationId);
 		if (existing == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
@@ -450,64 +456,79 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		if (editor == null || !AdminLevels.AtLeast(editor.AdminLevel, AdminLevels.EventAdmin))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "Cannot edit this organization's event");
 
-		existing.Title = body.Title;
-		existing.Description = body.Description;
-		var priorZip = (existing.Zip ?? string.Empty).Trim();
-		existing.Location = body.Location;
-		existing.Zip = body.Zip;
-		existing.City = body.City;
-		existing.County = body.County;
-		// The form now sends geocoded coordinates (#17); carry the prior values forward when it
-		// doesn't, rather than letting the body null them.
-		existing.Latitude = body.Latitude ?? existing.Latitude;
-		existing.Longitude = body.Longitude ?? existing.Longitude;
-		// If the ZIP MOVED and no fresh coordinates came with it, whatever we hold now describes
-		// the old place. Drop it so ApplyZipAutofill re-stamps the new centroid — otherwise the
-		// `??=` fallback would preserve a coordinate the admin just contradicted.
-		var zipChanged = !string.Equals(priorZip, (body.Zip ?? string.Empty).Trim(), StringComparison.Ordinal);
-		if (zipChanged && body.Latitude == null && body.Longitude == null)
+		if (Has("title"))       existing.Title = body.Title;
+		if (Has("description")) existing.Description = body.Description;
+
+		// Address: apply only the parts sent, then re-derive from ZIP. Skipped wholesale when the
+		// caller mentions no address field, so a non-address edit never disturbs the venue.
+		if (Has("location") || Has("zip") || Has("city") || Has("county") || Has("latitude") || Has("longitude"))
 		{
-			existing.Latitude = null;
-			existing.Longitude = null;
+			var priorZip = (existing.Zip ?? string.Empty).Trim();
+			if (Has("location")) existing.Location = body.Location;
+			if (Has("zip"))      existing.Zip = body.Zip;
+			if (Has("city"))     existing.City = body.City;
+			if (Has("county"))   existing.County = body.County;
+			// Coordinates: only when sent, and never nulled by an absent value (#17).
+			if (Has("latitude"))  existing.Latitude = body.Latitude ?? existing.Latitude;
+			if (Has("longitude")) existing.Longitude = body.Longitude ?? existing.Longitude;
+			// If the ZIP MOVED and no fresh coordinates came with it, the ones we hold describe the
+			// old place — drop them so ApplyZipAutofill re-stamps the new centroid.
+			if (Has("zip"))
+			{
+				var zipChanged = !string.Equals(priorZip, (existing.Zip ?? string.Empty).Trim(), StringComparison.Ordinal);
+				if (zipChanged && !Has("latitude") && !Has("longitude"))
+				{
+					existing.Latitude = null;
+					existing.Longitude = null;
+				}
+			}
+			ApplyZipAutofill(existing);
 		}
-		ApplyZipAutofill(existing);
-		existing.StartDateTime = body.StartDateTime;
-		existing.EndDateTime = body.EndDateTime;
-		existing.MaxSlots = body.MaxSlots;
-		existing.HoursValue = body.HoursValue;
-		existing.EligibleSchoolIds = body.EligibleSchoolIds;
-		existing.PhotoBlobName = body.PhotoBlobName;
-		existing.PhotoUrl = body.PhotoUrl;
-		// #10②: same treatment as create — an unknown label is stored and proposed, not rejected.
-		var newCategory = string.IsNullOrWhiteSpace(body.Category) ? null : body.Category.Trim();
-		if (newCategory?.Length > MaxCategoryLabelLength)
-			return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"That category label is too long (max {MaxCategoryLabelLength} characters).");
-		existing.Category = newCategory;
-		await categories.RecordProposalIfNewAsync(newCategory, existing.OrganizationId, existing.OrganizationName, CategoryProposalSources.Event);
-		existing.Tags = body.Tags ?? [];
-		existing.Requirements = body.Requirements;
-		existing.ExternalUrl = body.ExternalUrl;
-		existing.ContactName = body.ContactName;
-		existing.ContactEmail = body.ContactEmail;
-		existing.ContactPhone = body.ContactPhone;
-		// Previously dropped on edit (the create path persisted it, but this field-by-field copy
-		// omitted it), so editing an event silently cleared its contact URL. Copied now.
-		existing.ContactUrl = body.ContactUrl;
-		// External-listing attribution (MVP). "hosted" is the default when the body omits it.
-		existing.ListingType = string.IsNullOrWhiteSpace(body.ListingType) ? "hosted" : body.ListingType;
-		existing.HostOrganizationName = body.HostOrganizationName;
-		existing.HostOrganizationUrl = body.HostOrganizationUrl;
-		// Preserve each shift's filled count across edits (the admin form doesn't own it).
-		var priorFilled = existing.Shifts.ToDictionary(s => s.Id, s => s.Filled);
-		existing.Shifts = (body.Shifts ?? []).Select(s =>
+
+		if (Has("startDateTime")) existing.StartDateTime = body.StartDateTime;
+		if (Has("endDateTime"))   existing.EndDateTime = body.EndDateTime;
+		if (Has("maxSlots"))      existing.MaxSlots = body.MaxSlots;
+		if (Has("hoursValue"))    existing.HoursValue = body.HoursValue;
+		if (Has("eligibleSchoolIds")) existing.EligibleSchoolIds = body.EligibleSchoolIds ?? [];
+		if (Has("photoBlobName")) existing.PhotoBlobName = body.PhotoBlobName;
+		if (Has("photoUrl"))      existing.PhotoUrl = body.PhotoUrl;
+
+		if (Has("category"))
 		{
-			if (priorFilled.TryGetValue(s.Id, out var f)) s.Filled = f;
-			return s;
-		}).ToList();
-		existing.SignupQuestions = body.SignupQuestions ?? [];
-		existing.GroupId = body.GroupId;
-		if (!string.IsNullOrWhiteSpace(body.Visibility)) existing.Visibility = body.Visibility;
-		existing.Status = body.Status;
+			// #10②: an unknown label is stored and proposed, not rejected.
+			var newCategory = string.IsNullOrWhiteSpace(body.Category) ? null : body.Category.Trim();
+			if (newCategory?.Length > MaxCategoryLabelLength)
+				return await HttpHelper.Error(req, HttpStatusCode.BadRequest, $"That category label is too long (max {MaxCategoryLabelLength} characters).");
+			existing.Category = newCategory;
+			await categories.RecordProposalIfNewAsync(newCategory, existing.OrganizationId, existing.OrganizationName, CategoryProposalSources.Event);
+		}
+
+		if (Has("tags"))         existing.Tags = body.Tags ?? [];
+		if (Has("requirements")) existing.Requirements = body.Requirements;
+		if (Has("externalUrl"))  existing.ExternalUrl = body.ExternalUrl;
+		if (Has("contactName"))  existing.ContactName = body.ContactName;
+		if (Has("contactEmail")) existing.ContactEmail = body.ContactEmail;
+		if (Has("contactPhone")) existing.ContactPhone = body.ContactPhone;
+		if (Has("contactUrl"))   existing.ContactUrl = body.ContactUrl;
+		// External-listing attribution (MVP).
+		if (Has("listingType"))  existing.ListingType = string.IsNullOrWhiteSpace(body.ListingType) ? "hosted" : body.ListingType;
+		if (Has("hostOrganizationName")) existing.HostOrganizationName = body.HostOrganizationName;
+		if (Has("hostOrganizationUrl"))  existing.HostOrganizationUrl = body.HostOrganizationUrl;
+
+		if (Has("shifts"))
+		{
+			// Preserve each shift's filled count across edits (the admin form doesn't own it).
+			var priorFilled = existing.Shifts.ToDictionary(s => s.Id, s => s.Filled);
+			existing.Shifts = (body.Shifts ?? []).Select(s =>
+			{
+				if (priorFilled.TryGetValue(s.Id, out var f)) s.Filled = f;
+				return s;
+			}).ToList();
+		}
+		if (Has("signupQuestions")) existing.SignupQuestions = body.SignupQuestions ?? [];
+		if (Has("groupId"))         existing.GroupId = body.GroupId;
+		if (Has("visibility") && !string.IsNullOrWhiteSpace(body.Visibility)) existing.Visibility = body.Visibility;
+		if (Has("status"))          existing.Status = body.Status;
 
 		var updated = await cosmos.UpdateEventAsync(existing);
 		return await HttpHelper.OkJson(req, updated);

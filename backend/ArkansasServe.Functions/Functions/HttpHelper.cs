@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Azure.Functions.Worker.Http;
 
 namespace ArkansasServe.Functions.Functions;
@@ -46,6 +47,25 @@ internal static class HttpHelper
         catch
         {
             return default;
+        }
+    }
+
+    // Deserializes the body AND returns the raw JSON object, so a handler can tell which fields
+    // were actually SENT (via the object's keys) versus filled in by deserialization defaults.
+    // This is what a partial PUT/PATCH needs to avoid zeroing fields the caller never mentioned.
+    public static async Task<(T? Typed, JsonObject? Raw)> ReadBodyWithRaw<T>(HttpRequestData req)
+    {
+        try
+        {
+            var body = await req.ReadAsStringAsync();
+            if (string.IsNullOrEmpty(body)) return (default, null);
+            var typed = JsonSerializer.Deserialize<T>(body, JsonOpts);
+            var raw = JsonNode.Parse(body)?.AsObject();
+            return (typed, raw);
+        }
+        catch
+        {
+            return (default, null);
         }
     }
 }

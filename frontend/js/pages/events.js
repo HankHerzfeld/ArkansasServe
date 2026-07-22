@@ -4,11 +4,16 @@
   let allEvents = [];
   let pendingEventId = null;
   let pendingOrgId   = null;
+  // Strongest level across memberships (from /users/me). The Sign-Up button gates on this, not
+  // the token level, which reads "Student" for a membership-based admin/super (Finding 9) and
+  // put a stray "Sign Up" in front of a SuperAdmin (#138). Falls back to the token if unreachable.
+  let resolvedAdminLevel = null;
 
   Auth.requireAuth().then(async (p) => {
     profile = p;
     if (!profile) return;
     UI.setupHeader('/events.html');
+    try { resolvedAdminLevel = (await Api.Users.getMe()).adminLevel; } catch { /* fall back to token */ }
     // The filter list is the EFFECTIVE vocabulary (canonical + approved-new, #10②), fetched so
     // it can never offer a category events can't be created with — and never a pending one.
     // Loaded before rendering so the rowFilter/badges can resolve aliases.
@@ -337,7 +342,7 @@
       card.appendChild(status);
       card.appendChild(document.createElement('br'));
 
-      if (!displayOnly && profile.adminLevel === 'Student' && evt.status === 'Open') {
+      if (!displayOnly && (resolvedAdminLevel || profile.adminLevel) === 'Student' && evt.status === 'Open') {
         const structured = (evt.shifts && evt.shifts.length) || (evt.signupQuestions && evt.signupQuestions.length);
         if (structured) {
           // Shifts/questions are collected on the detail page.

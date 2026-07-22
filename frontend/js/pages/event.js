@@ -12,6 +12,11 @@
   let groupAdminOrgs = [];
   // OrganizationAdmin+ in THIS event's org — the level required to delete a whole series.
   let canDeleteSeries = false;
+  // Strongest level across memberships (from /users/me). The TOKEN reads "Student" for a
+  // membership-based admin/super (Finding 9), so the Sign-Up button must not gate on it —
+  // that is why a SuperAdmin saw a stray "Sign Up" (#138). Null until resolved; falls back
+  // to the token level only if /users/me can't be reached.
+  let resolvedAdminLevel = null;
   const params = new URLSearchParams(location.search);
   const eventId = params.get('id');
   const orgId = params.get('organizationId') || '';
@@ -32,6 +37,7 @@
       // most likely to use it. /users/me reports the strongest level across all memberships
       // (Finding 2), which is what scope.js asks and therefore what this must ask too.
       const me = await Api.Users.getMe();
+      resolvedAdminLevel = me.adminLevel;
 
       // Deleting a whole series is destructive, so it needs OrganizationAdmin+ IN THE
       // EVENT'S OWN ORG — a stricter test than the group button's EventAdmin+ anywhere, and
@@ -243,7 +249,7 @@
         }
       });
       actions.appendChild(cancelBtn);
-    } else if (!displayOnly && profile.adminLevel === 'Student' && (evt.status === 'Open')) {
+    } else if (!displayOnly && (resolvedAdminLevel || profile.adminLevel) === 'Student' && (evt.status === 'Open')) {
       const btn = elem('button', { class: 'btn btn-primary', text: 'Sign Up' });
       btn.addEventListener('click', () => openSignup(evt));
       actions.appendChild(btn);
