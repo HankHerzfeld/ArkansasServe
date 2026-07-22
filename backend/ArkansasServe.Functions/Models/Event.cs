@@ -151,6 +151,27 @@ public class Event : CosmosDocument
 	[JsonPropertyName("visibility")]
 	public string Visibility { get; set; } = "org";
 
+	// ── Listing type (MVP: Arkansas-Serve-hosted informational listings) ────────
+	// "hosted" (default) is an ordinary registerable volunteer event: sign-up, hours credit,
+	// shifts, questions. "external" is a ONE-SIDED INFORMATIONAL post — the activity is run by
+	// an outside organization not (yet) on the site; Arkansas Serve only surfaces the location,
+	// contact info and attribution. External listings suppress every registration affordance
+	// (Sign Up, group registration) and the service-credit framing, and instead render
+	// "Hosted by {HostOrganizationName}" plus a link out. This flag is the single switch the
+	// UI reads to decide which of the two an event is.
+	[JsonPropertyName("listingType")]
+	public string ListingType { get; set; } = "hosted";
+
+	// The outside organization actually running an "external" listing. Rendered as the
+	// attribution line ("Hosted by …"); null/ignored on a "hosted" event, whose host is the
+	// owning tenant (OrganizationName).
+	[JsonPropertyName("hostOrganizationName")]
+	public string? HostOrganizationName { get; set; }
+
+	// Optional link to that outside organization (its homepage / listing).
+	[JsonPropertyName("hostOrganizationUrl")]
+	public string? HostOrganizationUrl { get; set; }
+
 	[JsonPropertyName("createdByUserId")]
 	public string CreatedByUserId { get; set; } = string.Empty;
 

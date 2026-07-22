@@ -394,6 +394,9 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 				ContactEmail = body.ContactEmail,
 				ContactPhone = body.ContactPhone,
 				ContactUrl = body.ContactUrl,
+				ListingType = body.ListingType,
+				HostOrganizationName = body.HostOrganizationName,
+				HostOrganizationUrl = body.HostOrganizationUrl,
 				GroupId = body.GroupId,
 				Visibility = body.Visibility,
 				CreatedByUserId = ctx.UserId,
@@ -487,6 +490,13 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		existing.ContactName = body.ContactName;
 		existing.ContactEmail = body.ContactEmail;
 		existing.ContactPhone = body.ContactPhone;
+		// Previously dropped on edit (the create path persisted it, but this field-by-field copy
+		// omitted it), so editing an event silently cleared its contact URL. Copied now.
+		existing.ContactUrl = body.ContactUrl;
+		// External-listing attribution (MVP). "hosted" is the default when the body omits it.
+		existing.ListingType = string.IsNullOrWhiteSpace(body.ListingType) ? "hosted" : body.ListingType;
+		existing.HostOrganizationName = body.HostOrganizationName;
+		existing.HostOrganizationUrl = body.HostOrganizationUrl;
 		// Preserve each shift's filled count across edits (the admin form doesn't own it).
 		var priorFilled = existing.Shifts.ToDictionary(s => s.Id, s => s.Filled);
 		existing.Shifts = (body.Shifts ?? []).Select(s =>

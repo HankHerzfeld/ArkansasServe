@@ -343,7 +343,14 @@
     document.getElementById('evt-contact-name').value  = evt?.contactName || '';
     document.getElementById('evt-contact-email').value = evt?.contactEmail || '';
     document.getElementById('evt-contact-phone').value = evt?.contactPhone || '';
+    document.getElementById('evt-contact-url').value   = evt?.contactUrl || '';
     document.getElementById('evt-photo-blob').value  = evt?.photoBlobName || '';
+
+    // External (informational) listing (MVP). One flag drives which fields are shown.
+    document.getElementById('evt-external').checked   = evt?.listingType === 'external';
+    document.getElementById('evt-host-name').value    = evt?.hostOrganizationName || '';
+    document.getElementById('evt-host-url').value     = evt?.hostOrganizationUrl || '';
+    syncListingType();
 
     const groupSel = document.getElementById('evt-group');
     groupSel.innerHTML = '';
@@ -383,6 +390,24 @@
     document.getElementById('event-form-error').style.display = 'none';
     document.getElementById('event-modal').classList.add('open');
   }
+
+  // ── Listing type (informational vs registerable) ───────────────────────────
+  // An informational listing is a one-sided post hosted on behalf of an outside org: no
+  // sign-up, so every registration-shaped control is hidden. Hiding (not removing) keeps the
+  // values intact if the admin toggles back before saving; the save handler zeroes them.
+  function syncListingType() {
+    const external = document.getElementById('evt-external').checked;
+    document.getElementById('evt-host-fields').style.display    = external ? '' : 'none';
+    document.getElementById('evt-hours-group').style.display     = external ? 'none' : '';
+    document.getElementById('evt-slots-group').style.display     = external ? 'none' : '';
+    document.getElementById('evt-shifts-group').style.display    = external ? 'none' : '';
+    document.getElementById('evt-questions-group').style.display = external ? 'none' : '';
+    // Recurrence shows only when CREATING a registerable event: it is create-only already
+    // (hidden on edit), and an informational listing never repeats a sign-up series.
+    const isCreate = !document.getElementById('edit-event-id').value;
+    document.getElementById('evt-recurrence-group').style.display = (isCreate && !external) ? '' : 'none';
+  }
+  document.getElementById('evt-external').addEventListener('change', syncListingType);
 
   // ── Recurrence controls ───────────────────────────────────────────────────
 
@@ -552,6 +577,15 @@
       errEl.style.display = 'block';
       return;
     }
+    // Informational (external) listing: attribution is the whole point, so the host org is
+    // required; the registration-shaped fields are zeroed below rather than sent stale.
+    const external = document.getElementById('evt-external').checked;
+    const hostName = document.getElementById('evt-host-name').value.trim();
+    if (external && !hostName) {
+      errEl.textContent = 'For an informational listing, name the organization hosting it.';
+      errEl.style.display = 'block';
+      return;
+    }
     const payload = {
       title,
       description:   document.getElementById('evt-description').value,
@@ -565,8 +599,10 @@
       // than pinning the event to the Gulf of Guinea.
       latitude:      parseFloat(document.getElementById('evt-latitude').value)  || null,
       longitude:     parseFloat(document.getElementById('evt-longitude').value) || null,
-      hoursValue:    Number(document.getElementById('evt-hours').value),
-      maxSlots:      Number(document.getElementById('evt-slots').value),
+      // Registration-shaped fields are meaningless on an informational listing; zero them so a
+      // display-only post never carries a stray hours credit or capacity.
+      hoursValue:    external ? 0 : Number(document.getElementById('evt-hours').value),
+      maxSlots:      external ? 0 : Number(document.getElementById('evt-slots').value),
       category:      Categories.valueFrom(document.getElementById('evt-category'), document.getElementById('evt-category-propose')),
       tags:          document.getElementById('evt-tags').value.split(',').map(s => s.trim()).filter(Boolean),
       requirements:  document.getElementById('evt-requirements').value.trim() || null,
@@ -574,10 +610,14 @@
       contactName:   document.getElementById('evt-contact-name').value.trim() || null,
       contactEmail:  document.getElementById('evt-contact-email').value.trim() || null,
       contactPhone:  document.getElementById('evt-contact-phone').value.trim() || null,
+      contactUrl:    document.getElementById('evt-contact-url').value.trim() || null,
+      listingType:          external ? 'external' : 'hosted',
+      hostOrganizationName: external ? hostName : null,
+      hostOrganizationUrl:  external ? (document.getElementById('evt-host-url').value.trim() || null) : null,
       groupId:       document.getElementById('evt-group').value || null,
       photoBlobName: document.getElementById('evt-photo-blob').value || null,
-      shifts:          readShifts(),
-      signupQuestions: readQuestions(),
+      shifts:          external ? [] : readShifts(),
+      signupQuestions: external ? [] : readQuestions(),
     };
     const editId = document.getElementById('edit-event-id').value;
     const orgId  = document.getElementById('edit-org-id').value;
@@ -591,7 +631,7 @@
         // A series responds with a summary rather than a single event; the caller does not
         // need it, since loadOrgEvents() below shows the created dates in the list — which
         // is this page's existing idiom (it has no toast).
-        await Api.Events.create({ ...payload, organizationId: Scope.activeOrgId, recurrence: readRecurrence() });
+        await Api.Events.create({ ...payload, organizationId: Scope.activeOrgId, recurrence: external ? null : readRecurrence() });
       }
       document.getElementById('event-modal').classList.remove('open');
       loadOrgEvents();

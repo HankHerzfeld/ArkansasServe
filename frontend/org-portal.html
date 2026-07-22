@@ -61,9 +61,31 @@
     <div class="modal-title" id="event-modal-title">New Event</div>
     <input type="hidden" id="edit-event-id">
     <input type="hidden" id="edit-org-id">
+    <!-- Listing type (MVP external listings). "Informational" turns this into a one-sided post
+         hosted on behalf of an outside org: no sign-up, no hours, no shifts/questions/recurrence —
+         just location, contact and attribution. The checkbox drives evt-external in the payload. -->
+    <div class="form-group" id="evt-listing-type-group" style="padding:.6rem .75rem;background:var(--gray-100,#f3f4f6);border-radius:var(--radius);">
+      <label style="display:flex;align-items:center;gap:.5rem;font-weight:600;margin-bottom:.25rem;">
+        <input type="checkbox" id="evt-external"> Informational listing (hosted on behalf of another organization)
+      </label>
+      <small style="color:var(--gray-600);">A one-sided post — shows location, contact and who is really running it. No sign-up, hours, shifts or questions.</small>
+    </div>
     <div class="form-group">
       <label>Event Title *</label>
       <input type="text" id="evt-title" placeholder="Community Garden Cleanup">
+    </div>
+    <!-- External-listing attribution. Shown only when the Informational toggle is on. -->
+    <div id="evt-host-fields" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="form-group">
+          <label for="evt-host-name">Hosted by (organization) *</label>
+          <input type="text" id="evt-host-name" placeholder="e.g. Little Rock Food Bank">
+        </div>
+        <div class="form-group">
+          <label for="evt-host-url">Their website (optional)</label>
+          <input type="url" id="evt-host-url" placeholder="https://…">
+        </div>
+      </div>
     </div>
     <div class="form-group">
       <label>Description</label>
@@ -103,11 +125,11 @@
     <input type="hidden" id="evt-latitude">
     <input type="hidden" id="evt-longitude">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
-      <div class="form-group">
+      <div class="form-group" id="evt-hours-group">
         <label>Hours Credit</label>
         <input type="number" id="evt-hours" min="0.5" step="0.5" value="2">
       </div>
-      <div class="form-group">
+      <div class="form-group" id="evt-slots-group">
         <label>Max Sign-ups (0 = unlimited)</label>
         <input type="number" id="evt-slots" min="0" value="0">
       </div>
@@ -152,6 +174,10 @@
         <label for="evt-contact-phone">Contact phone (optional)</label>
         <input type="tel" id="evt-contact-phone">
       </div>
+    </div>
+    <div class="form-group">
+      <label for="evt-contact-url">Contact website (optional)</label>
+      <input type="url" id="evt-contact-url" placeholder="https://…">
     </div>
     <!-- Recurrence. Hidden entirely when editing: a series is created once and its
          occurrences are then ordinary events, so re-expanding on edit would be a different
@@ -204,12 +230,12 @@
         <div id="evt-repeat-preview" style="font-size:.85rem;color:var(--gray-600);margin-top:.5rem;"></div>
       </div>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="evt-shifts-group">
       <label>Shifts (optional — volunteers pick one when signing up)</label>
       <div id="evt-shifts" style="display:flex;flex-direction:column;gap:.5rem;"></div>
       <button type="button" class="btn btn-secondary btn-sm" id="evt-add-shift" style="margin-top:.5rem;">+ Add shift</button>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="evt-questions-group">
       <label>Sign-up questions (optional)</label>
       <div id="evt-questions" style="display:flex;flex-direction:column;gap:.5rem;"></div>
       <button type="button" class="btn btn-secondary btn-sm" id="evt-add-question" style="margin-top:.5rem;">+ Add question</button>
