@@ -61,6 +61,18 @@ public class Guardian
 	[JsonPropertyName("consents")]
 	public List<GuardianConsent> Consents { get; set; } = [];
 
+	/// <summary>
+	/// Fresh, per-event approvals — the carve-out standing <see cref="Consents"/> deliberately
+	/// does not cover (see <see cref="Event.RequiresFreshGuardianApproval"/> and the
+	/// overnight/multi-day rule). Recorded per (minor, organization, event) and kept as history
+	/// for the same reason consent is: a later withdrawal must stay visible, and re-approving must
+	/// not erase that it happened. Empty on a guardian written before this field existed — it
+	/// deserialises to [], i.e. no per-event approvals on file, which is the correct starting
+	/// point. Reserved now so no guardian record needs re-saving when #20 wires the mechanism.
+	/// </summary>
+	[JsonPropertyName("eventApprovals")]
+	public List<GuardianEventApproval> EventApprovals { get; set; } = [];
+
 	/// <summary>The one live magic link, if any. Minting a new one invalidates the previous.</summary>
 	[JsonPropertyName("magicLink")]
 	public MagicLinkState? MagicLink { get; set; }
@@ -158,6 +170,49 @@ public static class GuardianConsentStatus
 	public static bool IsValid(string? s) =>
 		string.Equals(s, Granted, StringComparison.OrdinalIgnoreCase)
 		|| string.Equals(s, Revoked, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// A guardian's approval of ONE specific event for one minor — the per-event carve-out that
+/// standing <see cref="GuardianConsent"/> does not cover. Structurally a consent plus an eventId;
+/// kept separate rather than folded into GuardianConsent because the two answer different
+/// questions ("may they take part with this org at all?" vs "may they do THIS event?") and
+/// revoking one must not touch the other. Reuses <see cref="GuardianConsentStatus"/> for status.
+/// </summary>
+public class GuardianEventApproval
+{
+	[JsonPropertyName("minorUserId")]
+	public string MinorUserId { get; set; } = string.Empty;
+
+	[JsonPropertyName("organizationId")]
+	public string OrganizationId { get; set; } = string.Empty;
+
+	[JsonPropertyName("eventId")]
+	public string EventId { get; set; } = string.Empty;
+
+	[JsonPropertyName("status")]
+	public string Status { get; set; } = GuardianConsentStatus.Granted;
+
+	[JsonPropertyName("approvedAt")]
+	public DateTime? ApprovedAt { get; set; }
+
+	[JsonPropertyName("revokedAt")]
+	public DateTime? RevokedAt { get; set; }
+
+	/// <summary>
+	/// The waiver/policy wording in force when this event was approved — recorded so re-issuing
+	/// the documents can re-prompt, exactly as <see cref="GuardianConsent.DocumentVersion"/> does.
+	/// </summary>
+	[JsonPropertyName("documentVersion")]
+	public string? DocumentVersion { get; set; }
+
+	/// <summary>Evidence of the attestation: recorded server-side, never sent by the client.</summary>
+	[JsonPropertyName("attestedFromIp")]
+	public string? AttestedFromIp { get; set; }
+
+	public bool IsActive() =>
+		string.Equals(Status, GuardianConsentStatus.Granted, StringComparison.OrdinalIgnoreCase)
+		&& RevokedAt == null;
 }
 
 /// <summary>

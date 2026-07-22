@@ -99,6 +99,24 @@ public class Event : CosmosDocument
 	[JsonPropertyName("eligibleSchoolIds")]
 	public List<string> EligibleSchoolIds { get; set; } = [];
 
+	// ── Per-event guardian approval carve-out (#20) ─────────────────────────────
+	// Standing guardian consent (Guardian.Consents) covers a minor's routine sign-ups. Some
+	// events are different in kind — a field trip, an overnight, anything an org wants a parent
+	// to say yes to SPECIFICALLY — and for those, standing consent is not enough: the guardian
+	// must approve THIS event (recorded in Guardian.EventApprovals). This flag is the org-set
+	// switch that turns that requirement on for one event.
+	//
+	// Defaults to false so every event written before this field existed — and every ordinary
+	// event since — keeps today's behaviour: a doc without it deserialises to false, i.e. covered
+	// by standing consent, no per-event approval demanded. The separate overnight/multi-day
+	// carve-out is computed from the event's own dates and does NOT depend on this flag.
+	//
+	// FORWARD-ONLY / INERT UNTIL WIRED: the field is reserved now so no event ever needs
+	// re-saving when #20's per-event approval mechanism lands. The gate that reads it and the
+	// UpdateEvent merge line that lets an admin set it are the follow-up (behaviour), not this.
+	[JsonPropertyName("requiresFreshGuardianApproval")]
+	public bool RequiresFreshGuardianApproval { get; set; } = false;
+
 	// ── Day-of check-in (#14) ───────────────────────────────────────────────────
 	// A per-event code the admin mints (POST …/checkin/qr) and posts as a QR at the venue.
 	// A registered student scans it and checks THEMSELVES in — the code proves on-site
