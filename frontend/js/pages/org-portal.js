@@ -210,14 +210,27 @@
   // ── Shift + question builders ──────────────────────────────────────────────
   function newId() { return (crypto.randomUUID ? crypto.randomUUID() : 'x' + Date.now() + Math.random().toString(16).slice(2)); }
 
+  // An ISO/UTC instant → the value a <input type="datetime-local"> expects, in the viewer's
+  // LOCAL time. Slicing the raw ISO string (as this form used to) put the UTC clock time in the
+  // field — a 10:00am Central event opened showing 3:00pm — and the save path reads the field
+  // back as local via `new Date(value)`, so the two disagreed. Building from the local getters
+  // closes the round-trip.
+  function toLocalInput(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
   function buildShiftRow(s = {}) {
     const row = document.createElement('div');
     row.className = 'shift-row';
     row.dataset.id = s.id || newId();
     row.style.cssText = 'display:grid;grid-template-columns:1.2fr 1fr 1fr .7fr auto;gap:.5rem;align-items:center;';
     const label = document.createElement('input'); label.className = 's-label'; label.placeholder = 'Label (e.g. Morning)'; label.value = s.label || '';
-    const start = document.createElement('input'); start.className = 's-start'; start.type = 'datetime-local'; start.value = s.startDateTime ? s.startDateTime.slice(0, 16) : '';
-    const end   = document.createElement('input'); end.className = 's-end'; end.type = 'datetime-local'; end.value = s.endDateTime ? s.endDateTime.slice(0, 16) : '';
+    const start = document.createElement('input'); start.className = 's-start'; start.type = 'datetime-local'; start.value = toLocalInput(s.startDateTime);
+    const end   = document.createElement('input'); end.className = 's-end'; end.type = 'datetime-local'; end.value = toLocalInput(s.endDateTime);
     const cap   = document.createElement('input'); cap.className = 's-cap'; cap.type = 'number'; cap.min = '0'; cap.placeholder = 'Cap'; cap.value = (s.capacity != null ? s.capacity : '');
     const rm    = document.createElement('button'); rm.type = 'button'; rm.className = 'btn btn-danger btn-sm'; rm.textContent = '✕';
     rm.addEventListener('click', () => row.remove());
@@ -351,8 +364,8 @@
     document.getElementById('edit-org-id').value     = evt?.organizationId || '';
     document.getElementById('evt-title').value       = evt?.title || '';
     document.getElementById('evt-description').value = evt?.description || '';
-    document.getElementById('evt-start').value       = evt?.startDateTime?.slice(0,16) || '';
-    document.getElementById('evt-end').value         = evt?.endDateTime?.slice(0,16) || '';
+    document.getElementById('evt-start').value       = toLocalInput(evt?.startDateTime);
+    document.getElementById('evt-end').value         = toLocalInput(evt?.endDateTime);
     document.getElementById('evt-location').value    = evt?.location || '';
     document.getElementById('evt-zip').value          = evt?.zip || '';
     document.getElementById('evt-city').value         = evt?.city || '';

@@ -58,7 +58,9 @@
       details.innerHTML = '';
       const rows = [];
       if (user.phone) rows.push(['Phone', user.phone]);
-      if (user.grade) rows.push(['Grade', user.grade]);
+      // Grade is a school-grade level — meaningful only for a Student personType. Without this
+      // gate a non-student (e.g. a SuperAdmin carrying a stray grade value) showed "Grade 17".
+      if (user.grade && user.personType === 'Student') rows.push(['Grade', user.grade]);
       rows.forEach(([label, val]) => {
         const wrap = document.createElement('div');
         const l = document.createElement('div');
