@@ -86,8 +86,15 @@ public class Event : CosmosDocument
 	[JsonPropertyName("hoursValue")]
 	public double HoursValue { get; set; }
 
+	// "Open" (default, discoverable) · "Archived" (past its end time — set automatically by the
+	// daily ArchivePastEvents timer; drops off the public list but stays visible to admins for
+	// post-event hour logging) · "Cancelled".
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "Open";
+
+	// When the event was auto-archived (end time passed). Null while Open.
+	[JsonPropertyName("archivedAt")]
+	public DateTime? ArchivedAt { get; set; }
 
 	[JsonPropertyName("eligibleSchoolIds")]
 	public List<string> EligibleSchoolIds { get; set; } = [];

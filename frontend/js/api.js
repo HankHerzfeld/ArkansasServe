@@ -100,6 +100,9 @@ const Api = (() => {
     previewRecurrence: (data) => request('POST', '/events/preview-recurrence', data),
     registrations: (id)         => request('GET',  `/events/${encodeURIComponent(id)}/registrations`),
     uploadToken:   (fileName)   => request('POST', '/events/upload-token', { fileName }),
+    // SuperAdmin: run the past-event archival sweep now instead of waiting for the nightly
+    // timer. Returns { archived, at }.
+    archivePastNow: ()          => request('POST', '/manage/events/archive-past'),
     match:         (orgId, q)   => {
       const qs = new URLSearchParams();
       if (orgId) qs.set('organizationId', orgId);

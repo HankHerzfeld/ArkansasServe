@@ -32,6 +32,16 @@
   </div>
   <div id="events-list"></div>
 
+  <!-- Past (auto-archived) events. Hidden from the public list; kept here so admins can still
+       log hours after an event. Collapsed by default. -->
+  <div id="past-events-wrap" style="display:none;margin-top:1.25rem;">
+    <button type="button" id="past-events-toggle"
+            class="btn btn-secondary btn-sm" aria-expanded="false" aria-controls="past-events-list">
+      ▸ Past events (<span id="past-events-count">0</span>)
+    </button>
+    <div id="past-events-list" style="display:none;margin-top:.75rem;"></div>
+  </div>
+
   <!-- My assigned volunteers (#13) -->
   <div class="card" id="assignees-card" style="margin-top:1.5rem;display:none;">
     <div class="card-title">My assigned volunteers</div>
@@ -241,7 +251,11 @@
       <button type="button" class="btn btn-secondary btn-sm" id="evt-add-question" style="margin-top:.5rem;">+ Add question</button>
     </div>
     <div class="form-group">
-      <label>Event Photo (optional)</label>
+      <label>Header image (optional)</label>
+      <div id="evt-photo-preview-wrap" style="display:none;margin-bottom:.5rem;">
+        <img id="evt-photo-preview" alt="Header preview"
+             style="width:100%;max-height:160px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--gray-200);">
+      </div>
       <input type="file" id="evt-photo" accept="image/*">
       <div id="upload-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.4rem;">Uploading…</div>
     </div>
@@ -250,6 +264,29 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" id="event-modal-cancel">Cancel</button>
       <button class="btn btn-primary" id="event-modal-save">Save Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- Header image crop / resize modal -->
+<div class="modal-overlay" id="crop-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title">Position header image</div>
+    <p style="font-size:.85rem;color:var(--gray-600);margin-bottom:.75rem;">
+      Drag to reposition, use the slider to zoom. Saved as a wide header banner.
+    </p>
+    <div style="display:flex;justify-content:center;">
+      <canvas id="crop-canvas" width="480" height="180"
+              style="max-width:100%;border-radius:var(--radius);border:1px solid var(--gray-300);cursor:grab;touch-action:none;background:var(--gray-100);"></canvas>
+    </div>
+    <div style="display:flex;align-items:center;gap:.6rem;margin-top:.75rem;">
+      <span style="font-size:.8rem;color:var(--gray-600);">Zoom</span>
+      <input type="range" id="crop-zoom" min="1" max="3" step="0.01" value="1" style="flex:1;">
+    </div>
+    <div id="crop-progress" style="display:none;font-size:.8rem;color:var(--gray-600);margin-top:.4rem;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="crop-cancel" type="button">Cancel</button>
+      <button class="btn btn-primary" id="crop-confirm" type="button">Use image</button>
     </div>
   </div>
 </div>

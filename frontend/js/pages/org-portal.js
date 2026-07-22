@@ -114,65 +114,95 @@
   }
 
   function renderOrgEvents(events) {
-    const list  = document.getElementById('events-list');
-    const empty = document.getElementById('events-empty');
-    if (events.length === 0) { empty.style.display = 'block'; return; }
-    empty.style.display = 'none';
+    const list     = document.getElementById('events-list');
+    const empty    = document.getElementById('events-empty');
+    const pastWrap = document.getElementById('past-events-wrap');
+    const pastList = document.getElementById('past-events-list');
+
+    // Past = auto-archived by the nightly ArchivePastEvents timer. Kept out of the main list but
+    // still actionable here (Log Hours after the event); the empty state shows only when the org
+    // has no events at all, active or past.
+    const active = events.filter(e => e.status !== 'Archived');
+    const past   = events.filter(e => e.status === 'Archived');
+
     list.innerHTML = '';
-    events.forEach(evt => {
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;';
+    empty.style.display = (active.length === 0 && past.length === 0) ? 'block' : 'none';
+    active.forEach(evt => list.appendChild(buildEventCard(evt)));
 
-      const info = document.createElement('div');
-      const title = document.createElement('div');
-      title.className = 'card-title';
-      title.textContent = evt.title;
-      info.appendChild(title);
-
-      const meta = document.createElement('div');
-      meta.className = 'card-meta';
-      meta.textContent = `📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · 📍 ${evt.location} · ${evt.currentSlots} signed up`;
-      info.appendChild(meta);
-
-      const status = document.createElement('span');
-      status.className = `status status-${evt.status.toLowerCase()}`;
-      status.textContent = evt.status;
-      info.appendChild(status);
-
-      card.appendChild(info);
-
-      const actions = document.createElement('div');
-      actions.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;';
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'btn btn-secondary btn-sm';
-      editBtn.textContent = 'Edit';
-      editBtn.addEventListener('click', () => openEdit(evt.id));
-      actions.appendChild(editBtn);
-
-      const logBtn = document.createElement('button');
-      logBtn.className = 'btn btn-primary btn-sm';
-      logBtn.textContent = 'Log Hours';
-      logBtn.addEventListener('click', () => openLogHours(evt.id, evt.title));
-      actions.appendChild(logBtn);
-
-      // Delete is destructive, so it's gated to OrganizationAdmin+ in the active org
-      // (mirrors the backend); the backend enforces the real rule regardless.
-      const canDelete = Scope.isSuperAdmin
-        || Auth.adminRank(Scope.activeOrg()?.adminLevel) >= Auth.adminRank('OrganizationAdmin');
-      if (canDelete) {
-        const delBtn = document.createElement('button');
-        delBtn.className = 'btn btn-danger btn-sm';
-        delBtn.textContent = 'Delete';
-        delBtn.addEventListener('click', () => deleteEvent(evt));
-        actions.appendChild(delBtn);
-      }
-
-      card.appendChild(actions);
-      list.appendChild(card);
-    });
+    pastList.innerHTML = '';
+    if (past.length) {
+      document.getElementById('past-events-count').textContent = String(past.length);
+      past.forEach(evt => pastList.appendChild(buildEventCard(evt)));
+      pastWrap.style.display = '';
+    } else {
+      pastWrap.style.display = 'none';
+    }
   }
+
+  function buildEventCard(evt) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;';
+
+    const info = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'card-title';
+    title.textContent = evt.title;
+    info.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'card-meta';
+    meta.textContent = `📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · 📍 ${evt.location} · ${evt.currentSlots} signed up`;
+    info.appendChild(meta);
+
+    const status = document.createElement('span');
+    status.className = `status status-${evt.status.toLowerCase()}`;
+    status.textContent = evt.status;
+    info.appendChild(status);
+
+    card.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-secondary btn-sm';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openEdit(evt.id));
+    actions.appendChild(editBtn);
+
+    const logBtn = document.createElement('button');
+    logBtn.className = 'btn btn-primary btn-sm';
+    logBtn.textContent = 'Log Hours';
+    logBtn.addEventListener('click', () => openLogHours(evt.id, evt.title));
+    actions.appendChild(logBtn);
+
+    // Delete is destructive, so it's gated to OrganizationAdmin+ in the active org
+    // (mirrors the backend); the backend enforces the real rule regardless.
+    const canDelete = Scope.isSuperAdmin
+      || Auth.adminRank(Scope.activeOrg()?.adminLevel) >= Auth.adminRank('OrganizationAdmin');
+    if (canDelete) {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn btn-danger btn-sm';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', () => deleteEvent(evt));
+      actions.appendChild(delBtn);
+    }
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  // Expand/collapse the past-events section.
+  document.getElementById('past-events-toggle')?.addEventListener('click', () => {
+    const btn = document.getElementById('past-events-toggle');
+    const listEl = document.getElementById('past-events-list');
+    const open = listEl.style.display !== 'none';
+    listEl.style.display = open ? 'none' : '';
+    btn.setAttribute('aria-expanded', String(!open));
+    const count = document.getElementById('past-events-count')?.textContent || '0';
+    btn.innerHTML = `${open ? '▸' : '▾'} Past events (<span id="past-events-count">${count}</span>)`;
+  });
 
   // ── New / Edit event ────────────────────────────────────────────────────
   document.getElementById('btn-new-event').addEventListener('click', () => openEventModal());
@@ -345,6 +375,13 @@
     document.getElementById('evt-contact-phone').value = evt?.contactPhone || '';
     document.getElementById('evt-contact-url').value   = evt?.contactUrl || '';
     document.getElementById('evt-photo-blob').value  = evt?.photoBlobName || '';
+    // Header-image preview: show the current photo when editing; clear the file picker so a
+    // re-open never re-triggers the crop modal with a stale selection.
+    const photoPv = document.getElementById('evt-photo-preview');
+    const photoPvWrap = document.getElementById('evt-photo-preview-wrap');
+    if (evt?.photoUrl) { photoPv.src = evt.photoUrl; photoPvWrap.style.display = ''; }
+    else { photoPv.removeAttribute('src'); photoPvWrap.style.display = 'none'; }
+    document.getElementById('evt-photo').value = '';
 
     // External (informational) listing (MVP). One flag drives which fields are shown.
     document.getElementById('evt-external').checked   = evt?.listingType === 'external';
@@ -551,18 +588,105 @@
     document.getElementById('event-modal').classList.remove('open');
   });
 
-  document.getElementById('evt-photo').addEventListener('change', async (e) => {
+  // ── Header image: crop + resize before upload ──────────────────────────────
+  // Choosing a file opens a crop modal (drag to pan, slider to zoom) framed at the header's
+  // banner ratio. On confirm the selection is rendered to a fixed 1600×600 canvas — which also
+  // downscales large photos — and that JPEG is what gets uploaded, so what the admin frames is
+  // exactly what renders as the hero, and no multi-MB original is stored.
+  const CROP_FRAME = { w: 480, h: 180 };   // on-screen canvas (8:3 banner)
+  const CROP_OUT   = { w: 1600, h: 600 };  // stored resolution
+  const crop = { img: null, scale: 1, min: 1, x: 0, y: 0, dragging: false, lastX: 0, lastY: 0 };
+
+  function cropCanvas() { return document.getElementById('crop-canvas'); }
+
+  // Keep the image covering the whole frame — never let a drag/zoom expose empty edges.
+  function clampCrop() {
+    const iw = crop.img.width * crop.scale, ih = crop.img.height * crop.scale;
+    crop.x = Math.min(0, Math.max(CROP_FRAME.w - iw, crop.x));
+    crop.y = Math.min(0, Math.max(CROP_FRAME.h - ih, crop.y));
+  }
+
+  function drawCrop() {
+    const cv = cropCanvas(); const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(crop.img, crop.x, crop.y, crop.img.width * crop.scale, crop.img.height * crop.scale);
+  }
+
+  function openCropModal(file) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      crop.img = img;
+      // Cover-fit is the floor: min scale makes the image just fill the frame.
+      crop.min = Math.max(CROP_FRAME.w / img.width, CROP_FRAME.h / img.height);
+      crop.scale = crop.min;
+      crop.x = (CROP_FRAME.w - img.width * crop.scale) / 2;
+      crop.y = (CROP_FRAME.h - img.height * crop.scale) / 2;
+      document.getElementById('crop-zoom').value = '1';
+      document.getElementById('crop-progress').style.display = 'none';
+      drawCrop();
+      document.getElementById('crop-modal').classList.add('open');
+    };
+    img.onerror = () => window.alert('Could not read that image.');
+    img.src = url;
+  }
+
+  document.getElementById('evt-photo').addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    document.getElementById('upload-progress').style.display = 'block';
+    if (file) openCropModal(file);
+  });
+
+  // Zoom: slider 1..3 → scale min..min×3, holding the frame centre fixed.
+  document.getElementById('crop-zoom').addEventListener('input', (e) => {
+    if (!crop.img) return;
+    const newScale = crop.min * Number(e.target.value);
+    const cx = CROP_FRAME.w / 2, cy = CROP_FRAME.h / 2, ratio = newScale / crop.scale;
+    crop.x = cx - (cx - crop.x) * ratio;
+    crop.y = cy - (cy - crop.y) * ratio;
+    crop.scale = newScale;
+    clampCrop(); drawCrop();
+  });
+
+  // Drag to pan (pointer events cover mouse + touch).
+  (function wireCropDrag() {
+    const cv = cropCanvas();
+    const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * (cv.width / r.width), y: (e.clientY - r.top) * (cv.height / r.height) }; };
+    cv.addEventListener('pointerdown', (e) => { if (!crop.img) return; crop.dragging = true; const p = pt(e); crop.lastX = p.x; crop.lastY = p.y; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+    cv.addEventListener('pointermove', (e) => { if (!crop.dragging) return; const p = pt(e); crop.x += p.x - crop.lastX; crop.y += p.y - crop.lastY; crop.lastX = p.x; crop.lastY = p.y; clampCrop(); drawCrop(); });
+    const end = () => { crop.dragging = false; cv.style.cursor = 'grab'; };
+    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  })();
+
+  document.getElementById('crop-cancel').addEventListener('click', () => {
+    document.getElementById('crop-modal').classList.remove('open');
+    document.getElementById('evt-photo').value = '';
+  });
+
+  document.getElementById('crop-confirm').addEventListener('click', async () => {
+    if (!crop.img) return;
+    const btn = document.getElementById('crop-confirm');
+    const prog = document.getElementById('crop-progress');
+    btn.disabled = true; prog.style.display = 'block'; prog.textContent = 'Processing…';
     try {
-      const { sasUrl, blobName } = await Api.Events.uploadToken(file.name);
-      await fetch(sasUrl, { method: 'PUT', headers: { 'x-ms-blob-type': 'BlockBlob', 'Content-Type': file.type }, body: file });
-      // Persist the stable blob name; the API signs it into a read SAS at display time.
+      // Same crop rectangle, scaled up to the output resolution → resizes big photos too.
+      const out = document.createElement('canvas'); out.width = CROP_OUT.w; out.height = CROP_OUT.h;
+      const r = CROP_OUT.w / CROP_FRAME.w;
+      out.getContext('2d').drawImage(crop.img, crop.x * r, crop.y * r, crop.img.width * crop.scale * r, crop.img.height * crop.scale * r);
+      const blob = await new Promise(res => out.toBlob(res, 'image/jpeg', 0.85));
+      prog.textContent = 'Uploading…';
+      const { sasUrl, blobName } = await Api.Events.uploadToken('header.jpg');
+      await fetch(sasUrl, { method: 'PUT', headers: { 'x-ms-blob-type': 'BlockBlob', 'Content-Type': 'image/jpeg' }, body: blob });
       document.getElementById('evt-photo-blob').value = blobName;
-      document.getElementById('upload-progress').textContent = '✅ Photo uploaded';
+      // Immediate preview straight from the canvas we just rendered.
+      document.getElementById('evt-photo-preview').src = out.toDataURL('image/jpeg', 0.85);
+      document.getElementById('evt-photo-preview-wrap').style.display = '';
+      document.getElementById('crop-modal').classList.remove('open');
+      document.getElementById('evt-photo').value = '';
     } catch (err) {
-      document.getElementById('upload-progress').textContent = '❌ Upload failed';
+      prog.textContent = '❌ Upload failed — please try again.';
+    } finally {
+      btn.disabled = false;
     }
   });
 

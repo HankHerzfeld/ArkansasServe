@@ -314,6 +314,8 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
 .status-rejected { background: var(--red-pale);    color: var(--red); }
 .status-open     { background: var(--green-pale);  color: var(--green); }
 .status-full     { background: var(--amber-pale);  color: var(--amber); }
+.status-archived  { background: var(--gray-200);    color: var(--gray-600); }
+.status-cancelled { background: var(--red-pale);     color: var(--red); }
 
 /* ── Alerts ─────────────────────────────────────────────────────────────── */
 .alert { padding: .75rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; font-size: .9rem; }
