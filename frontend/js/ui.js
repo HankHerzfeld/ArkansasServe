@@ -459,5 +459,35 @@ const UI = (() => {
     renderScopeBar(container, Scope.snapshot(), showGroups);
   }
 
-  return { setupHeader, mountScopeBar, renderScopeBar };
+  // ── Event listing attribution (MVP external listings; also crawled events) ──
+  // A "display-only" listing is not registerable on Arkansas Serve — it points at an outside
+  // host. Two sources share the behaviour: a hand-entered external listing (listingType
+  // 'external', hostOrganization*) and a crawler import (isCrawled, crawlerSource*). Both
+  // suppress the sign-up surface and show an attribution line + a link out, so the shared logic
+  // lives here and both event pages (card + detail) call it — the single renderer the plan asks
+  // for, so a crawled event and a hand-entered listing can never disagree on how they attribute.
+  function isDisplayOnlyListing(evt) {
+    return !!evt && (evt.listingType === 'external' || evt.isCrawled === true);
+  }
+
+  // Returns { text, url } for the attribution line, or null for an ordinary hosted event
+  // (whose host is the owning org, shown as organizationName by the caller).
+  function listingAttribution(evt) {
+    if (!evt) return null;
+    if (evt.listingType === 'external') {
+      return {
+        text: 'Hosted by ' + (evt.hostOrganizationName || 'another organization'),
+        url: evt.hostOrganizationUrl || evt.externalUrl || null,
+      };
+    }
+    if (evt.isCrawled === true) {
+      return {
+        text: evt.crawlerAttribution || (evt.crawlerSourceName ? 'Via ' + evt.crawlerSourceName : 'External listing'),
+        url: evt.crawlerSourceUrl || evt.externalUrl || null,
+      };
+    }
+    return null;
+  }
+
+  return { setupHeader, mountScopeBar, renderScopeBar, isDisplayOnlyListing, listingAttribution };
 })();

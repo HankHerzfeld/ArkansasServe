@@ -114,6 +114,11 @@
     root.style.display = 'block';
     root.innerHTML = '';
 
+    // A display-only listing (external / crawled) is not registerable here: it credits an
+    // outside host and links out, so the sign-up surface and hours framing are suppressed below.
+    const displayOnly = UI.isDisplayOnlyListing(evt);
+    const attribution = UI.listingAttribution(evt);
+
     // Hero image (only if present).
     if (evt.photoUrl) {
       const img = elem('img', { src: evt.photoUrl, alt: evt.title, style: 'width:100%;max-height:320px;object-fit:cover;border-radius:var(--radius);margin-bottom:1rem;' });
@@ -123,7 +128,15 @@
     // Header card: title, org, status, category + tags.
     const header = elem('div', { class: 'card' });
     header.appendChild(elem('h1', { text: evt.title, style: 'font-size:1.6rem;color:var(--green);' }));
-    if (evt.organizationName) header.appendChild(elem('p', { text: evt.organizationName, style: 'color:var(--gray-600);margin-top:.15rem;' }));
+    // Attribution: an external/crawled listing credits its outside host ("Hosted by …"); an
+    // ordinary event shows its owning org. On an external listing "Arkansas Serve" is only the
+    // lister, so it is shown small and secondary beneath the host.
+    if (attribution) {
+      header.appendChild(elem('p', { text: attribution.text, style: 'color:var(--gray-700);margin-top:.15rem;font-weight:600;' }));
+      if (evt.organizationName) header.appendChild(elem('p', { text: 'Listed by ' + evt.organizationName, style: 'color:var(--gray-600);font-size:.8rem;margin-top:.1rem;' }));
+    } else if (evt.organizationName) {
+      header.appendChild(elem('p', { text: evt.organizationName, style: 'color:var(--gray-600);margin-top:.15rem;' }));
+    }
 
     const badges = elem('div', { style: 'display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem;' });
     const status = elem('span', { class: `status status-${(evt.status || 'open').toLowerCase()}`, text: evt.status || 'Open' });
@@ -154,10 +167,12 @@
       const mapLink = elem('a', { href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(evt.location)}`, target: '_blank', rel: 'noopener', text: evt.location });
       addFact('Where', mapLink);
     }
-    if (evt.hoursValue != null) addFact('Service credit', `${evt.hoursValue} hour${evt.hoursValue === 1 ? '' : 's'}`);
+    // Hours credit and spot counts are registration concepts — a display-only listing has
+    // neither, so both are omitted for it.
+    if (!displayOnly && evt.hoursValue != null) addFact('Service credit', `${evt.hoursValue} hour${evt.hoursValue === 1 ? '' : 's'}`);
     // Per-shift when the event has shifts: the Shifts section below breaks the same number
     // down, so reading the overall counter here would contradict it (see availability.js).
-    if (!Availability.isUncapped(evt)) addFact('Spots left', Availability.countLabel(evt));
+    if (!displayOnly && !Availability.isUncapped(evt)) addFact('Spots left', Availability.countLabel(evt));
     root.appendChild(section('Details', facts));
 
     // Shifts (only when present).
@@ -187,24 +202,31 @@
     if (evt.contactName)  contactRows.push(['Contact', evt.contactName]);
     if (evt.contactEmail) contactRows.push(['Email', evt.contactEmail]);
     if (evt.contactPhone) contactRows.push(['Phone', evt.contactPhone]);
+    if (evt.contactUrl)   contactRows.push(['Website', evt.contactUrl]);
     if (contactRows.length) {
       const grid = elem('div', { style: 'display:flex;gap:1.75rem;flex-wrap:wrap;font-size:.95rem;' });
       contactRows.forEach(([l, v]) => {
         const c = elem('div');
         c.appendChild(elem('div', { text: l, style: 'color:var(--gray-600);font-size:.75rem;' }));
         if (l === 'Email') c.appendChild(elem('a', { href: `mailto:${v}`, text: v }));
+        else if (l === 'Website') c.appendChild(elem('a', { href: v, target: '_blank', rel: 'noopener', text: v }));
         else c.appendChild(elem('div', { text: v }));
         grid.appendChild(c);
       });
       root.appendChild(section('Contact', grid));
     }
 
-    // Actions: external link + sign-up.
+    // Actions: link-out(s) + (registerable events only) sign-up.
     const actions = elem('div', { style: 'display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;' });
-    if (evt.externalUrl) {
+    // Display-only listing: the primary action is visiting the outside host.
+    if (displayOnly && attribution && attribution.url) {
+      actions.appendChild(elem('a', { class: 'btn btn-primary', href: attribution.url, target: '_blank', rel: 'noopener', text: 'Visit host ↗' }));
+    }
+    // "More info" for an event-specific link — skipped when it would duplicate the host button.
+    if (evt.externalUrl && !(displayOnly && attribution && evt.externalUrl === attribution.url)) {
       actions.appendChild(elem('a', { class: 'btn btn-secondary', href: evt.externalUrl, target: '_blank', rel: 'noopener', text: 'More info ↗' }));
     }
-    if (evt.myRegistration) {
+    if (!displayOnly && evt.myRegistration) {
       // Already signed up: show the state + a cancel affordance instead of a Sign Up
       // button that would only 409 on the server's already-registered guard.
       actions.appendChild(elem('span', { class: 'event-badge', text: "✓ You're signed up", style: 'align-self:center;' }));
@@ -221,7 +243,7 @@
         }
       });
       actions.appendChild(cancelBtn);
-    } else if (profile.adminLevel === 'Student' && (evt.status === 'Open')) {
+    } else if (!displayOnly && profile.adminLevel === 'Student' && (evt.status === 'Open')) {
       const btn = elem('button', { class: 'btn btn-primary', text: 'Sign Up' });
       btn.addEventListener('click', () => openSignup(evt));
       actions.appendChild(btn);
@@ -231,7 +253,7 @@
     // question from the viewer's own sign-up state above: an admin may register their people
     // whether or not they are personally signed up. Shown only once we know they hold
     // EventAdmin+ somewhere, so the button never appears just to 403.
-    if (evt.status === 'Open' && groupAdminOrgs.length > 0) {
+    if (!displayOnly && evt.status === 'Open' && groupAdminOrgs.length > 0) {
       const gbtn = elem('button', { class: 'btn btn-secondary', text: 'Register a group' });
       gbtn.addEventListener('click', () => openGroup(evt));
       actions.appendChild(gbtn);
@@ -240,7 +262,7 @@
     // Day-of check-in overview (roster, manual check-in, walk-ins, the posted QR). Offered to
     // an admin who can act in THIS event's org — the same membership test the group button uses
     // (groupAdminOrgs holds the orgs the viewer is EventAdmin+ in; a super gets every tenant).
-    if (groupAdminOrgs.some(o => o.id === evt.organizationId)) {
+    if (!displayOnly && groupAdminOrgs.some(o => o.id === evt.organizationId)) {
       actions.appendChild(elem('a', {
         class: 'btn btn-secondary',
         href: `/event-checkin.html?e=${encodeURIComponent(evt.id)}&o=${encodeURIComponent(evt.organizationId)}`,

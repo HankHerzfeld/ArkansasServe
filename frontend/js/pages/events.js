@@ -283,6 +283,10 @@
     events.forEach(evt => {
       const card = document.createElement('div');
       card.className = 'card event-card';
+      // A display-only (external/crawled) listing credits an outside host and isn't registerable
+      // here — no hours credit, no spot count, no Sign Up.
+      const displayOnly = UI.isDisplayOnlyListing(evt);
+      const attribution = UI.listingAttribution(evt);
       // Pairs the card with its pin (#18). Set unconditionally — harmless without a map.
       card.dataset.eventId = evt.id;
       card.addEventListener('mouseenter', () => EventMap.highlight(evt.id));
@@ -311,13 +315,19 @@
 
       const meta = document.createElement('div');
       meta.className = 'card-meta';
-      const spotsLabel = Availability.label(evt);
-      meta.textContent = `📍 ${evt.location} · 📅 ${new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })} · ⏱ ${evt.hoursValue} hour${evt.hoursValue !== 1 ? 's' : ''} credit${spotsLabel ? ` · ${spotsLabel}` : ''}`;
+      const whenTxt = new Date(evt.startDateTime).toLocaleString([], { dateStyle:'medium', timeStyle:'short' });
+      if (displayOnly) {
+        meta.textContent = `📍 ${evt.location} · 📅 ${whenTxt}`;
+      } else {
+        const spotsLabel = Availability.label(evt);
+        meta.textContent = `📍 ${evt.location} · 📅 ${whenTxt} · ⏱ ${evt.hoursValue} hour${evt.hoursValue !== 1 ? 's' : ''} credit${spotsLabel ? ` · ${spotsLabel}` : ''}`;
+      }
       card.appendChild(meta);
 
       const orgName = document.createElement('p');
       orgName.style.cssText = 'font-size:.85rem;color:var(--gray-600);margin-bottom:.75rem;';
-      orgName.textContent = evt.organizationName;
+      // Attribution: "Hosted by {outside org}" for a listing, else the owning org's name.
+      orgName.textContent = attribution ? attribution.text : evt.organizationName;
       card.appendChild(orgName);
 
       const status = document.createElement('span');
@@ -327,7 +337,7 @@
       card.appendChild(status);
       card.appendChild(document.createElement('br'));
 
-      if (profile.adminLevel === 'Student' && evt.status === 'Open') {
+      if (!displayOnly && profile.adminLevel === 'Student' && evt.status === 'Open') {
         const structured = (evt.shifts && evt.shifts.length) || (evt.signupQuestions && evt.signupQuestions.length);
         if (structured) {
           // Shifts/questions are collected on the detail page.
