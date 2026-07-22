@@ -30,18 +30,23 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Event is full");
 
 		// The canonical identity of this registration. Resolved from the caller's per-org User
-		// doc rather than taken from the token, because a registrant need not have an account
-		// at all (see EventRegistration.MemberId). Null only if this person somehow has no
-		// User doc in their own tenant, in which case reads fall back to UserId as before.
+		// doc rather than taken from the token, because a registration is keyed on the member id
+		// (see EventRegistration.MemberId), not the Entra id. A signed-in person always has a User
+		// doc in their tenant — the app shell creates it via /me before any page is usable — so a
+		// null here is a not-ready/broken state, not a normal path: refuse rather than write a
+		// registration with no canonical identity (the very legacy row this convergence removed).
 		var self = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
+		if (self == null)
+			return await HttpHelper.Error(req, HttpStatusCode.Conflict,
+				"We couldn't find your membership record for this organization. Reload the page and try again.");
 
-		if (await cosmos.IsAlreadyRegisteredAsync(body.EventId, ctx.UserId, self?.Id))
+		if (await cosmos.IsAlreadyRegisteredAsync(body.EventId, self.Id))
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "Already registered for this event");
 
 		// #11②: same-org blockRegistration gate. A registrant in the event's OWN org must hold
 		// every tag that org marks blockRegistration; a cross-org registrant has no doc here to
 		// carry a tag state, so is never blocked (the locked cross-org decision).
-		if (self != null && string.Equals(ctx.TenantId, evt.OrganizationId, StringComparison.OrdinalIgnoreCase))
+		if (string.Equals(ctx.TenantId, evt.OrganizationId, StringComparison.OrdinalIgnoreCase))
 		{
 			var org = await cosmos.GetTenantAsync(evt.OrganizationId);
 			var missing = TagGate.MissingTags(org, self, TagEnforcement.BlockRegistration, DateTime.UtcNow);
@@ -95,7 +100,7 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		{
 			EventId = body.EventId,
 			UserId = ctx.UserId,
-			MemberId = self?.Id,
+			MemberId = self.Id,
 			StudentName = ctx.DisplayName,
 			SchoolId = ctx.TenantId,
 			// The event's authoritative org (its partition key) — may differ from SchoolId
@@ -189,11 +194,11 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		//     they read as Student and were refused on their own member's registration;
 		//   • a token-level admin from an UNRELATED org skipped the check entirely and could
 		//     cancel any registration in any org.
-		// Identity comes from BelongsTo, which accepts the canonical memberId or the legacy
-		// externalId — so this keeps working on rows written before memberId existed, and will
-		// keep working for a registrant who has no account at all.
+		// Identity comes from BelongsTo, keyed on the canonical memberId (the caller's per-org
+		// User doc id). A cross-org caller resolves no self here and so is never treated as the
+		// owner — they fall through to the admin-authorization check below.
 		var self = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
-		if (!reg.BelongsTo(ctx.UserId, self?.Id))
+		if (!reg.BelongsTo(self?.Id))
 		{
 			// The event's own org, with the same legacy SchoolId fallback used below to
 			// locate the event itself.
@@ -476,7 +481,7 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		var alreadyIn = members
 			.Where(m => existing.Any(e =>
 				!string.Equals(e.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)
-				&& e.BelongsTo(m.User.ExternalId, m.User.Id)))
+				&& e.BelongsTo(m.User.Id)))
 			.Select(m => DisplayNameOf(m.User))
 			.ToList();
 		if (alreadyIn.Count > 0)

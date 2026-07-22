@@ -9,7 +9,9 @@ public class EventRegistration : CosmosDocument
 
 	// The registrant's Entra object id. Present only for people who have actually signed in:
 	// an admin-created MANAGED volunteer has no account, so their User doc's ExternalId is
-	// string.Empty and so is this. Prefer MemberId below to identify a registrant.
+	// string.Empty and so is this. Kept for audit/display (who signed in) but NO LONGER a
+	// matching key — identity is MemberId alone (see BelongsTo). Prefer MemberId to identify a
+	// registrant.
 	[JsonPropertyName("userId")]
 	public string UserId { get; set; } = string.Empty;
 
@@ -23,8 +25,11 @@ public class EventRegistration : CosmosDocument
 	// UserId would make EVERY accountless registrant share the key "" — the first one would
 	// then read as "already registered" and block all the rest.
 	//
-	// Nullable because records written before this field existed do not carry it; reads accept
-	// either key until the backfill is confirmed complete (see the callers).
+	// Nullable only for the record type's sake; in practice every row carries it. Reads key on
+	// it ALONE as of 2026-07-22 — the legacy externalId fallback was dropped once prod was
+	// verified to hold zero registrations without a memberId and every write path was made to
+	// guarantee one (the single sign-up path now requires a resolved member; group and walk-in
+	// always set it).
 	[JsonPropertyName("memberId")]
 	public string? MemberId { get; set; }
 
@@ -55,22 +60,20 @@ public class EventRegistration : CosmosDocument
 	public List<RegistrationAnswer> Answers { get; set; } = [];
 
 	/// <summary>
-	/// True when this registration is the given person's own.
+	/// True when this registration is the given person's own, keyed solely on the canonical
+	/// <paramref name="memberId"/> (their per-org User doc id).
 	///
-	/// Matches on EITHER key: <paramref name="memberId"/> (canonical) or
-	/// <paramref name="externalId"/> (on rows written before MemberId existed). The legacy arm
-	/// is what keeps un-backfilled rows working; it can be dropped once every row carries a
-	/// memberId.
+	/// The legacy externalId arm was dropped 2026-07-22, once every registration carried a
+	/// memberId (prod verified: zero rows without one) and every write path was made to guarantee
+	/// it — the single sign-up path now requires a resolved member, and group and walk-in always
+	/// set it. UserId stays on the row for audit/display but is no longer a matching key.
 	///
-	/// An empty id never matches, deliberately: <c>User.ExternalId</c> defaults to
-	/// <c>string.Empty</c>, so comparing on an empty value would make every accountless
-	/// registrant look like the same person.
+	/// An empty id never matches, deliberately: an unset memberId must collide with nobody, not
+	/// with the many accountless registrants — so it matches no one rather than everyone.
 	/// </summary>
-	public bool BelongsTo(string? externalId, string? memberId) =>
-		(!string.IsNullOrEmpty(memberId)
-			&& string.Equals(MemberId, memberId, StringComparison.OrdinalIgnoreCase))
-		|| (!string.IsNullOrEmpty(externalId)
-			&& string.Equals(UserId, externalId, StringComparison.OrdinalIgnoreCase));
+	public bool BelongsTo(string? memberId) =>
+		!string.IsNullOrEmpty(memberId)
+			&& string.Equals(MemberId, memberId, StringComparison.OrdinalIgnoreCase);
 }
 
 public class RegistrationAnswer
