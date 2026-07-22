@@ -72,9 +72,12 @@ This unblocks further registration work — no more rows accrue that a later dec
 
 ### 1c · Converge legacy forks before they compound
 
-- **Group-reg `UserId` → `MemberId`** — `RegistrationFunctions.cs` still has a legacy `UserId`
-  arm "that can drop once every row carries `memberId`." Write `memberId` on every new group
-  registration now (stop widening the fork), then backfill, then delete the arm.
+- **Group-reg `UserId` → `MemberId`** — ✅ **DONE (PR #130, 2026-07-22).** The legacy externalId
+  matching arm is dropped; registration identity keys on the canonical `memberId` alone. Verified
+  in prod (SuperAdmin DB console): 0 of 13 registrations lacked a `memberId`, so no backfill was
+  owed; the single sign-up path now requires a resolved member before writing (group and walk-in
+  already did), so no new memberless row can appear. `BelongsTo` / `IsAlreadyRegisteredAsync`
+  simplified to a single key; `UserId` retained for audit/display only.
 - **Users partition-key fallback** — `CosmosService.UsersCompatibility.cs` silently retries writes
   against `/id` when the container was built with the wrong key. Confirm which key prod's users
   container actually uses before the user base grows.
@@ -124,10 +127,9 @@ Background-check → tag convergence (rewrites live User records); denominationa
 
 ## 3 · Coverable now (no owner input, no external provisioning)
 
-1. ✅ **The four additive schema fields** (§1a) — done 2026-07-22.
-2. **Residue cleanup + audit-doc corrections** (P4 #13).
-3. **Group-reg: write `memberId` on every new registration** (§1c) — stop widening the fork even
-   before backfilling.
+1. ✅ **The four additive schema fields** (§1a) — done 2026-07-22 (PR #129).
+2. ✅ **Registration identity converged to `memberId`** (§1c) — done 2026-07-22 (PR #130).
+3. **Residue cleanup + audit-doc corrections** (P4 #13) — still open.
 
 ~~Gate before writing more registration code: the cross-org tag-gating decision (§1b).~~
 **Resolved 2026-07-22 — same-org-only (§1b); registration work is unblocked.**
