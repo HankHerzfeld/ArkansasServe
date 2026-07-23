@@ -11,7 +11,7 @@ public class User : CosmosDocument
     public string ExternalId { get; set; } = string.Empty;
 
     [JsonPropertyName("adminLevel")]
-    public string AdminLevel { get; set; } = "Student";
+    public string AdminLevel { get; set; } = "Member";
 
     [JsonPropertyName("organizationId")]
     public string? OrganizationId { get; set; }

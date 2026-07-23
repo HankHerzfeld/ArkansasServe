@@ -33,7 +33,7 @@ public class ImpersonationSession : CosmosDocument
 	public string TargetEmail { get; set; } = string.Empty;
 
 	[JsonPropertyName("targetAdminLevel")]
-	public string TargetAdminLevel { get; set; } = "Student"; // snapshot of the target's effective level
+	public string TargetAdminLevel { get; set; } = "Member"; // snapshot of the target's effective level
 
 	[JsonPropertyName("targetIsDemo")]
 	public bool TargetIsDemo { get; set; }

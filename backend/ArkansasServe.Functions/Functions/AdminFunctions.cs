@@ -774,6 +774,62 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		});
 	}
 
+	// Migrate the base admin level off the legacy string "Student" to "Member". The admin
+	// axis (what a person may *do*) was renamed to break its string collision with the WHO
+	// axis PersonTypes.Student (a K–12 schoolchild); see AdminLevels. Existing User docs still
+	// store adminLevel:"Student" for base-level members, so every reader that filters on the
+	// base level by literal (GetVolunteersByTenantAsync, ReportFunctions) misses them until
+	// their doc is rewritten. Rank-based authz is unaffected — RankOf("Student") folds to 0,
+	// the same rank as "Member" — so this is a data-consistency fix, not a security one.
+	//
+	// Case-insensitive match on the LITERAL "Student" (the value being retired — the constant
+	// no longer exists). Idempotent: a doc already at "Member" (or any admin level) is skipped.
+	// PersonTypes.Student is a different field (personType) and is deliberately NOT touched.
+	//
+	// DRY-RUN BY DEFAULT: reports what it would change and writes nothing unless ?apply=true.
+	[Function("NormalizeAdminLevels")]
+	public async Task<HttpResponseData> NormalizeAdminLevels(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/maintenance/normalize-admin-levels")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
+
+		var apply = string.Equals(QueryValue(req, "apply"), "true", StringComparison.OrdinalIgnoreCase);
+
+		const string LegacyBaseLevel = "Student";
+
+		var users = await cosmos.GetAllUsersAsync();
+		var changes = new List<object>();
+		var applied = 0;
+		foreach (var u in users)
+		{
+			if (!string.Equals(u.AdminLevel, LegacyBaseLevel, StringComparison.OrdinalIgnoreCase))
+				continue; // already migrated, or a genuine admin level
+
+			changes.Add(new { id = u.Id, name = u.DisplayName, email = u.Email, tenantId = u.TenantId, from = u.AdminLevel, to = AdminLevels.Member });
+			if (apply)
+			{
+				u.AdminLevel = AdminLevels.Member;
+				await cosmos.UpsertUserWithPartitionFallbackAsync(u);
+				applied++;
+			}
+		}
+
+		logger.LogInformation(
+			"[Maintenance] normalize-admin-levels by {Actor}: {Candidates} candidate(s), apply={Apply}, applied={Applied}",
+			ctx.UserId, changes.Count, apply, applied);
+
+		return await HttpHelper.OkJson(req, new
+		{
+			dryRun = !apply,
+			scanned = users.Count,
+			candidates = changes.Count,
+			applied,
+			changes,
+		});
+	}
+
 	// ── Authorization helpers ───────────────────────────────────────────────
 
 	// A person is a platform super if their token level is SuperAdmin or any of
@@ -867,18 +923,18 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 
 		// Students — parented to Alpha. The two differ only in SelfJoined, which is the
 		// A/B for Finding 6: a self-joined membership may Leave, an adopted one is refused.
-		var selfJoined = Demo("demo-student-1", DemoOrgAlphaId, AdminLevels.Student, "Demo Student 1 (self-joined)");
+		var selfJoined = Demo("demo-student-1", DemoOrgAlphaId, AdminLevels.Member, "Demo Student 1 (self-joined)");
 		selfJoined.SelfJoined = true;
 		users.Add(selfJoined);
 
-		var adopted = Demo("demo-student-2", DemoOrgAlphaId, AdminLevels.Student, "Demo Student 2 (adopted)");
+		var adopted = Demo("demo-student-2", DemoOrgAlphaId, AdminLevels.Member, "Demo Student 2 (adopted)");
 		adopted.SelfJoined = false;
 		users.Add(adopted);
 
 		// Cross-org persona: ONE person (shared externalId), volunteer in their home org
 		// (Alpha) and OrganizationAdmin in a secondary org (Beta). Reproduces Findings 2/7/9.
 		const string crossOrgExternalId = "demo-crossorg-1";
-		users.Add(Demo("demo-crossorg-1-alpha", DemoOrgAlphaId, AdminLevels.Student,
+		users.Add(Demo("demo-crossorg-1-alpha", DemoOrgAlphaId, AdminLevels.Member,
 			"Demo Cross-Org 1 (volunteer in Alpha)", crossOrgExternalId));
 		users.Add(Demo("demo-crossorg-1-beta", DemoOrgBetaId, AdminLevels.OrganizationAdmin,
 			"Demo Cross-Org 1 (admin in Beta)", crossOrgExternalId));

@@ -47,8 +47,13 @@ const Auth = (() => {
   };
 
   // ── Admin level model (the single 5-level hierarchy) ──────────────────────
+  // Base level is 'Member' (rank 0 = no admin rights) — the DO axis. NOT the WHO
+  // axis: a Member need not be a personType 'Student' (a K–12 schoolchild). The two
+  // were once both 'Student'; the admin axis was renamed to 'Member' to separate them.
+  // Legacy docs still storing 'Student' fold to rank 0 here (unknown key ⇒ 0), the
+  // same rank as 'Member', so authz stays correct until the data migration runs.
   const ADMIN_RANK = Object.freeze({
-    Student: 0,
+    Member: 0,
     EventAdmin: 1,
     GroupAdmin: 2,
     OrganizationAdmin: 3,
@@ -62,11 +67,11 @@ const Auth = (() => {
     if (role === 'PlatformAdmin') return 'SuperAdmin';
     if (role === 'SchoolAdmin')   return 'OrganizationAdmin';
     if (role === 'OrgStaff')      return 'EventAdmin';
-    return 'Student';
+    return 'Member';
   }
 
   function normalizeLevel(level) {
-    return Object.hasOwn(ADMIN_RANK, level) ? level : 'Student';
+    return Object.hasOwn(ADMIN_RANK, level) ? level : 'Member';
   }
 
   function adminRank(level) {
@@ -84,7 +89,7 @@ const Auth = (() => {
   function getAdminLevel() {
     const cached = sessionStorage.getItem(KEYS.adminLevel);
     if (cached && Object.hasOwn(ADMIN_RANK, cached)) return cached;
-    return getProfile()?.adminLevel || 'Student';
+    return getProfile()?.adminLevel || 'Member';
   }
 
   // ── MSAL instance ─────────────────────────────────────────────────────────

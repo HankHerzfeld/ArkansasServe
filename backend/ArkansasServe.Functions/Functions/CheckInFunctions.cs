@@ -287,7 +287,7 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 				FirstName = body.FirstName?.Trim(),
 				LastName = body.LastName?.Trim(),
 				DisplayName = displayName,
-				AdminLevel = AdminLevels.Student,
+				AdminLevel = AdminLevels.Member,
 				Status = "active",
 				IsManaged = true,
 				ManagedByUserId = ctx.UserId,

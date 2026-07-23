@@ -37,7 +37,7 @@ public class ReportFunctions(CosmosService cosmos, AuthConfig authConfig, ILogge
 		var to = toParsed == DateTime.MaxValue ? DateTime.MaxValue : toParsed.Date.AddDays(1).AddTicks(-1);
 
 		var roster = (await cosmos.GetUsersByTenantAsync(schoolId))
-			.Where(u => string.Equals(u.AdminLevel, "Student", StringComparison.OrdinalIgnoreCase))
+			.Where(u => string.Equals(u.AdminLevel, AdminLevels.Member, StringComparison.OrdinalIgnoreCase))
 			.ToList();
 
 		var inRange = (await cosmos.GetServiceLogsBySchoolAsync(schoolId))

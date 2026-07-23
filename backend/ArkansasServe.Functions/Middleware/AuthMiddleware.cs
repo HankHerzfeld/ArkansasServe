@@ -336,7 +336,7 @@ public class UserContext
     // The caller's level as claimed by the token (already translated from the
     // legacy role claim). Per-org authorization still resolves the actual
     // membership level via CosmosService.ResolveActorInOrgAsync.
-    public string AdminLevel  { get; set; } = AdminLevels.Student;
+    public string AdminLevel  { get; set; } = AdminLevels.Member;
     public string Email       { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string GivenName   { get; set; } = string.Empty;
@@ -351,6 +351,8 @@ public class UserContext
     public string? ImpersonationSessionId { get; set; }
     public string  ImpersonationMode { get; set; } = string.Empty;
 
-    public bool IsSuperAdmin   => string.Equals(AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase);
-    public bool IsStudentLevel => AdminLevels.RankOf(AdminLevel) == 0;
+    public bool IsSuperAdmin  => string.Equals(AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase);
+    // Base admin level = no admin rights (rank 0). Named for the DO axis (AdminLevels.Member),
+    // NOT the WHO axis — a person at this level need not be a PersonTypes.Student.
+    public bool IsMemberLevel => AdminLevels.RankOf(AdminLevel) == 0;
 }

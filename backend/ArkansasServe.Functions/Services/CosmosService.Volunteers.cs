@@ -95,12 +95,14 @@ public partial class CosmosService
         return null;
     }
 
-    // Volunteers (Student level) in an org, optionally narrowed to one group.
+    // Volunteers (base Member level = no admin rights) in an org, optionally narrowed to
+    // one group. Literal must track AdminLevels.Member — kept as a literal because Cosmos
+    // LINQ-to-SQL translates a constant cleanly and this is the value stored on the doc.
     public async Task<List<User>> GetVolunteersByTenantAsync(string tenantId, string? groupId = null, CancellationToken cancellationToken = default)
     {
         var query = Users.GetItemLinqQueryable<User>(requestOptions: new QueryRequestOptions
             { PartitionKey = new PartitionKey(tenantId) })
-            .Where(u => u.Status == "active" && u.AdminLevel == "Student")
+            .Where(u => u.Status == "active" && u.AdminLevel == "Member")
             .ToFeedIterator();
 
         var results = new List<User>();

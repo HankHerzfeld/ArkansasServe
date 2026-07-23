@@ -131,13 +131,13 @@ const Scope = (() => {
   // Resolve the orgs/groups this user can act within, narrowed to what this PAGE needs.
   //   SuperAdmin  → every tenant (with its groups), unless the page says allTenants:false
   //   Org admin   → the orgs they hold the page's minimum role in
-  //   Student     → their single implicit org, no switching
+  //   Member      → their single implicit org, no switching
   async function init(currentUser, config) {
     state.config = { ...DEFAULT_CONFIG, ...(config || {}) };
     const { minRole, orgTypes, allTenants } = state.config;
 
     const user = currentUser || await Api.Users.getMe();
-    const level = user.adminLevel || 'Student';
+    const level = user.adminLevel || 'Member';
     state.isSuperAdmin = level === 'SuperAdmin';
 
     if (state.isSuperAdmin && allTenants) {

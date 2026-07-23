@@ -5,7 +5,7 @@
     document.getElementById('greeting').textContent = `Welcome, ${profile.name.split(' ')[0]}`;
 
     const rank = {
-      Student: 0,
+      Member: 0,
       EventAdmin: 1,
       GroupAdmin: 2,
       OrganizationAdmin: 3,
@@ -13,7 +13,7 @@
     };
 
     function toAdminLevel(user) {
-      return user?.adminLevel || profile.adminLevel || 'Student';
+      return user?.adminLevel || profile.adminLevel || 'Member';
     }
 
     // ── Profile card ─────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@
     let profileMemberships = [];
 
     const LEVEL_LABEL = {
-      Student: 'Volunteer', EventAdmin: 'Event Admin', GroupAdmin: 'Group Admin',
+      Member: 'Volunteer', EventAdmin: 'Event Admin', GroupAdmin: 'Group Admin',
       OrganizationAdmin: 'Org Admin', SuperAdmin: 'Super Admin',
     };
     const prettyLevel = (lvl) => LEVEL_LABEL[lvl] || lvl || 'Volunteer';
@@ -333,7 +333,7 @@
           text: m.organizationName,
           style: 'font-weight:600;font-size:1.05rem;color:var(--green);text-decoration:none;',
         }));
-        if (m.adminLevel && m.adminLevel !== 'Student') {
+        if (m.adminLevel && m.adminLevel !== 'Member') {
           head.appendChild(el('span', { class: 'status status-approved', text: prettyLevel(m.adminLevel) }));
         }
         if (m.type) {
@@ -364,8 +364,9 @@
             }
             if (roster) {
               // "Volunteers", not "Members": GetVolunteersByTenantAsync filters
-              // AdminLevel == "Student", so admins are excluded. Labelling this "Members"
-              // read as 1 in an org holding four people.
+              // AdminLevel == "Member" (base level), so org admins are excluded. Note this
+              // is the DO axis, not personType — hence "Volunteers" avoids "Members" reading
+              // as 1 in an org holding four people (and dodges the adminLevel "Member" clash).
               tiles.appendChild(statTile(roster.length, 'Volunteers', '/admin-backend.html'));
             }
             if (!tiles.children.length) {
@@ -465,9 +466,9 @@
           openIntake(currentUser);
         }
 
-        // First-login onboarding: a self-registered student not yet in any organization is
-        // guided to join one. Skip the (necessarily empty) stats + log history.
-        if (adminLevel === 'Student' && (!memberships || memberships.length === 0)) {
+        // First-login onboarding: a self-registered base-level member not yet in any
+        // organization is guided to join one. Skip the (necessarily empty) stats + log history.
+        if (adminLevel === 'Member' && (!memberships || memberships.length === 0)) {
           document.getElementById('onboarding-card').style.display = 'block';
           document.getElementById('stats-row').style.display = 'none';
           document.getElementById('log-card').style.display = 'none';
@@ -475,7 +476,7 @@
         }
 
         // Everyone gets their real hours now, admins included. This previously short-circuited
-        // for any non-Student and printed "Admin users can use the Admin Backend" over three
+        // for any non-Member (above base level) and printed "Admin users can use the Admin Backend" over three
         // em-dashes — so an admin who also volunteers was told their own hours didn't exist,
         // and an admin who doesn't got a home screen with nothing on it.
         const { logs, totalApprovedHours } = await Api.ServiceLogs.myLogs().catch(() => ({ logs: [], totalApprovedHours: 0 }));

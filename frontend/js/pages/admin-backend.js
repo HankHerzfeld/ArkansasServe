@@ -12,7 +12,8 @@
     isSuperAdmin: false,
   };
 
-  const adminLevels = ['Student', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
+  // DO axis (admin rights). Base is 'Member' — distinct from the WHO-axis personType 'Student'.
+  const adminLevels = ['Member', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
 
   const PERSON_TYPE_LABEL = { Student: 'Student', AdultVolunteer: 'Adult volunteer', Staff: 'Staff' };
   const personTypeLabel = (t) => PERSON_TYPE_LABEL[t] || '';
@@ -35,7 +36,7 @@
 
   function userRank(level) {
     const rank = {
-      Student: 0,
+      Member: 0,
       EventAdmin: 1,
       GroupAdmin: 2,
       OrganizationAdmin: 3,
@@ -97,7 +98,7 @@
     state.currentUser = context.user;
     state.contextTenant = context.tenant; // full tenant for the active org
     state.logoDisplayUrl = context.logoDisplayUrl || null; // signed preview for the current logo
-    const level = context.user.adminLevel || 'Student';
+    const level = context.user.adminLevel || 'Member';
     if (userRank(level) === 0) {
       window.location.href = '/dashboard.html';
       return;
@@ -412,7 +413,7 @@
         option.textContent = level;
         levelSelect.appendChild(option);
       });
-      levelSelect.value = user.adminLevel || 'Student';
+      levelSelect.value = user.adminLevel || 'Member';
       levelTd.appendChild(levelSelect);
       tr.appendChild(levelTd);
 
@@ -491,7 +492,7 @@
         const type = document.getElementById('users-filter-type').value;
         const level = document.getElementById('users-filter-level').value;
         if (type && (u.personType || '') !== type) return false;
-        if (level && (u.adminLevel || 'Student') !== level) return false;
+        if (level && (u.adminLevel || 'Member') !== level) return false;
         return true;
       },
       dataTables: {

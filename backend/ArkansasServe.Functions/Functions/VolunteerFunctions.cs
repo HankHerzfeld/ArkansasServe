@@ -98,7 +98,7 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 			// PersonType is a starting hint from the admin; the person confirms and
 			// completes their own intake on first login (see IntakeValidation).
 			PersonType = PersonTypes.IsValid(body.PersonType) ? body.PersonType : null,
-			AdminLevel = AdminLevels.Student,
+			AdminLevel = AdminLevels.Member,
 			GroupIds = groupIds,
 			Status = "active",
 			IsManaged = true,
