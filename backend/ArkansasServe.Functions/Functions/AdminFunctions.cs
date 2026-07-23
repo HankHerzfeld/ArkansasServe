@@ -612,11 +612,27 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		await cosmos.DeleteAllDemoGuardiansAsync();
 		var guardians = await cosmos.UpsertDemoGuardiansAsync(DemoData.BuildGuardians());
 
+		// Activity — clear then recreate. Delete before create so the stable-id fixtures don't
+		// collide on a re-run; events first so registrations/logs reference existing events.
+		await cosmos.DeleteAllDemoRegistrationsAsync();
+		await cosmos.DeleteAllDemoServiceLogsAsync();
+		await cosmos.DeleteAllDemoEventsAsync();
+
+		var events = DemoData.BuildEvents();
+		foreach (var e in events) await cosmos.CreateEventAsync(e);
+		var regs = DemoData.BuildRegistrations();
+		foreach (var r in regs) await cosmos.CreateRegistrationAsync(r);
+		var logs = DemoData.BuildServiceLogs();
+		foreach (var l in logs) await cosmos.CreateServiceLogAsync(l);
+
 		return await HttpHelper.OkJson(req, new
 		{
 			tenants = DemoData.BuildTenants().Count,
 			users = users.Count,
 			guardians = guardians.Count,
+			events = events.Count,
+			registrations = regs.Count,
+			serviceLogs = logs.Count,
 		});
 	}
 
