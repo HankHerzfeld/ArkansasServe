@@ -203,6 +203,58 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "You are not listed as a guardian for that person.");
 
 		var granting = string.Equals(body.Action, "grant", StringComparison.OrdinalIgnoreCase);
+
+		// ── Per-event approval (#20 carve-out) ──────────────────────────────────────
+		// With an eventId this records the FRESH approval an org-flagged or overnight event
+		// needs, and deliberately leaves standing consent alone: approving one trip is not
+		// broadening the family's general consent, and revoking one trip is not withdrawing it.
+		// Authorized by the same session + link check above, so it cannot reach another child.
+		if (!string.IsNullOrWhiteSpace(body.EventId))
+		{
+			var eventId = body.EventId!.Trim();
+			var approval = guardian.EventApprovals.FirstOrDefault(a =>
+				string.Equals(a.MinorUserId, body.MinorUserId, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(a.OrganizationId, body.OrganizationId, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(a.EventId, eventId, StringComparison.OrdinalIgnoreCase));
+			if (approval == null)
+			{
+				approval = new GuardianEventApproval
+				{
+					MinorUserId = body.MinorUserId,
+					OrganizationId = body.OrganizationId,
+					EventId = eventId,
+				};
+				guardian.EventApprovals.Add(approval);
+			}
+
+			if (granting)
+			{
+				approval.Status = GuardianConsentStatus.Granted;
+				approval.ApprovedAt = now;
+				approval.RevokedAt = null;
+				approval.DocumentVersion = PolicyVersions.Current;
+				approval.AttestedFromIp = ClientIpOf(req);
+			}
+			else
+			{
+				approval.Status = GuardianConsentStatus.Revoked;
+				approval.RevokedAt = now;
+			}
+
+			await cosmos.UpsertGuardianAsync(guardian);
+			logger.LogInformation("[Guardian] per-event approval {Action} for minor {MinorId} on event {EventId} in org {OrgId}",
+				granting ? "granted" : "revoked", body.MinorUserId, eventId, body.OrganizationId);
+
+			return await HttpHelper.OkJson(req, new
+			{
+				scope = "event",
+				eventId,
+				status = approval.Status,
+				approvedAt = approval.ApprovedAt,
+				revokedAt = approval.RevokedAt,
+			});
+		}
+
 		var consent = guardian.Consents.FirstOrDefault(c =>
 			string.Equals(c.MinorUserId, body.MinorUserId, StringComparison.OrdinalIgnoreCase)
 			&& string.Equals(c.OrganizationId, body.OrganizationId, StringComparison.OrdinalIgnoreCase));
@@ -400,6 +452,8 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 
 	private sealed record RedeemRequest(string Token);
 
+	// EventId is optional: absent, this grants/revokes STANDING consent for the org; present, it
+	// grants/revokes the per-event approval a carve-out event needs (#20 remainder).
 	private sealed record ConsentRequest(
-		string SessionToken, string MinorUserId, string OrganizationId, string Action);
+		string SessionToken, string MinorUserId, string OrganizationId, string Action, string? EventId);
 }
