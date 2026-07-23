@@ -62,6 +62,10 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		try
 		{
 			var events = await cosmos.GetUpcomingEventsCompatAsync(effectiveSchoolId);
+			// Demo events belong to demo orgs and must not surface to real users. A global super
+			// sees them so they can exercise the demo network; everyone else never does.
+			if (!await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel))
+				events = events.Where(e => !e.IsDemo).ToList();
 			foreach (var e in events) SignEventPhoto(e);
 			await FillOrganizationNamesAsync(events);
 			return await HttpHelper.OkJson(req, events);
@@ -90,6 +94,10 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		var orgId = query["organizationId"] ?? string.Empty;
 		var evt = await cosmos.GetEventAsync(id, orgId);
 		if (evt == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
+		// A demo event is invisible to real users even by direct link — 404 unless the caller is a
+		// global super. Prevents discovery/registration of a demo event through a crafted URL.
+		if (evt.IsDemo && !await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel))
+			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Event not found");
 		SignEventPhoto(evt);
 
 		// Attach the viewer's own active registration so the detail page can render a
@@ -302,20 +310,27 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		body.Status = "Open";
 		body.CurrentSlots = 0;
 
+		// One read of the owning org serves both the name denormalization and the demo flag.
+		var org = await cosmos.GetTenantAsync(orgId);
+
+		// An event inherits its org's demo-ness, denormalized so the events-list query can filter
+		// without a per-event tenant lookup. A demo persona creating an event under a demo org (via
+		// "Act as") therefore produces a demo event that stays hidden from real users.
+		body.IsDemo = org?.IsDemo ?? false;
+
 		// Denormalize the org name, as service logs already do (ServiceLogFunctions). It was
 		// never set here, so every event created through the app carried
 		// organizationName:"" — only crawled events had one (CrawlerService sets it). The
 		// events page then advertised "Search by name or organization" while the
 		// organization half could never match anything.
-		if (string.IsNullOrWhiteSpace(body.OrganizationName))
-		{
-			var org = await cosmos.GetTenantAsync(orgId);
-			if (org != null) body.OrganizationName = org.Name;
-		}
+		if (string.IsNullOrWhiteSpace(body.OrganizationName) && org != null)
+			body.OrganizationName = org.Name;
 
 		// #10②: if the category is a brand-new label, record it as a pending proposal for a
 		// SuperAdmin to approve (as new or as an alias). Known values and empties are no-ops.
-		await categories.RecordProposalIfNewAsync(body.Category, orgId, body.OrganizationName, CategoryProposalSources.Event);
+		// SKIPPED for demo events — a test fixture must not pollute the real category queue.
+		if (!body.IsDemo)
+			await categories.RecordProposalIfNewAsync(body.Category, orgId, body.OrganizationName, CategoryProposalSources.Event);
 
 		// Auto-fill city/county/coords from the ZIP before saving — once, so both the one-off
 		// and every recurring occurrence (which copy these off body) inherit it.
