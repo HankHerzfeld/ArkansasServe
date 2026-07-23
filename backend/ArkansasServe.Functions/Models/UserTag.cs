@@ -44,6 +44,32 @@ public class TenantUserTag
 	/// <summary>Archived tags stop being offered but keep existing people's history readable.</summary>
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "active";
+
+	/// <summary>
+	/// How someone proves they hold this tag — see <see cref="TagEvidence"/> (#19). Defaults to
+	/// attestation (an admin, or the person, simply affirms it), which is how every tag works
+	/// today. A tag OPTS IN to requiring an uploaded document — a signed waiver PDF, a certificate
+	/// — by setting this to "document"; the file then lands in the private verification-docs
+	/// container and its name is kept on the person's <see cref="UserTagState.DocumentBlobName"/>.
+	///
+	/// Per-tag, opt-in, and defaulted so nothing changes for existing tags: a definition written
+	/// before this field existed deserialises to attestation. Reserved now so the doc-upload path
+	/// (#19) is a pure addition later, never a migration of live tag definitions or user states.
+	/// </summary>
+	[JsonPropertyName("evidence")]
+	public string Evidence { get; set; } = TagEvidence.Attestation;
+}
+
+/// <summary>How a person proves they hold a tag (#19). Attestation is the default; document is opt-in per tag.</summary>
+public static class TagEvidence
+{
+	/// <summary>An affirmation is enough — no file. The default, and how every tag worked before #19.</summary>
+	public const string Attestation = "attestation";
+
+	/// <summary>A document must be uploaded (stored private, signed on read) — a signed waiver, a certificate.</summary>
+	public const string Document = "document";
+
+	public static bool IsValid(string? v) => v is Attestation or Document;
 }
 
 /// <summary>What lacking a tag does. Stored on the tag definition, per-tag (owner decision).</summary>
@@ -105,6 +131,16 @@ public class UserTagState
 	/// <summary>Free note from the admin who set it, e.g. a certificate number.</summary>
 	[JsonPropertyName("note")]
 	public string? Note { get; set; }
+
+	/// <summary>
+	/// Blob name of the uploaded evidence document in the private verification-docs container,
+	/// when this tag's definition requires one (<see cref="TenantUserTag.Evidence"/> = document).
+	/// Null for an attestation-only tag, and null on any state written before #19 — the
+	/// attestation path never sets it. Stored as the stable NAME, not a URL: read paths sign it
+	/// into a short-lived SAS at response time, exactly as event photos and org logos are.
+	/// </summary>
+	[JsonPropertyName("documentBlobName")]
+	public string? DocumentBlobName { get; set; }
 
 	/// <summary>True only when complete AND not past its expiry. This is what a gate asks.</summary>
 	public bool IsCurrentAt(DateTime now) =>

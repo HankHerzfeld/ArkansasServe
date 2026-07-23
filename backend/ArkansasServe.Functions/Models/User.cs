@@ -111,8 +111,13 @@ public class User : CosmosDocument
     //
     // Per-org for free: a User doc IS per-org (one per person per organization, partitioned by
     // tenantId), so a waiver signed with one org says nothing about another. That is correct,
-    // and it is also why gating a cross-org registration is a genuinely open question — the
-    // registrant has no doc in the event's org to carry its tags.
+    // and it is why cross-org tag gating is DECIDED as same-org-only (owner, 2026-07-22): a
+    // registrant in another org has no doc in the event's org to carry a tag state, so a
+    // cross-org sign-up proceeds UNGATED rather than being blocked or migrated (see
+    // RegistrationFunctions and TagGate — "the locked cross-org decision"). Chosen over
+    // tag-on-registration (which would add tag state to every EventRegistration row) and a
+    // managed-record path — both rewrite existing data — because same-org-only needs no schema
+    // change and no backfill.
     [JsonPropertyName("tags")]
     public List<UserTagState> Tags { get; set; } = [];
 

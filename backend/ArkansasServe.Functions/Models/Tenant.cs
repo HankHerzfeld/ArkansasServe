@@ -65,6 +65,20 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("logoBlobName")]
 	public string? LogoBlobName { get; set; }
 
+	/// <summary>
+	/// Per-school/-org colour branding (#21): a single seed colour the client expands into the
+	/// full palette, plus optional explicit per-token overrides for the cases the generated
+	/// palette does not get right. Null/absent means the platform default (Arkansas Serve green) —
+	/// so every existing tenant, and every one that never sets a colour, renders unchanged with no
+	/// backfill. Reserved now so #21 is a pure addition later.
+	///
+	/// SCOPE IS TOKENS + LOGO ONLY, never arbitrary CSS: a tenant can recolour the design system
+	/// (already expressed as CSS custom properties) and set a logo, and nothing else. The PWA
+	/// theme-color stays platform green regardless — see #21.
+	/// </summary>
+	[JsonPropertyName("branding")]
+	public TenantBranding? Branding { get; set; }
+
 	// ── Public profile (rendered only when present) ─────────────────────────────
 	[JsonPropertyName("description")]
 	public string? Description { get; set; }
@@ -158,6 +172,31 @@ public class Tenant : CosmosDocument
 
 	[JsonPropertyName("contractStartDate")]
 	public DateTime? ContractStartDate { get; set; }
+}
+
+/// <summary>
+/// A tenant's colour branding (#21). Additive and fully optional — a null TenantBranding, or any
+/// null field within it, falls back to the platform default. Holds NO arbitrary CSS: the only
+/// levers are one seed colour and a map of named design-token overrides.
+/// </summary>
+public class TenantBranding
+{
+	/// <summary>
+	/// The single primary colour (hex, e.g. "#1b5e20") the client generates a palette from — the
+	/// light/pale/contrast variants are derived, not stored, so they stay internally consistent.
+	/// Null means "use the platform primary".
+	/// </summary>
+	[JsonPropertyName("primaryColor")]
+	public string? PrimaryColor { get; set; }
+
+	/// <summary>
+	/// Explicit overrides for individual design tokens, keyed by the CSS custom-property name
+	/// WITHOUT its leading dashes (e.g. "green", "green-light"), value a hex colour. The escape
+	/// hatch for the all-tokens-overridable requirement, applied over whatever PrimaryColor
+	/// generated. Empty/absent means the generated palette stands unmodified.
+	/// </summary>
+	[JsonPropertyName("tokenOverrides")]
+	public Dictionary<string, string> TokenOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public class TenantGroup
