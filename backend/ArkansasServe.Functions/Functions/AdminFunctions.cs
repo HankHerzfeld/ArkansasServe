@@ -713,6 +713,67 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		});
 	}
 
+	// Strip volunteer-intake data off people who are NOT volunteers — platform operators and
+	// staff (see IntakeValidation.IsIntakeExempt). Two normalisations, both idempotent:
+	//   • a SuperAdmin (or Staff) still typed as a Student is misclassified — a platform operator
+	//     is not a schoolchild — so personType Student → Staff;
+	//   • grade is a student-only field, so any grade on an exempt person is cleared.
+	// This is the safe companion to the #133 intake exemption: because an exempt person's profile
+	// is complete on a name alone, clearing these fields does NOT flip ProfileComplete to false,
+	// so it never re-opens the intake wizard (the reason this couldn't be done before #133).
+	// Volunteers (anyone not intake-exempt) are left entirely untouched.
+	//
+	// DRY-RUN BY DEFAULT: reports what it would change and writes nothing unless ?apply=true.
+	[Function("NormalizeIntakeExemptUsers")]
+	public async Task<HttpResponseData> NormalizeIntakeExemptUsers(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/maintenance/normalize-intake-exempt-users")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
+
+		var apply = string.Equals(QueryValue(req, "apply"), "true", StringComparison.OrdinalIgnoreCase);
+
+		var users = await cosmos.GetAllUsersAsync();
+		var changes = new List<object>();
+		var applied = 0;
+		foreach (var u in users)
+		{
+			if (!IntakeValidation.IsIntakeExempt(u)) continue; // volunteers untouched
+
+			var isMistypedStudent = string.Equals(u.PersonType, PersonTypes.Student, StringComparison.OrdinalIgnoreCase);
+			var hasGrade = !string.IsNullOrWhiteSpace(u.Grade);
+			if (!isMistypedStudent && !hasGrade) continue; // already clean
+
+			var fixes = new List<string>();
+			if (isMistypedStudent) fixes.Add("personType Student→Staff");
+			if (hasGrade) fixes.Add($"grade '{u.Grade}'→null");
+
+			changes.Add(new { id = u.Id, name = u.DisplayName, email = u.Email, tenantId = u.TenantId, adminLevel = u.AdminLevel, fixes });
+			if (apply)
+			{
+				if (isMistypedStudent) u.PersonType = PersonTypes.Staff;
+				u.Grade = null;
+				u.ProfileComplete = IntakeValidation.IsComplete(u); // stays true — exempt needs only a name
+				await cosmos.UpsertUserWithPartitionFallbackAsync(u);
+				applied++;
+			}
+		}
+
+		logger.LogInformation(
+			"[Maintenance] normalize-intake-exempt-users by {Actor}: {Candidates} candidate(s), apply={Apply}, applied={Applied}",
+			ctx.UserId, changes.Count, apply, applied);
+
+		return await HttpHelper.OkJson(req, new
+		{
+			dryRun = !apply,
+			scanned = users.Count,
+			candidates = changes.Count,
+			applied,
+			changes,
+		});
+	}
+
 	// ── Authorization helpers ───────────────────────────────────────────────
 
 	// A person is a platform super if their token level is SuperAdmin or any of
