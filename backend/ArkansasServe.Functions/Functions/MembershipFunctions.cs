@@ -283,7 +283,7 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 			Affiliation = profile?.Affiliation,
 			EmergencyContactName = profile?.EmergencyContactName,
 			EmergencyContactPhone = profile?.EmergencyContactPhone,
-			AdminLevel = AdminLevels.Student,
+			AdminLevel = AdminLevels.Member,
 			Status = "active",
 			SelfJoined = true,
 		};
@@ -343,7 +343,7 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden,
 				"This organization added you to their roster, so you can't remove yourself. Ask one of their administrators to remove you.");
 
-		if (!string.Equals(membership.AdminLevel, AdminLevels.Student, StringComparison.OrdinalIgnoreCase))
+		if (!string.Equals(membership.AdminLevel, AdminLevels.Member, StringComparison.OrdinalIgnoreCase))
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden,
 				"Roles above volunteer must be removed by an administrator.");
 

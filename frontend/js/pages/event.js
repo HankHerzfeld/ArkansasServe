@@ -12,10 +12,10 @@
   let groupAdminOrgs = [];
   // OrganizationAdmin+ in THIS event's org — the level required to delete a whole series.
   let canDeleteSeries = false;
-  // Strongest level across memberships (from /users/me). The TOKEN reads "Student" for a
-  // membership-based admin/super (Finding 9), so the Sign-Up button must not gate on it —
-  // that is why a SuperAdmin saw a stray "Sign Up" (#138). Null until resolved; falls back
-  // to the token level only if /users/me can't be reached.
+  // Strongest level across memberships (from /users/me). The TOKEN reads the base level
+  // "Member" for a membership-based admin/super (Finding 9), so the Sign-Up button must not
+  // gate on it — that is why a SuperAdmin saw a stray "Sign Up" (#138). Null until resolved;
+  // falls back to the token level only if /users/me can't be reached.
   let resolvedAdminLevel = null;
   const params = new URLSearchParams(location.search);
   const eventId = params.get('id');
@@ -31,8 +31,8 @@
   async function loadGroupAdminOrgs() {
     try {
       // NOT profile.adminLevel. `profile` here comes from Auth.requireAuth(), which is built
-      // from the TOKEN — and this org's SuperAdmin reads as "Student" there, because their
-      // role comes from a membership and a membership grants no token claim. That is Finding
+      // from the TOKEN — and this org's SuperAdmin reads as the base level "Member" there,
+      // because their role comes from a membership and a membership grants no token claim. That is Finding
       // 9's trap verbatim, and it silently made this whole feature a no-op for the person
       // most likely to use it. /users/me reports the strongest level across all memberships
       // (Finding 2), which is what scope.js asks and therefore what this must ask too.
@@ -249,7 +249,7 @@
         }
       });
       actions.appendChild(cancelBtn);
-    } else if (!displayOnly && (resolvedAdminLevel || profile.adminLevel) === 'Student' && (evt.status === 'Open')) {
+    } else if (!displayOnly && (resolvedAdminLevel || profile.adminLevel) === 'Member' && (evt.status === 'Open')) {
       const btn = elem('button', { class: 'btn btn-primary', text: 'Sign Up' });
       btn.addEventListener('click', () => openSignup(evt));
       actions.appendChild(btn);

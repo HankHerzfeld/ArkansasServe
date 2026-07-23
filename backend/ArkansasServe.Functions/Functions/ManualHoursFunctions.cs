@@ -175,7 +175,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 						OrganizationId = body.OrganizationId,
 						Email = email,
 						DisplayName = string.IsNullOrWhiteSpace(row.Name) ? email : row.Name.Trim(),
-						AdminLevel = AdminLevels.Student,
+						AdminLevel = AdminLevels.Member,
 						Status = "active",
 						IsManaged = true,
 						ManagedByUserId = ctx.UserId,

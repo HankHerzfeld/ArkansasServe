@@ -311,7 +311,7 @@
   // ── Role matrix ─────────────────────────────────────────────────────────
   // Server-side filtered (org + name/email search) and paginated. Each row is
   // one membership document; "Load more" follows the continuation token.
-  const LEVELS = ['Student', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
+  const LEVELS = ['Member', 'EventAdmin', 'GroupAdmin', 'OrganizationAdmin', 'SuperAdmin'];
   const MATRIX_PAGE_SIZE = 50;
   let matrixItems = [];
   let matrixToken = null;

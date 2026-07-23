@@ -189,9 +189,10 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 		// it is deliberately lower than delete-event/void-log, which are destructive and stay
 		// at OrganizationAdmin+.
 		//
-		// The previous check keyed on ctx.IsStudentLevel, which was wrong in both directions:
+		// The previous check keyed on ctx.IsMemberLevel (base admin level), which was wrong in
+		// both directions:
 		//   • a membership-based OrganizationAdmin carries no admin claim on their token, so
-		//     they read as Student and were refused on their own member's registration;
+		//     they read as base level and were refused on their own member's registration;
 		//   • a token-level admin from an UNRELATED org skipped the check entirely and could
 		//     cancel any registration in any org.
 		// Identity comes from BelongsTo, keyed on the canonical memberId (the caller's per-org

@@ -5,8 +5,9 @@
   let pendingEventId = null;
   let pendingOrgId   = null;
   // Strongest level across memberships (from /users/me). The Sign-Up button gates on this, not
-  // the token level, which reads "Student" for a membership-based admin/super (Finding 9) and
-  // put a stray "Sign Up" in front of a SuperAdmin (#138). Falls back to the token if unreachable.
+  // the token level, which reads the base level "Member" for a membership-based admin/super
+  // (Finding 9) and put a stray "Sign Up" in front of a SuperAdmin (#138). Falls back to the
+  // token if unreachable.
   let resolvedAdminLevel = null;
 
   Auth.requireAuth().then(async (p) => {
@@ -342,7 +343,7 @@
       card.appendChild(status);
       card.appendChild(document.createElement('br'));
 
-      if (!displayOnly && (resolvedAdminLevel || profile.adminLevel) === 'Student' && evt.status === 'Open') {
+      if (!displayOnly && (resolvedAdminLevel || profile.adminLevel) === 'Member' && evt.status === 'Open') {
         const structured = (evt.shifts && evt.shifts.length) || (evt.signupQuestions && evt.signupQuestions.length);
         if (structured) {
           // Shifts/questions are collected on the detail page.

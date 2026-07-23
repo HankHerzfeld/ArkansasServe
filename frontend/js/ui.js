@@ -273,11 +273,11 @@ const UI = (() => {
     if (currentUser) Auth.setResolvedLevelFromUser(currentUser);
     // While impersonating, the whole shell must reflect the TARGET, not the real
     // super — so the nav shows the target's name and only their tab set (a faithful
-    // "view as"), and the scope bar uses their level. Default to Student (minimal)
+    // "view as"), and the scope bar uses their level. Default to Member (minimal)
     // if the stored level is somehow missing, never the super's.
     const imp = Auth.getImpersonation && Auth.getImpersonation();
     const profile = imp
-      ? { name: imp.name, adminLevel: imp.adminLevel || 'Student', email: imp.email }
+      ? { name: imp.name, adminLevel: imp.adminLevel || 'Member', email: imp.email }
       : Auth.getProfile();
 
     const host = document.getElementById('app-header');

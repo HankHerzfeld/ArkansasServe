@@ -38,7 +38,7 @@
     if (Auth.isAuthenticated()) {
       const profile = Auth.getProfile();
       const destinations = {
-        Student:           '/dashboard.html',
+        Member:            '/dashboard.html',
         EventAdmin:        '/org-portal.html',
         GroupAdmin:        '/org-portal.html',
         OrganizationAdmin: '/admin-portal.html',

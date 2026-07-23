@@ -57,7 +57,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
 		var schoolId = query["schoolId"];
 
-		var effectiveSchoolId = ctx.IsStudentLevel ? ctx.TenantId : schoolId;
+		var effectiveSchoolId = ctx.IsMemberLevel ? ctx.TenantId : schoolId;
 
 		try
 		{
