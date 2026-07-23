@@ -24,6 +24,10 @@
     'arkansas-serve-root': 'Arkansas Serve',
     'demo-org-alpha': 'Demo Alpha (home)',
     'demo-org-beta': 'Demo Beta (secondary)',
+    'demo-org-faith': 'Demo Faith Org',
+    'demo-org-assign': 'Demo Assign-Only Org',
+    'demo-school': 'Demo High School',
+    'demo-jdc': 'Demo Juvenile Court',
   };
   const demoOrgLabel = (id) => DEMO_ORG_LABEL[id] || id || '';
 
