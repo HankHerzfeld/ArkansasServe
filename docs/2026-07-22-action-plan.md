@@ -129,7 +129,10 @@ Background-check → tag convergence (rewrites live User records); denominationa
 
 1. ✅ **The four additive schema fields** (§1a) — done 2026-07-22 (PR #129).
 2. ✅ **Registration identity converged to `memberId`** (§1c) — done 2026-07-22 (PR #130).
-3. **Residue cleanup + audit-doc corrections** (P4 #13) — still open.
+3. ✅ **Residue cleanup + audit-doc corrections** (P4 #13) — done 2026-07-22 (PR #131): dead
+   `IsReserved` deleted, `RootTenantId` converged to `TenantIds.Root`, toast extracted to
+   `UI.toast`, three stale audit rows corrected. Remaining non-code items: delete the unused
+   `CRAWLER_SERVICE_TOKEN` GH secret; data-fix event `bada594a`'s empty `organizationId`.
 
 ~~Gate before writing more registration code: the cross-org tag-gating decision (§1b).~~
 **Resolved 2026-07-22 — same-org-only (§1b); registration work is unblocked.**
