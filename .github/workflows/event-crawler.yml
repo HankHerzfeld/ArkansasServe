@@ -35,7 +35,8 @@ name: Daily Event Crawler
 #   To revoke: clear Crawler__SharedSecret on the Function App. That kills the path
 #   immediately and needs no redeploy.
 #
-# The old CRAWLER_SERVICE_TOKEN secret is unused as of this change and can be deleted.
+# The old CRAWLER_SERVICE_TOKEN secret has been removed (confirmed absent 2026-07-23); the
+# crawler now uses CRAWLER_SHARED_SECRET + CRAWLER_ENDPOINT_URL only (see Setup above).
 
 on:
   schedule:
