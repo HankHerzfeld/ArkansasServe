@@ -661,6 +661,60 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		}
 	}
 
+	// Canonicalise the CASING of every tenant's `type` (School / JDC / Organization). Legacy rows
+	// carry mixed casing — the platform-admin dropdown once wrote lowercase "organization" while
+	// seeded orgs were capitalised — and `arkansas-serve-root` still holds the lowercase form.
+	// Nothing branches on the casing (OrgTypes.IsOrganization compares case-insensitively), so this
+	// is a tidy-up, not a correctness fix; the create/update paths already normalise, so this only
+	// catches rows written before that. Idempotent, and touches ONLY casing of known types (an
+	// unknown value folds to itself and is skipped).
+	//
+	// DRY-RUN BY DEFAULT: reports what it would change and writes nothing unless ?apply=true. A
+	// data-normalisation tool should let you see the diff before it commits it.
+	[Function("NormalizeTenantTypes")]
+	public async Task<HttpResponseData> NormalizeTenantTypes(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/maintenance/normalize-tenant-types")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+		if (!await IsGlobalSuperAsync(ctx)) return await Forbid(req);
+
+		var apply = string.Equals(QueryValue(req, "apply"), "true", StringComparison.OrdinalIgnoreCase);
+
+		var tenants = await cosmos.GetAllTenantsAsync();
+		var changes = new List<object>();
+		var applied = 0;
+		foreach (var t in tenants)
+		{
+			var canonical = OrgTypes.Normalize(t.Type);
+			// Skip empty/null types and rows already canonical. An unknown value folds to itself,
+			// so it compares equal here and is left untouched.
+			if (string.IsNullOrEmpty(canonical) || string.Equals(canonical, t.Type, StringComparison.Ordinal))
+				continue;
+
+			changes.Add(new { id = t.Id, name = t.Name, from = t.Type, to = canonical });
+			if (apply)
+			{
+				t.Type = canonical;
+				await cosmos.UpdateTenantAsync(t);
+				applied++;
+			}
+		}
+
+		logger.LogInformation(
+			"[Maintenance] normalize-tenant-types by {Actor}: {Candidates} candidate(s), apply={Apply}, applied={Applied}",
+			ctx.UserId, changes.Count, apply, applied);
+
+		return await HttpHelper.OkJson(req, new
+		{
+			dryRun = !apply,
+			scanned = tenants.Count,
+			candidates = changes.Count,
+			applied,
+			changes,
+		});
+	}
+
 	// ── Authorization helpers ───────────────────────────────────────────────
 
 	// A person is a platform super if their token level is SuperAdmin or any of
