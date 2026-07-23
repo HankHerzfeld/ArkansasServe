@@ -187,7 +187,9 @@ public class UserFunctions(CosmosService cosmos, AuthConfig authConfig, ILogger<
 				if (Has("personType") && PersonTypes.IsValid(GetStr("personType"))) user.PersonType = GetStr("personType");
 
 				if (Has("phone")) user.Phone = GetStr("phone");
-				if (Has("grade")) user.Grade = GetStr("grade");
+				// Fold to a canonical K–12 grade (or null); an out-of-range value like "17" is
+				// dropped rather than stored, so it re-prompts instead of reading as complete.
+				if (Has("grade")) user.Grade = Grades.Normalize(GetStr("grade"));
 
 				// Type-specific intake fields (#23), applied only when present. Background-
 				// check fields are admin-managed and intentionally NOT accepted here.
