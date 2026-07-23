@@ -876,6 +876,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 			Description = "Seeded demo organization — home org for the demo personas. Safe to reset.",
 			ContactEmail = "demo.alpha@arkansasserve.local",
 			Status = "active",
+			IsDemo = true,
 		},
 		new Tenant
 		{
@@ -885,6 +886,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 			Description = "Seeded demo organization — secondary org for the cross-org demo persona. Safe to reset.",
 			ContactEmail = "demo.beta@arkansasserve.local",
 			Status = "active",
+			IsDemo = true,
 		},
 	];
 

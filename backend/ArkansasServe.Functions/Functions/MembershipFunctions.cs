@@ -91,8 +91,13 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 		// the two would have appeared as duplicates. That second org is gone (owner decision,
 		// 2026-07-21): there is now ONE Arkansas Serve, which is both the platform's own
 		// organization and its host partition.
+		// Demo organizations are test fixtures and must not surface to real users. A global super
+		// sees them (so they can find and manage the demo network); everyone else never does.
+		var isSuper = await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel);
+
 		var orgs = (await cosmos.GetAllTenantsAsync())
 			.Where(t => string.Equals(t.Status, "active", StringComparison.OrdinalIgnoreCase))
+			.Where(t => isSuper || !t.IsDemo)
 			.Select(t => new
 			{
 				id = t.Id,
@@ -124,6 +129,11 @@ public class MembershipFunctions(CosmosService cosmos, BlobService blob, AuthCon
 
 		var tenant = await cosmos.GetTenantAsync(id);
 		if (tenant == null || !string.Equals(tenant.Status, "active", StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Organization not found");
+
+		// A demo org is invisible to real users even by direct link — 404 unless the caller is a
+		// global super (who owns the demo network). Same treatment as the directory list above.
+		if (tenant.IsDemo && !await cosmos.IsGlobalSuperAsync(ctx.UserId, ctx.AdminLevel))
 			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Organization not found");
 
 		var memberships = await cosmos.GetMembershipsByExternalIdAsync(ctx.UserId);

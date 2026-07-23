@@ -92,6 +92,17 @@ public class Tenant : CosmosDocument
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "active";
 
+	/// <summary>
+	/// A seeded DEMO organization (test fixture), never a real one. Defaults to false, so every
+	/// existing tenant — and every real one created going forward — is not a demo. Demo tenants and
+	/// their events are filtered out of every non-SuperAdmin surface (org directory, org profile,
+	/// events list, event detail); a SuperAdmin sees them and can "Act as" a demo persona to test.
+	/// Set only by the demo-data seeder — no create/update endpoint accepts it — so a real org can
+	/// never accidentally become hidden.
+	/// </summary>
+	[JsonPropertyName("isDemo")]
+	public bool IsDemo { get; set; }
+
 	[JsonPropertyName("rbacEnabled")]
 	public bool RbacEnabled { get; set; } = true;
 

@@ -96,6 +96,14 @@ public class Event : CosmosDocument
 	[JsonPropertyName("archivedAt")]
 	public DateTime? ArchivedAt { get; set; }
 
+	// A DEMO event — one belonging to a demo organization (test fixture). Defaults to false, so
+	// every real event is unaffected. Denormalised from the owning tenant's IsDemo (stamped at
+	// create time and by the seeder) so the hot events-list query can exclude demo events without a
+	// per-event tenant lookup. Filtered out of every non-SuperAdmin surface (list, detail, search,
+	// maps); a SuperAdmin sees them. See Tenant.IsDemo.
+	[JsonPropertyName("isDemo")]
+	public bool IsDemo { get; set; }
+
 	[JsonPropertyName("eligibleSchoolIds")]
 	public List<string> EligibleSchoolIds { get; set; } = [];
 
