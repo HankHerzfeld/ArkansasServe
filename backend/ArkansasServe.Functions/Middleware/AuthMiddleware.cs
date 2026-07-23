@@ -124,7 +124,7 @@ public static class AuthMiddleware
             {
                 userContext.AdminLevel = AdminLevels.SuperAdmin;
                 if (string.IsNullOrWhiteSpace(userContext.TenantId))
-                    userContext.TenantId = "arkansas-serve-root";
+                    userContext.TenantId = TenantIds.Root;
             }
 
             // Reject only when the calling-client claim is present and clearly

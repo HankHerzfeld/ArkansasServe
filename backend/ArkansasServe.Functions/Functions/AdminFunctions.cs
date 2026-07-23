@@ -12,8 +12,6 @@ namespace ArkansasServe.Functions.Functions;
 
 public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryService categories, AuthConfig authConfig, ILogger<AdminFunctions> logger)
 {
-	private const string RootTenantId = "arkansas-serve-root";
-
 	// A proposed service-category label is a short noun phrase; this only stops an accidental
 	// over-long string from becoming a proposal (#10②).
 	private const int MaxCategoryLabelLength = 60;
@@ -123,7 +121,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		//
 		// The other historic guards (hidden from the directory, org page 404, join refused) are
 		// gone. Do not restore them; do not remove this one.
-		if (string.Equals(id, RootTenantId, StringComparison.OrdinalIgnoreCase))
+		if (string.Equals(id, TenantIds.Root, StringComparison.OrdinalIgnoreCase))
 			return await HttpHelper.Error(req, HttpStatusCode.BadRequest,
 				"Arkansas Serve cannot be deleted — it stores the platform's shared category vocabulary.");
 
@@ -681,7 +679,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 	{
 		var requested = QueryValue(req, "organizationId");
 		if (!string.IsNullOrWhiteSpace(requested)) return requested;
-		return string.IsNullOrWhiteSpace(ctx.TenantId) ? RootTenantId : ctx.TenantId;
+		return string.IsNullOrWhiteSpace(ctx.TenantId) ? TenantIds.Root : ctx.TenantId;
 	}
 
 	private static string? QueryValue(HttpRequestData req, string key)
@@ -745,7 +743,7 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 
 		// SuperAdmin — stays on the Arkansas Serve host org.
 		for (var i = 1; i <= 2; i++)
-			users.Add(Demo($"demo-superadmin-{i}", RootTenantId, AdminLevels.SuperAdmin, $"Demo SuperAdmin {i}"));
+			users.Add(Demo($"demo-superadmin-{i}", TenantIds.Root, AdminLevels.SuperAdmin, $"Demo SuperAdmin {i}"));
 
 		// Org / Group / Event admins — parented to the Alpha demo org.
 		foreach (var level in new[] { AdminLevels.OrganizationAdmin, AdminLevels.GroupAdmin, AdminLevels.EventAdmin })

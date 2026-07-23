@@ -34,10 +34,4 @@ public static class TenantIds
 	// Guardian reads additionally filter on `docType` so that isolation does not rest on
 	// partition naming alone.
 	public const string Guardians = "guardians";
-
-	// True for any partition that is not a joinable organization.
-	public static bool IsReserved(string? tenantId) =>
-		string.Equals(tenantId, Root, StringComparison.OrdinalIgnoreCase)
-		|| string.Equals(tenantId, Unassigned, StringComparison.OrdinalIgnoreCase)
-		|| string.Equals(tenantId, Guardians, StringComparison.OrdinalIgnoreCase);
 }

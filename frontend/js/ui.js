@@ -74,6 +74,20 @@ const UI = (() => {
     return node;
   }
 
+  // ── Toast ────────────────────────────────────────────────────────────────────
+  // One shared transient notice, previously copy-pasted identically into every page
+  // that needed it. textContent only (never innerHTML) so a message can carry no markup.
+  function toast(message, type = 'success') {
+    const node = document.createElement('div');
+    node.className = `alert alert-${type}`;
+    // bottom/right are safe-area aware: the page is edge-to-edge, so a flat 1.5rem would
+    // put the toast under the home indicator (portrait) or the notch (landscape).
+    node.style.cssText = 'position:fixed;bottom:max(1.5rem,env(safe-area-inset-bottom));right:max(1.5rem,env(safe-area-inset-right));z-index:999;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,.15);';
+    node.textContent = message;
+    document.body.appendChild(node);
+    setTimeout(() => node.remove(), 4000);
+  }
+
   // ── Notification bell + pane ────────────────────────────────────────────────
   // The pane shows the viewer's own notifications plus role-scoped admin items
   // (pending approvals, recent self-joins) each with a place to jump and act.
@@ -491,5 +505,5 @@ const UI = (() => {
     return null;
   }
 
-  return { setupHeader, mountScopeBar, renderScopeBar, isDisplayOnlyListing, listingAttribution };
+  return { setupHeader, mountScopeBar, renderScopeBar, isDisplayOnlyListing, listingAttribution, toast };
 })();
