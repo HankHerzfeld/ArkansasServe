@@ -74,6 +74,10 @@ public class AdminFunctions(CosmosService cosmos, BlobService blob, CategoryServ
 		// re-introduces the split casing that already divided live data.
 		body.Type = OrgTypes.Normalize(body.Type);
 
+		// A tenant a demo persona creates (impersonation is demo-only) is itself demo, so it and
+		// everything under it stay hidden from real users. IsDemo is never taken from the body.
+		body.IsDemo = ctx.IsImpersonating;
+
 		// #10②: an unknown service category is no longer rejected — it is stored and recorded as
 		// a pending proposal (below, after creation). Only an over-long label is refused.
 		body.ServiceCategory = string.IsNullOrWhiteSpace(body.ServiceCategory) ? null : body.ServiceCategory.Trim();

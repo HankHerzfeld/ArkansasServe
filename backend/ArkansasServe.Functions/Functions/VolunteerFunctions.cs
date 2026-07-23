@@ -103,6 +103,8 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 			Status = "active",
 			IsManaged = true,
 			ManagedByUserId = ctx.UserId,
+			// A volunteer a demo admin adds (impersonation is demo-only) is a demo user.
+			IsDemoUser = ctx.IsImpersonating,
 		};
 		volunteer.ProfileComplete = IntakeValidation.IsComplete(volunteer);
 

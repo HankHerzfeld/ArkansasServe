@@ -314,9 +314,9 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		var org = await cosmos.GetTenantAsync(orgId);
 
 		// An event inherits its org's demo-ness, denormalized so the events-list query can filter
-		// without a per-event tenant lookup. A demo persona creating an event under a demo org (via
-		// "Act as") therefore produces a demo event that stays hidden from real users.
-		body.IsDemo = org?.IsDemo ?? false;
+		// without a per-event tenant lookup. Also demo when a demo persona is acting (impersonation
+		// is demo-only) — so any event a demo persona creates stays hidden from real users.
+		body.IsDemo = (org?.IsDemo ?? false) || ctx.IsImpersonating;
 
 		// Denormalize the org name, as service logs already do (ServiceLogFunctions). It was
 		// never set here, so every event created through the app carried

@@ -291,6 +291,7 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 				Status = "active",
 				IsManaged = true,
 				ManagedByUserId = ctx.UserId,
+				IsDemoUser = ctx.IsImpersonating,
 			};
 			member.ProfileComplete = IntakeValidation.IsComplete(member);
 			member = await cosmos.CreateManagedVolunteerAsync(member);
@@ -317,6 +318,7 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 			Status = "Registered",
 			ShiftId = shiftId,
 			CheckedInAt = DateTime.UtcNow,
+			IsDemo = evt.IsDemo || ctx.IsImpersonating,
 		});
 
 		// Move counters to reflect the extra body. Capacity is deliberately not enforced — a

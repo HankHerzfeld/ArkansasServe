@@ -109,6 +109,9 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			Status = "Registered",
 			ShiftId = evt.Shifts.Count > 0 ? body.ShiftId : null,
 			Answers = answers,
+			// Demo if the event is demo, or if a demo persona is acting (impersonation is
+			// demo-only) — so a demo registration stays hidden with the rest of the demo network.
+			IsDemo = evt.IsDemo || ctx.IsImpersonating,
 		};
 
 		var created = await cosmos.CreateRegistrationAsync(reg);
@@ -538,6 +541,7 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 					Status = "Registered",
 					ShiftId = shiftId,
 					Answers = answersByMember[user.Id],
+					IsDemo = evt.IsDemo || ctx.IsImpersonating,
 				}));
 			}
 		}

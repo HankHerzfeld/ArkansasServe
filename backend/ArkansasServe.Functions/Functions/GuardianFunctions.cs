@@ -60,6 +60,10 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 		var email = body.Email.Trim().ToLowerInvariant();
 		var guardian = await cosmos.GetGuardianByEmailAsync(email) ?? new Guardian { Email = email };
 
+		// A guardian linked to a demo minor, or created by a demo persona (impersonation is
+		// demo-only), is a demo guardian. Never un-set an already-demo flag.
+		guardian.IsDemo = guardian.IsDemo || minor.IsDemoUser || ctx.IsImpersonating;
+
 		// Fill only what is missing, so an org adding a second child cannot overwrite the name
 		// or phone the guardian already gave another org.
 		if (string.IsNullOrWhiteSpace(guardian.Name)  && !string.IsNullOrWhiteSpace(body.Name))  guardian.Name = body.Name!.Trim();

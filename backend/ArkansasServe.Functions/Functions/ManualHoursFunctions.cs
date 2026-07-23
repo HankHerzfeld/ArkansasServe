@@ -120,6 +120,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 				ReviewedByUserId = ctx.UserId,
 				ReviewedAt = DateTime.UtcNow,
 				ReviewNote = body.Note,
+				IsDemo = ctx.IsImpersonating,
 			};
 			created.Add(await cosmos.CreateServiceLogAsync(log));
 		}
@@ -179,6 +180,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 						Status = "active",
 						IsManaged = true,
 						ManagedByUserId = ctx.UserId,
+						IsDemoUser = ctx.IsImpersonating,
 					});
 
 				var eventId = string.Empty;
@@ -202,6 +204,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 							Status = "Completed",
 							Visibility = "org",
 							CreatedByUserId = ctx.UserId,
+							IsDemo = ctx.IsImpersonating,
 						});
 						eventId = newEvt.Id;
 						eventTitle = newEvt.Title;
@@ -224,6 +227,7 @@ public class ManualHoursFunctions(CosmosService cosmos, AuthConfig authConfig, I
 					SubmittedByUserId = ctx.UserId,
 					ReviewedByUserId = ctx.UserId,
 					ReviewedAt = DateTime.UtcNow,
+					IsDemo = ctx.IsImpersonating,
 				});
 
 				imported++;
