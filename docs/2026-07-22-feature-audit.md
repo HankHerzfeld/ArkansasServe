@@ -5,8 +5,10 @@ actually stands. Source of truth for shipped work remains `roadmap.md` — this 
 snapshot, and `roadmap.md` was refreshed the same day to match the two staleness catches below._
 
 **Status legend:** ✅ shipped & live · 🟡 partial (staged, more remains) · 🔵 designed, not built ·
-⛔ blocked (external input). Counts: **33 shipped · 6 partial · 6 planned · 4 blocked** (item-level;
-sub-stages roll up).
+⛔ blocked (external input). Counts: **35 shipped · 7 partial · 3 planned · 4 blocked** (item-level;
+sub-stages roll up). _Updated 2026-07-22: BlobService O2 and the PUT full-replace landmine were
+already fixed in code (→shipped); the small-residue row's code cleanup landed on branch
+`chore/p4-residue-cleanup` (→partial, data/settings items remain)._
 
 ## Method — live-verified, not doc-trusted
 
@@ -51,7 +53,7 @@ Organizations directory, `guardian.html` redeem flow, terms/privacy, offline che
 |---|---|---|---|---|---|---|
 | 🟡 Daily event crawler (shared-secret auth) | 2026-07-15 re-enabled | Draft events, review queue, publish | `CrawlerFunctions.cs`, `admin-backend.html` | `Crawler__SharedSecret`, GH `CRAWLER_SHARED_SECRET`, `isCrawled` | Set per-source API keys | **Imports 0 every run** — keyed sources skip silently; queue empty in prod (owner action). Delete unused `CRAWLER_SERVICE_TOKEN` |
 | ✅ Cosmos/Blob key rotation + firewall | 2026-07-14 | All data access, Bicep | infra / app settings | `CosmosDb__ConnectionString`, `BlobStorage__ConnectionString` | Real isolation needs EP1 + VNet + Private Endpoint (~$150+/mo) — open cost decision | Partial by necessity (Y1 no stable IPs); admits any Azure-resident caller (key-gated) |
-| 🔵 BlobService ctor throw (triage O2) | open | Every EventFunctions route, local-dev | `BlobService.cs` | `BlobStorage__ConnectionString` | Wrap ctor parse in try/catch → log-and-degrade | **Live bug:** a malformed conn-string 500s every EventFunctions route before auth |
+| ✅ BlobService ctor throw (triage O2) | resolved (commit `443f47b`) | Every EventFunctions route, local-dev | `BlobService.cs` | `BlobStorage__ConnectionString` | None | ~~malformed conn-string 500s every route~~ — ctor now wraps the parse in try/catch and degrades to a null client (verified 2026-07-22) |
 | ✅ Deploy tooling (wait-for-deploy) | PR #109/#111/#125 | Every deploy verification | `scripts/wait-for-deploy.sh` | `AZURE_STATIC_WEB_APPS_API_TOKEN` | None; never hand-roll `until` loops | Gotcha: `gh run list --commit` needs the full 40-char SHA or returns empty + exit 0 |
 | ⛔ Infra drift / Bicep non-authoritative | Deferred 2026-07-15 | Firewall, rotated keys, containers, admin domain | `infra/main.bicep`, `main.prod.bicepparam` | `publicNetworkAccess`, `listConnectionStrings()` | Reconcile Bicep to live state before any apply (owner-deferred) | **An apply today reverts firewall, clobbers rotated key, re-opens admin bootstrap**; what-if never ran clean (OIDC) |
 
@@ -99,7 +101,7 @@ Organizations directory, `guardian.html` redeem flow, terms/privacy, offline che
 | ✅ Org taxonomy L1 (org style) | pre-existing | orgTypes scope filter, approvals | `admin-backend.html`, `OrgTypes.cs` | `Tenant.Type` (School / JDC / Organization) | Re-type real schools; build a demo School tenant | 2 tenants still hold lowercase `"organization"` (root, Test O3) — harmless data fix |
 | ✅ Org taxonomy L2 — service categories | 2026-07-15 | Org + event classification, #70 search | `admin-backend.html`, `org-portal.html`, `taxonomy.js`, `ServiceCategories.cs` | `Tenant.ServiceCategory`, `Event.Category`, one shared vocab | None (self-define is its own row) | none — full canonical list verified live |
 | ✅ Faith as an attribute | 2026-07-15 | Directory filters, categories | `Tenant.cs`, directory | `Tenant.FaithBased` (orthogonal) | Denominational `faithAffiliation` deferred — needs an agreed list | none; open Q: keep faith-as-attribute? (non-blocking) |
-| ✅ Self-define category w/ approval | PR #93 (+scrub #95) | Category queue, aliasing, facets | `admin-backend.html`, `categories.js`, `CategoryService.cs`, `CategoryFunctions.cs` | `Tenant.CategoryVocabulary` (on root), `GET /api/categories`, `POST …/categories/scrub` | None | Housekeeping: 2 test proposals sit in the live queue — resolve or reject |
+| ✅ Self-define category w/ approval | PR #93 (+scrub #95) | Category queue, aliasing, facets | `admin-backend.html`, `categories.js`, `CategoryService.cs`, `CategoryFunctions.cs` | `Tenant.CategoryVocabulary` (on root), `GET /api/categories`, `POST …/categories/scrub` | None | ~~2 test proposals in the live queue~~ — queue is empty live (verified 2026-07-22) |
 | 🟡 Per-org user tags / credentials | Model+API 2026-07-15; admin UI + reg gate PR #98 | Registration gate, check-in gate, group reg | `admin-backend.html`, `UserTag.cs`, `TagGate.cs` | `Tenant.UserTags`, `User.Tags`, `Enforcement` (Advisory/BlockReg/BlockCheckIn), `ExpiresAt` | **Cross-org gating decision unresolved** — pick: tag-on-registration / managed record / same-org-only | Same-org gate + admin UI live; cross-org path **blocks permanently** until the model is chosen |
 | ✅ User assignment under org/EventAdmin | PR #94, 2026-07-18 | Notifications fan-out, dashboard overseers | `admin-backend.html`, `org-portal.html`, `AssignmentFunctions.cs` | `User.AssignedAdmins[]`, `notifyOnHours`, `notifyOnApproval` | None | none — assign → log → fan-out → direct-message verified end-to-end |
 | ✅ Notification delete / clear | PR #96, 2026-07-18 | Notification pane | `ui.js`, `NotificationFunctions.cs` | `DELETE /api/notifications/{id}`, `DELETE /api/notifications` | None | none |
@@ -136,8 +138,8 @@ Organizations directory, `guardian.html` redeem flow, terms/privacy, offline che
 | Item | Dates | Touches | Pages | Variables | Future work | Bugs / incomplete |
 |---|---|---|---|---|---|---|
 | 🔵 SuperAdmin sees "Sign Up" on events | logged | Registration, token-vs-membership | `event.js` | token adminLevel vs membership | Design call: button is honest; if registration FAILS, fix the failure (likely Finding-9 family) — confirm mechanism first | Open — verify display vs registration-failure |
-| 🔵 `PUT /events/{id}` full-replace landmine | logged 2026-07-19 | Any partial event update / API scripting | `EventFunctions.cs` | omitted fields zeroed (incl. `startDateTime`→0001-01-01) | Make update fields nullable + copy only supplied, or reject partial bodies | Not biting (org-portal sends full payload); landmine for the next caller |
-| 🔵 Small residue (cheap cleanup) | logged | Various | `TenantIds.cs`, ~5 frontend files, toast helpers | `TenantIds.IsReserved` (dead), `RootTenantId` (dup ×5), toast helper (×5) | Converge `RootTenantId`, delete dead `IsReserved`, extract one toast helper | Event `bada594a` has empty `organizationId` (data fix) |
+| ✅ `PUT /events/{id}` full-replace landmine | resolved (commit `bbb7d0c`) | Any partial event update / API scripting | `EventFunctions.cs` | omitted fields zeroed (incl. `startDateTime`→0001-01-01) | None | ~~omitted fields zeroed~~ — `UpdateEvent` now merges: only fields the caller SENT are touched (present-key check on the raw body), verified 2026-07-22 |
+| 🟡 Small residue (cheap cleanup) | code done (branch `chore/p4-residue-cleanup`) | Various | `TenantIds.cs`, 4 frontend files, toast helpers | `TenantIds.IsReserved` (dead), `RootTenantId` (dup), toast helper | ✅ `IsReserved` deleted; `RootTenantId` converged to `TenantIds.Root`; toast extracted to `UI.toast`. Remaining (non-code): delete unused `CRAWLER_SERVICE_TOKEN` GH secret; **data fix** — event `bada594a` empty `organizationId` (needs a Cosmos write, DB console is read-only) | Code residue cleared; two data/settings items remain |
 
 ---
 
