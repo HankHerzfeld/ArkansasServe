@@ -130,16 +130,20 @@ public static class DemoData
 		var staff = Person("demo-staff-1", OrgAlpha, AdminLevels.Member, "Dana", "Staff", PersonTypes.Staff, AdultDob);
 		Add(staff);
 
-		// Adult volunteer — complete (has emergency contacts).
+		// Adult volunteer — complete (has emergency contacts). Assigned to an EventAdmin (#13
+		// oversight) so the assignment/notify flow is represented.
 		var adult = Person("demo-adult-complete", OrgAlpha, AdminLevels.Member, "Avery", "Adult", PersonTypes.AdultVolunteer, AdultDob);
 		adult.EmergencyContactName = "Sam Kin"; adult.EmergencyContactPhone = "501-555-0101"; adult.Affiliation = "Acme Co.";
+		adult.AssignedAdmins.Add(new UserAssignment { AdminId = "demo-eventadmin-1" });
 		Add(adult);
 
 		// Adult volunteer — INCOMPLETE (missing emergency contacts → intake wizard).
 		Add(Person("demo-adult-incomplete", OrgAlpha, AdminLevels.Member, "Ingrid", "Incomplete", PersonTypes.AdultVolunteer, AdultDob));
 
 		// Student minor — guardian consent GRANTED (see guardian doc). Complete profile.
+		// Assigned to the OrganizationAdmin (#13 oversight).
 		var minorGranted = Minor("demo-minor-granted", OrgAlpha, "Mira", "Granted", grade: "10");
+		minorGranted.AssignedAdmins.Add(new UserAssignment { AdminId = "demo-organizationadmin-1" });
 		Add(minorGranted);
 
 		// Student minor — guardian consent WITHDRAWN (guardian doc revokes it).

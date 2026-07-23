@@ -761,6 +761,18 @@
 
   document.getElementById('btn-refresh-proposals')?.addEventListener('click', () => loadCategoryProposals());
 
+  // Admin levels highest-to-lowest, so the roster reads top-down by authority. Students and
+  // volunteers (the base level) group together at the bottom, admins above.
+  const DEMO_LEVELS = [
+    { key: 'SuperAdmin', label: 'Super Admins' },
+    { key: 'OrganizationAdmin', label: 'Organization Admins' },
+    { key: 'GroupAdmin', label: 'Group Admins' },
+    { key: 'EventAdmin', label: 'Event Admins' },
+    { key: 'Member', label: 'Members (students & volunteers)' },
+  ];
+  const DEMO_PERSON_TYPE = { Student: 'Student', AdultVolunteer: 'Adult volunteer', Staff: 'Staff' };
+  const DEMO_COLS = 6;
+
   async function loadDemoUsers() {
     const users = await Api.AdminBackend.demoUsers();
     const table = document.getElementById('demo-users-table');
@@ -777,23 +789,54 @@
     table.style.display = 'table';
     empty.style.display = 'none';
 
-    users.forEach(user => {
-      const tr = document.createElement('tr');
-      tr.appendChild(createTextCell(user.displayName || ''));
-      tr.appendChild(createTextCell(user.demoUserType || user.adminLevel || ''));
-      tr.appendChild(createTextCell(demoOrgLabel(user.tenantId)));
-      tr.appendChild(createTextCell(user.email || ''));
+    // Resolve an "assigned to" adminId back to a readable name (#13 oversight).
+    const nameById = {};
+    users.forEach(u => { nameById[u.id] = u.displayName || u.email || u.id; });
 
-      const actTd = document.createElement('td');
-      const actBtn = document.createElement('button');
-      actBtn.className = 'btn btn-secondary btn-sm';
-      actBtn.textContent = 'Act as';
-      actBtn.addEventListener('click', () => startImpersonation(user));
-      actTd.appendChild(actBtn);
-      tr.appendChild(actTd);
+    const rendered = new Set();
 
-      tbody.appendChild(tr);
-    });
+    const renderGroup = (label, group) => {
+      if (!group.length) return;
+      const headRow = document.createElement('tr');
+      const headCell = document.createElement('th');
+      headCell.colSpan = DEMO_COLS;
+      headCell.textContent = `${label} (${group.length})`;
+      headCell.style.cssText = 'text-align:left;background:var(--gray-100);color:var(--green);font-size:.85rem;';
+      headRow.appendChild(headCell);
+      tbody.appendChild(headRow);
+
+      // Within a level, group by organization then name so memberships read together.
+      group
+        .slice()
+        .sort((a, b) => (demoOrgLabel(a.tenantId) + ' ' + (a.displayName || ''))
+          .localeCompare(demoOrgLabel(b.tenantId) + ' ' + (b.displayName || '')))
+        .forEach(user => {
+          rendered.add(user.id);
+          const tr = document.createElement('tr');
+          tr.appendChild(createTextCell(user.displayName || ''));
+          tr.appendChild(createTextCell(DEMO_PERSON_TYPE[user.personType] || '-'));
+          tr.appendChild(createTextCell(demoOrgLabel(user.tenantId)));
+          const assigned = (user.assignedAdmins || []).map(a => nameById[a.adminId] || a.adminId);
+          tr.appendChild(createTextCell(assigned.length ? assigned.join(', ') : '-'));
+          tr.appendChild(createTextCell(user.email || ''));
+
+          const actTd = document.createElement('td');
+          const actBtn = document.createElement('button');
+          actBtn.className = 'btn btn-secondary btn-sm';
+          actBtn.textContent = 'Act as';
+          actBtn.addEventListener('click', () => startImpersonation(user));
+          actTd.appendChild(actBtn);
+          tr.appendChild(actTd);
+
+          tbody.appendChild(tr);
+        });
+    };
+
+    DEMO_LEVELS.forEach(level =>
+      renderGroup(level.label, users.filter(u => (u.adminLevel || 'Member') === level.key)));
+
+    // Anything with an unrecognised level still shows, rather than silently vanishing.
+    renderGroup('Other', users.filter(u => !rendered.has(u.id)));
   }
 
   // #26 Phase 1: start an "act as" session for a demo user.
