@@ -323,28 +323,22 @@ public partial class CosmosService
     }
 
     /// <summary>
-    /// True when this person already holds a live registration for the event.
+    /// True when this person already holds a live registration for the event, keyed solely on the
+    /// canonical <paramref name="memberId"/> (their per-org User doc id).
     ///
-    /// Matches on EITHER key: <paramref name="memberId"/> (the canonical per-org User doc id)
-    /// or <paramref name="externalId"/> (the Entra id, on rows written before memberId
-    /// existed). The legacy arm is what lets this run correctly against un-backfilled rows;
-    /// it can be dropped once every registration carries a memberId.
-    ///
-    /// An EMPTY externalId never matches. That is the point, not an oversight: User.ExternalId
-    /// defaults to string.Empty, so a managed volunteer's registration carries UserId "" —
-    /// comparing on it would make every accountless registrant collide on the same key and the
-    /// first would block all the rest.
+    /// The legacy externalId arm was dropped 2026-07-22, once every registration carried a
+    /// memberId (prod verified: zero rows without one) and the sign-up path was made to require a
+    /// resolved member before writing. An EMPTY memberId never matches — a managed volunteer's
+    /// UserId defaults to "" and keying on that would collide every accountless registrant onto
+    /// one key, blocking all but the first.
     /// </summary>
-    public async Task<bool> IsAlreadyRegisteredAsync(string eventId, string externalId, string? memberId = null, CancellationToken cancellationToken = default)
+    public async Task<bool> IsAlreadyRegisteredAsync(string eventId, string memberId, CancellationToken cancellationToken = default)
     {
-        var hasExternal = !string.IsNullOrEmpty(externalId);
-        var hasMember = !string.IsNullOrEmpty(memberId);
-        if (!hasExternal && !hasMember) return false;
+        if (string.IsNullOrEmpty(memberId)) return false;
 
         var query = Registrations.GetItemLinqQueryable<EventRegistration>(requestOptions:
             new QueryRequestOptions { PartitionKey = new PartitionKey(eventId) })
-            .Where(r => r.Status != "Cancelled"
-                && ((hasMember && r.MemberId == memberId) || (hasExternal && r.UserId == externalId)))
+            .Where(r => r.Status != "Cancelled" && r.MemberId == memberId)
             .ToFeedIterator();
 
         while (query.HasMoreResults)

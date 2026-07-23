@@ -103,7 +103,7 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 			var regs = await cosmos.GetRegistrationsByEventAsync(id);
 			var self = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
 			var mine = regs.FirstOrDefault(r =>
-				r.BelongsTo(ctx.UserId, self?.Id)
+				r.BelongsTo(self?.Id)
 				&& !string.Equals(r.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
 			payload["myRegistration"] = mine == null ? null : JsonSerializer.SerializeToNode(mine, opts);
 		}

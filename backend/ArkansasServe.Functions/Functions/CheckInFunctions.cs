@@ -217,12 +217,12 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 		if (!codeOk)
 			return await HttpHelper.Error(req, HttpStatusCode.Forbidden, "This check-in code is not valid or has expired. Ask an event admin for the current code.");
 
-		// The caller may only check in THEIR OWN registration. Match on the canonical memberId
-		// or legacy externalId, exactly like CancelRegistration's ownership check.
+		// The caller may only check in THEIR OWN registration. Match on the canonical memberId,
+		// exactly like CancelRegistration's ownership check.
 		var self = await cosmos.GetUserByExternalIdAsync(ctx.UserId, ctx.TenantId);
 		var reg = (await cosmos.GetRegistrationsByEventAsync(eventId))
 			.FirstOrDefault(r => !string.Equals(r.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)
-				&& r.BelongsTo(ctx.UserId, self?.Id));
+				&& r.BelongsTo(self?.Id));
 		if (reg == null)
 			return await HttpHelper.Error(req, HttpStatusCode.Conflict, "You're not registered for this event, so there's nothing to check in. Ask an event admin to add you as a walk-in.");
 
@@ -299,7 +299,7 @@ public class CheckInFunctions(CosmosService cosmos, AuthConfig authConfig, ILogg
 		// Already on the roster? Just make sure they're checked in rather than double-registering.
 		var existing = (await cosmos.GetRegistrationsByEventAsync(eventId))
 			.FirstOrDefault(r => !string.Equals(r.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)
-				&& r.BelongsTo(member.ExternalId, member.Id));
+				&& r.BelongsTo(member.Id));
 		if (existing != null)
 		{
 			if (existing.CheckedInAt == null) { existing.CheckedInAt = DateTime.UtcNow; await cosmos.UpdateRegistrationAsync(existing); }
