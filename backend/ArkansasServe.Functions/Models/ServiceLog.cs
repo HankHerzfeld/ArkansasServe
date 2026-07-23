@@ -48,4 +48,8 @@ public class ServiceLog : CosmosDocument
 
 	[JsonPropertyName("verificationDocUrl")]
 	public string? VerificationDocUrl { get; set; }
+
+	// A DEMO service log (belongs to a demo persona/event). Defaults false. Reset bookkeeping only.
+	[JsonPropertyName("isDemo")]
+	public bool IsDemo { get; set; }
 }

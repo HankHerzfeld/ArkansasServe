@@ -276,4 +276,129 @@ public static class DemoData
 			// which (with RequireGuardianConsent on School/JDC) blocks their registration.
 		];
 	}
+
+	// ── Activity: events / registrations / service logs ───────────────────────────
+	// Seeded under the demo tenants (IsDemo throughout) so a SuperAdmin can exercise every flow
+	// end-to-end by "Act as"-ing a persona. Stable ids so a reset (delete-all-demo then recreate)
+	// is idempotent and the registrations/logs below can reference the events deterministically.
+	public const string EvtHosted   = "demo-event-hosted";   // registerable, shifts + a question
+	public const string EvtExternal = "demo-event-external"; // one-sided external listing
+	public const string EvtSeries1  = "demo-event-series-1"; // two occurrences share a seriesId
+	public const string EvtSeries2  = "demo-event-series-2";
+	public const string EvtGuardian = "demo-event-guardian"; // School event needing fresh guardian approval
+	public const string EvtTagGated = "demo-event-tag";      // Faith org — its blockReg/blockCheckIn tags apply
+	public const string EvtPast     = "demo-event-past";     // archived, for post-event hour logging
+	public const string EvtFull     = "demo-event-full";     // maxSlots reached
+
+	private const string ShiftMorning = "demo-shift-morning";
+	private const string ShiftAfternoon = "demo-shift-afternoon";
+
+	private const string NameAlpha  = "Demo Community Organization (Alpha)";
+	private const string NameFaith  = "Demo Faith Organization";
+	private const string NameSchool = "Demo High School";
+
+	public static List<Event> BuildEvents()
+	{
+		var now = DateTime.UtcNow;
+		Event Ev(string id, string org, string orgName, string title, DateTime start, double hours, string category) => new()
+		{
+			Id = id, OrganizationId = org, OrganizationName = orgName, Title = title,
+			Description = "Seeded demo event — safe to reset.", Location = "1400 W Markham St, Little Rock, AR 72201",
+			Zip = "72201", City = "Little Rock", County = "Pulaski",
+			StartDateTime = start, EndDateTime = start.AddHours(3), HoursValue = hours,
+			Status = "Open", Category = category, IsDemo = true, CreatedByUserId = "demo-organizationadmin-1",
+		};
+
+		var hosted = Ev(EvtHosted, OrgAlpha, NameAlpha, "Demo Food Drive (hosted, shifts)", now.AddDays(7), 3, "Food & Nutrition");
+		hosted.MaxSlots = 10;
+		hosted.Shifts =
+		[
+			new EventShift { Id = ShiftMorning, Label = "Morning", StartDateTime = now.AddDays(7), EndDateTime = now.AddDays(7).AddHours(3), Capacity = 5 },
+			new EventShift { Id = ShiftAfternoon, Label = "Afternoon", StartDateTime = now.AddDays(7).AddHours(3), EndDateTime = now.AddDays(7).AddHours(6), Capacity = 5 },
+		];
+		hosted.SignupQuestions = [new SignupQuestion { Id = "demo-q-shirt", Label = "T-shirt size?", Type = "choice", Required = true, Options = ["S", "M", "L"] }];
+
+		var external = Ev(EvtExternal, OrgAlpha, NameAlpha, "Demo External Listing", now.AddDays(10), 0, "Community Development");
+		external.ListingType = "external";
+		external.HostOrganizationName = "Outside Partner Inc.";
+		external.HostOrganizationUrl = "https://example.org/volunteer";
+
+		var series1 = Ev(EvtSeries1, OrgAlpha, NameAlpha, "Demo Weekly Tutoring (occurrence 1)", now.AddDays(3), 2, "Youth & Education");
+		series1.SeriesId = "demo-series-weekly";
+		var series2 = Ev(EvtSeries2, OrgAlpha, NameAlpha, "Demo Weekly Tutoring (occurrence 2)", now.AddDays(10), 2, "Youth & Education");
+		series2.SeriesId = "demo-series-weekly";
+
+		var guardian = Ev(EvtGuardian, School, NameSchool, "Demo Overnight Trip (fresh guardian approval)", now.AddDays(14), 5, "Youth & Education");
+		guardian.RequiresFreshGuardianApproval = true;
+
+		var tagGated = Ev(EvtTagGated, OrgFaith, NameFaith, "Demo Faith Service (tag-gated)", now.AddDays(8), 2, "Worship & Congregational Life");
+
+		var past = Ev(EvtPast, OrgAlpha, NameAlpha, "Demo Past Event (archived)", now.AddDays(-10), 4, "Food & Nutrition");
+		past.Status = "Archived";
+		past.ArchivedAt = now.AddDays(-9);
+
+		var full = Ev(EvtFull, OrgAlpha, NameAlpha, "Demo Full Event (no spots left)", now.AddDays(5), 2, "Health & Wellness");
+		full.MaxSlots = 2;
+		full.CurrentSlots = 2;
+
+		return [hosted, external, series1, series2, guardian, tagGated, past, full];
+	}
+
+	public static List<EventRegistration> BuildRegistrations()
+	{
+		var now = DateTime.UtcNow;
+		EventRegistration Reg(string id, string eventId, string memberId, string extId, string name, string regOrg, string eventOrg, string status) => new()
+		{
+			Id = id, EventId = eventId, MemberId = memberId, UserId = extId, StudentName = name,
+			SchoolId = regOrg, OrganizationId = eventOrg, Status = status, IsDemo = true,
+		};
+
+		var registered = Reg("demo-reg-registered", EvtHosted, "demo-minor-granted", "demo-minor-granted", "Mira Granted", OrgAlpha, OrgAlpha, "Registered");
+		registered.ShiftId = ShiftMorning;
+
+		// Cross-org: a Beta person signs up for an Alpha event (registrant org ≠ event org).
+		var crossOrg = Reg("demo-reg-crossorg", EvtHosted, "demo-crossorg-1-beta", "demo-crossorg-1", "Demo Cross-Org 1 (admin in Beta)", OrgBeta, OrgAlpha, "Registered");
+		crossOrg.ShiftId = ShiftAfternoon;
+
+		var cancelled = Reg("demo-reg-cancelled", EvtHosted, "demo-student-1", "demo-student-1", "Demo Student 1 (self-joined)", OrgAlpha, OrgAlpha, "Cancelled");
+
+		// A group registration (two people signed up together by an admin).
+		var group1 = Reg("demo-reg-group-1", EvtHosted, "demo-bg-cleared", "demo-bg-cleared", "Cleo Cleared", OrgAlpha, OrgAlpha, "Registered");
+		group1.ShiftId = ShiftMorning;
+		var group2 = Reg("demo-reg-group-2", EvtHosted, "demo-adult-complete", "demo-adult-complete", "Avery Adult", OrgAlpha, OrgAlpha, "Registered");
+		group2.ShiftId = ShiftMorning;
+
+		// Checked-in at the past event — enables the service log below.
+		var checkedIn = Reg("demo-reg-checkedin", EvtPast, "demo-minor-granted", "demo-minor-granted", "Mira Granted", OrgAlpha, OrgAlpha, "Registered");
+		checkedIn.CheckedInAt = now.AddDays(-10);
+
+		// Two registrations that fill the full event.
+		var full1 = Reg("demo-reg-full-1", EvtFull, "demo-adult-complete", "demo-adult-complete", "Avery Adult", OrgAlpha, OrgAlpha, "Registered");
+		var full2 = Reg("demo-reg-full-2", EvtFull, "demo-bg-pending", "demo-bg-pending", "Peta Pending", OrgAlpha, OrgAlpha, "Registered");
+
+		return [registered, crossOrg, cancelled, group1, group2, checkedIn, full1, full2];
+	}
+
+	public static List<ServiceLog> BuildServiceLogs()
+	{
+		var now = DateTime.UtcNow;
+		ServiceLog Log(string id, string studentId, string studentName, string school, string org, string orgName, string eventId, string eventTitle, double hours, string status) => new()
+		{
+			Id = id, StudentId = studentId, StudentName = studentName, SchoolId = school,
+			OrganizationId = org, OrganizationName = orgName, EventId = eventId, EventTitle = eventTitle,
+			HoursLogged = hours, ServiceDate = now.AddDays(-10), Status = status,
+			SubmittedByUserId = studentId, IsDemo = true,
+		};
+
+		// Pending: credited to the demo School, from a review-required org (Faith), so it sits in
+		// the school's approval queue.
+		var pending = Log("demo-log-pending", "demo-school-minor-ok", "Sol SchoolOk", School, OrgFaith, NameFaith, EvtPast, "Demo Past Event (archived)", 4, "Pending");
+
+		// Approved: already reviewed by the school admin.
+		var approved = Log("demo-log-approved", "demo-school-minor-ok", "Sol SchoolOk", School, OrgAlpha, NameAlpha, EvtPast, "Demo Past Event (archived)", 2, "Approved");
+		approved.ReviewedByUserId = "demo-school-admin";
+		approved.ReviewedAt = now.AddDays(-1);
+
+		return [pending, approved];
+	}
 }

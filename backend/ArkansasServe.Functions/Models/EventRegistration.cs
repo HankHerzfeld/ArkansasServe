@@ -48,6 +48,11 @@ public class EventRegistration : CosmosDocument
 	[JsonPropertyName("status")]
 	public string Status { get; set; } = "Registered";
 
+	// A DEMO registration (belongs to a demo event/persona). Defaults false. Reset bookkeeping
+	// only — lets the demo-data reset find and clear its registrations. See Event.IsDemo.
+	[JsonPropertyName("isDemo")]
+	public bool IsDemo { get; set; }
+
 	[JsonPropertyName("checkedInAt")]
 	public DateTime? CheckedInAt { get; set; }
 
