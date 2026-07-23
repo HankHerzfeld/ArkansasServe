@@ -117,6 +117,39 @@ public partial class CosmosService
         return res.Resource;
     }
 
+    // ── Demo guardians (reset bookkeeping) ────────────────────────────────────────
+    // The demo-data reset deletes and recreates the demo guardians alongside the demo users/orgs.
+    // Scoped to the guardians partition and the docType discriminator, then filtered to IsDemo.
+    public async Task<List<Guardian>> GetAllDemoGuardiansAsync(CancellationToken cancellationToken = default)
+    {
+        var query = Users.GetItemQueryIterator<Guardian>(
+            new QueryDefinition($"SELECT * FROM c WHERE c.docType = @t AND c.isDemo = true")
+                .WithParameter("@t", GuardianDocType.Value),
+            requestOptions: new QueryRequestOptions { PartitionKey = GuardianPartition });
+
+        var results = new List<Guardian>();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(cancellationToken));
+        return results;
+    }
+
+    public async Task DeleteAllDemoGuardiansAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var g in await GetAllDemoGuardiansAsync(cancellationToken))
+            await Users.DeleteItemAsync<Guardian>(g.Id, GuardianPartition, cancellationToken: cancellationToken);
+    }
+
+    public async Task<List<Guardian>> UpsertDemoGuardiansAsync(IEnumerable<Guardian> guardians, CancellationToken cancellationToken = default)
+    {
+        var created = new List<Guardian>();
+        foreach (var g in guardians)
+        {
+            g.IsDemo = true;
+            created.Add(await UpsertGuardianAsync(g, cancellationToken));
+        }
+        return created;
+    }
+
     /// <summary>
     /// A member's non-cancelled registrations. Registrations are partitioned by /eventId, so
     /// this is necessarily CROSS-PARTITION — acceptable because it runs only on consent
