@@ -45,7 +45,7 @@
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/styles/*", "/js/*", "/icons/*"]
+    "exclude": ["/api/*", "/styles/*", "/js/*", "/icons/*", "/assets/*"]
   },
   "responseOverrides": {
     "404": {

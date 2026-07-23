@@ -7,8 +7,10 @@
   <meta name="description" content="Track and manage community service hours for Arkansas schools, organizations, and volunteers.">
   <link rel="stylesheet" href="/styles/main.css">
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#2d6a4f">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <meta name="theme-color" content="#008b48">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/brand/favicon/favicon-16.png">
+  <link rel="apple-touch-icon" href="/assets/brand/favicon/apple-touch-180.png">
 </head>
 <body>
 
@@ -18,7 +20,7 @@
      the landing page deliberately doesn't load the whole app shell — so the toggle
      markup is written out here and wired up in index.js. -->
 <nav class="navbar">
-  <a class="navbar-brand" href="/">Arkansas Serve</a>
+  <a class="navbar-brand" href="/"><img src="/assets/brand/logo/mark-white.png" alt="" width="30" height="30">Arkansas Serve</a>
   <button class="nav-toggle" type="button" id="btn-nav-toggle"
           aria-label="Open menu" aria-expanded="false" aria-controls="nav-menu">
     <span class="nav-toggle-bar"></span>
@@ -39,6 +41,10 @@
 
 <!-- Hero -->
 <section class="hero">
+  <div class="hero-lockup">
+    <img src="/assets/brand/logo/mark-white.png" alt="" width="54" height="54">
+    <span class="wordmark">Arkansas Serve</span>
+  </div>
   <h1>Community Service,<br>Simplified for Arkansas</h1>
   <p>Arkansas Serve connects students and juveniles with volunteer opportunities — and gives schools the tools to track and verify every hour.</p>
   <button class="btn btn-secondary" id="btn-hero-login" style="font-size:1rem;padding:.7rem 2rem;">

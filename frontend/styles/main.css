@@ -1,9 +1,20 @@
 /* main.css — Arkansas Serve shared styles */
 
+/* Brand typeface (Plus Jakarta Sans). The site CSP whitelists fonts.googleapis.com /
+   fonts.gstatic.com, so this loads from Google Fonts; the local system stack below is
+   the fallback while it arrives and if it's ever blocked. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 :root {
-  --green:       #2d6a4f;
-  --green-light: #40916c;
-  --green-pale:  #d8f3dc;
+  /* Brand palette (from the Arkansas Serve design kit).
+     --green / --green-dark are the two logo greens; gradients run green → green-dark.
+     --green-light is a lighter tint kept for borders and subtle accents. */
+  --green:       #008b48;
+  --green-dark:  #00733c;
+  --green-light: #2ea86a;
+  --green-pale:  #e2f4ea;
+  --gold:        #d3b487;   /* brand accent (dividers, highlights) */
+  --ink:         #14251c;   /* brand near-black for text */
   --red:         #c1121f;
   --red-pale:    #fde8e9;
   --amber:       #e07b00;
@@ -11,12 +22,12 @@
   --gray-100:    #f8f9fa;
   --gray-200:    #e9ecef;
   --gray-400:    #ced4da;
-  --gray-600:    #6c757d;
+  --gray-600:    #5b6b63;   /* brand muted green-gray */
   --gray-800:    #343a40;
   --white:       #ffffff;
   --radius:      8px;
   --shadow:      0 1px 4px rgba(0,0,0,.12);
-  --font:        'Segoe UI', system-ui, sans-serif;
+  --font:        'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,7 +35,7 @@
 body {
   font-family: var(--font);
   background: var(--gray-100);
-  color: var(--gray-800);
+  color: var(--ink);
   line-height: 1.55;
 }
 
@@ -60,7 +71,10 @@ body {
 /* Hamburger + backdrop exist only at the phone breakpoint. */
 .nav-toggle { display: none; }
 .nav-backdrop { display: none; }
-.navbar-brand { font-size: 1.2rem; font-weight: 700; text-decoration: none; color: inherit; white-space: nowrap; }
+/* Brand lockup: white handshake mark + wordmark. The mark is the transparent
+   white variant so it reads on the green bar. */
+.navbar-brand { display: inline-flex; align-items: center; gap: .55rem; font-size: 1.2rem; font-weight: 800; letter-spacing: .01em; text-decoration: none; color: inherit; white-space: nowrap; }
+.navbar-brand img { height: 30px; width: auto; display: block; }
 /* margin-left:auto keeps these right-aligned now that they sit inside .nav-menu
    (which is flex:1) rather than being a direct child of the space-between navbar. */
 .navbar-links { display: flex; gap: 1.5rem; align-items: center; list-style: none; margin-left: auto; }
@@ -148,6 +162,9 @@ body {
 }
 .page-header { margin-bottom: 1.5rem; }
 .page-header h1 { font-size: 1.6rem; color: var(--green); }
+/* Short gold rule under interior headings — the left-aligned counterpart to the
+   hero's centred one, so the design kit's accent carries through the app. */
+.page-header h1::after { content: ""; display: block; width: 56px; height: 4px; background: var(--gold); border-radius: 2px; margin-top: .5rem; }
 .page-header p  { color: var(--gray-600); margin-top: .3rem; }
 
 /* ── Cards ──────────────────────────────────────────────────────────────── */
@@ -380,7 +397,7 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
 
 /* ── Landing page ────────────────────────────────────────────────────────── */
 .hero {
-  background: linear-gradient(135deg, var(--green) 0%, var(--green-light) 100%);
+  background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
   color: #fff;
   /* The gradient deliberately still bleeds to the physical edge — only the padding is
      inset, so the colour runs under the notch while the words stay clear of it. That
@@ -390,6 +407,14 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
   text-align: center;
 }
 .hero h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+/* Signature gold rule under the headline — the design kit's recurring accent. */
+.hero h1::after { content: ""; display: block; width: 90px; height: 5px; background: var(--gold); border-radius: 3px; margin: 1.25rem auto 0; }
+
+/* Brand lockup at the top of the hero: white handshake mark + wordmark, the kit's
+   on-green treatment (the green wordmark asset is for light backgrounds only). */
+.hero-lockup { display: inline-flex; align-items: center; gap: .7rem; margin-bottom: 1.5rem; }
+.hero-lockup img { height: 54px; width: auto; display: block; }
+.hero-lockup .wordmark { font-weight: 800; font-size: 1.7rem; letter-spacing: .02em; line-height: 1; color: #fff; }
 .hero p  { font-size: 1.15rem; opacity: .9; max-width: 560px; margin: 0 auto 2rem; }
 .hero-cards {
   display: flex;

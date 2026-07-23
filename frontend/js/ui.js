@@ -177,7 +177,9 @@ const UI = (() => {
     const rank = Auth.adminRank(profile?.adminLevel || Auth.getAdminLevel());
     const nav = el('nav', { class: 'navbar' });
 
-    nav.appendChild(el('a', { class: 'navbar-brand', href: '/', text: 'Arkansas Serve' }));
+    nav.appendChild(el('a', { class: 'navbar-brand', href: '/' },
+      el('img', { src: '/assets/brand/logo/mark-white.png', alt: '', width: '30', height: '30' }),
+      'Arkansas Serve'));
 
     const tabs = el('div', { class: 'nav-tabs' });
     TABS.forEach(t => {
