@@ -31,6 +31,23 @@ public static class IntakeValidation
 	public static bool IsMinor(User user) =>
 		TryComputeAge(user.DateOfBirth, DateTime.UtcNow) is int age && age < MinorAgeThreshold;
 
+	/// <summary>
+	/// A platform operator or staff member is NOT a volunteer: the student/adult intake it
+	/// collects (grade, emergency contacts, guardian consent) does not apply to them. An exempt
+	/// person's profile is complete as soon as they have a name — without this a SuperAdmin's
+	/// dashboard re-opens the intake wizard whenever their profile lacks volunteer fields
+	/// (dashboard.js gates on ProfileComplete), which is noise for someone who will never log
+	/// hours as a minor.
+	///
+	/// Scoped narrowly on purpose — a platform SuperAdmin, or the explicit Staff person type.
+	/// Org-level admins (EventAdmin/GroupAdmin/OrganizationAdmin) are NOT exempt, because such a
+	/// person may well be a student who also administers, and minor status is DOB-derived
+	/// elsewhere — so this can never be used to skip guardian consent for an actual minor.
+	/// </summary>
+	public static bool IsIntakeExempt(User user) =>
+		string.Equals(user.AdminLevel, AdminLevels.SuperAdmin, StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(user.PersonType, PersonTypes.Staff, StringComparison.OrdinalIgnoreCase);
+
 	// Returns the human-readable labels of the required fields still missing.
 	// An empty list means the profile is complete.
 	public static IReadOnlyList<string> MissingRequiredFields(User user)
@@ -39,6 +56,10 @@ public static class IntakeValidation
 
 		if (string.IsNullOrWhiteSpace(user.FirstName)) missing.Add("first name");
 		if (string.IsNullOrWhiteSpace(user.LastName)) missing.Add("last name");
+
+		// Platform operators / staff are not volunteers — only a name is required of them.
+		// Everything below is volunteer intake and does not apply. (See IsIntakeExempt.)
+		if (IsIntakeExempt(user)) return missing;
 
 		if (!PersonTypes.IsValid(user.PersonType))
 		{
@@ -63,7 +84,9 @@ public static class IntakeValidation
 		// Person-type-specific (non-safety) fields.
 		if (string.Equals(user.PersonType, PersonTypes.Student, StringComparison.OrdinalIgnoreCase))
 		{
-			if (string.IsNullOrWhiteSpace(user.Grade)) missing.Add("grade");
+			// A valid K–12 grade — not merely non-empty, so a nonsensical "17" no longer reads
+			// as a complete profile (it is re-prompted like a missing grade).
+			if (!Grades.IsValid(user.Grade)) missing.Add("grade");
 		}
 		else // AdultVolunteer / Staff
 		{

@@ -133,9 +133,28 @@
       </select>
     </div>
 
-    <!-- Student-only field -->
+    <!-- Student-only field. Shown only once "I am a… Student" is chosen, so student status is
+         established before a grade is asked for. A constrained K–12 list, not free text, so an
+         out-of-range value (e.g. 17) can't be entered. -->
     <div id="intake-student" style="display:none;">
-      <div class="form-group"><label for="intake-grade">Grade</label><input id="intake-grade" type="text" placeholder="e.g. 10"></div>
+      <div class="form-group"><label for="intake-grade">Grade</label>
+        <select id="intake-grade">
+          <option value="">Select…</option>
+          <option value="K">K</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12</option>
+        </select>
+      </div>
     </div>
 
     <!-- Adult-volunteer fields -->
