@@ -95,6 +95,14 @@ public class Guardian
 
 	[JsonPropertyName("updatedAt")]
 	public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+	/// <summary>
+	/// A seeded DEMO guardian (test fixture), never a real one. Defaults to false. Only used for
+	/// reset bookkeeping — the demo-data reset deletes and recreates guardians with this set. Real
+	/// guardians are never demo, and no endpoint accepts this flag.
+	/// </summary>
+	[JsonPropertyName("isDemo")]
+	public bool IsDemo { get; set; }
 }
 
 public static class GuardianDocType
