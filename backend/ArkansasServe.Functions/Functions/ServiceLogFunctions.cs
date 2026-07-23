@@ -35,6 +35,9 @@ public class ServiceLogFunctions(CosmosService cosmos, EmailService email, AuthC
 		body.OrganizationId = orgId;
 		body.SubmittedByUserId = ctx.UserId;
 		body.Status = "Pending";
+		// A log created by a demo persona (impersonation is demo-only) is demo — kept out of real
+		// approval queues and hidden with the rest of the network.
+		body.IsDemo = ctx.IsImpersonating;
 
 		// Load the event once — its title denormalizes onto the log, and its category feeds the
 		// school's approval policy below (#12).
