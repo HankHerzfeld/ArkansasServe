@@ -181,14 +181,22 @@ public static class DemoData
 
 		// ── Faith org: admin + tag states (against the faith org's tags) ──────────
 		Add(U("demo-faith-admin", OrgFaith, AdminLevels.OrganizationAdmin, "Demo Faith Admin"));
+		// The three waiver personas ALSO hold the org's blockRegistration "Safety training" tag,
+		// so they can actually register — leaving the WAIVER as the only variable at check-in.
+		// Without it the blockRegistration gate stops them first and the check-in waiver flow
+		// (#19) is unreachable from a clean reset.
+		//
 		// Waiver COMPLETE (not expired) — passes the blockCheckIn gate.
-		Add(WithTag(Person("demo-faith-waiver-ok", OrgFaith, AdminLevels.Member, "Willa", "WaiverOk", PersonTypes.AdultVolunteer, AdultDob),
+		Add(WithTag(WithTag(Person("demo-faith-waiver-ok", OrgFaith, AdminLevels.Member, "Willa", "WaiverOk", PersonTypes.AdultVolunteer, AdultDob),
+			TagTraining, TagStatuses.Complete, expiresInDays: null),
 			TagWaiver, TagStatuses.Complete, expiresInDays: 200));
-		// Waiver PENDING — blocked at check-in until completed.
-		Add(WithTag(Person("demo-faith-waiver-pending", OrgFaith, AdminLevels.Member, "Pax", "WaiverPending", PersonTypes.AdultVolunteer, AdultDob),
+		// Waiver PENDING — registers fine, then blocked at check-in until they sign it.
+		Add(WithTag(WithTag(Person("demo-faith-waiver-pending", OrgFaith, AdminLevels.Member, "Pax", "WaiverPending", PersonTypes.AdultVolunteer, AdultDob),
+			TagTraining, TagStatuses.Complete, expiresInDays: null),
 			TagWaiver, TagStatuses.Pending, expiresInDays: null));
 		// Waiver EXPIRED — completed but past expiry, so it no longer reads as current.
-		Add(WithTag(Person("demo-faith-waiver-expired", OrgFaith, AdminLevels.Member, "Xena", "WaiverExpired", PersonTypes.AdultVolunteer, AdultDob),
+		Add(WithTag(WithTag(Person("demo-faith-waiver-expired", OrgFaith, AdminLevels.Member, "Xena", "WaiverExpired", PersonTypes.AdultVolunteer, AdultDob),
+			TagTraining, TagStatuses.Complete, expiresInDays: null),
 			TagWaiver, TagStatuses.Complete, expiresInDays: -5));
 		// Missing the blockRegistration training tag entirely — blocked at sign-up.
 		Add(Person("demo-faith-untrained", OrgFaith, AdminLevels.Member, "Uma", "Untrained", PersonTypes.AdultVolunteer, AdultDob));
