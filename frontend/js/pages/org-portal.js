@@ -400,6 +400,9 @@
     document.getElementById('evt-external').checked   = evt?.listingType === 'external';
     document.getElementById('evt-host-name').value    = evt?.hostOrganizationName || '';
     document.getElementById('evt-host-url').value     = evt?.hostOrganizationUrl || '';
+    // #20 carve-out toggle — reflects only the explicit flag; an event that qualifies purely by
+    // running overnight shows unticked, because the organizer did not tick it.
+    document.getElementById('evt-guardian-approval').checked = evt?.requiresFreshGuardianApproval === true;
     syncListingType();
 
     const groupSel = document.getElementById('evt-group');
@@ -452,6 +455,8 @@
     document.getElementById('evt-slots-group').style.display     = external ? 'none' : '';
     document.getElementById('evt-shifts-group').style.display    = external ? 'none' : '';
     document.getElementById('evt-questions-group').style.display = external ? 'none' : '';
+    // Guardian approval gates SIGN-UP, which an informational listing has none of.
+    document.getElementById('evt-guardian-approval-group').style.display = external ? 'none' : '';
     // Recurrence shows only when CREATING a registerable event: it is create-only already
     // (hidden on edit), and an informational listing never repeats a sign-up series.
     const isCreate = !document.getElementById('edit-event-id').value;
@@ -755,6 +760,10 @@
       photoBlobName: document.getElementById('evt-photo-blob').value || null,
       shifts:          external ? [] : readShifts(),
       signupQuestions: external ? [] : readQuestions(),
+      // #20 carve-out. Forced off on an informational listing, which has no sign-up to gate.
+      // The overnight/multi-day trigger is computed server-side from the dates, so it needs
+      // nothing here — this flag only carries the organizer's explicit choice.
+      requiresFreshGuardianApproval: external ? false : document.getElementById('evt-guardian-approval').checked,
     };
     const editId = document.getElementById('edit-event-id').value;
     const orgId  = document.getElementById('edit-org-id').value;
