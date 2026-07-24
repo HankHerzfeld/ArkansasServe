@@ -191,6 +191,130 @@ public class VolunteerFunctions(CosmosService cosmos, AuthConfig authConfig, ILo
 		return await HttpHelper.OkJson(req, saved.Tags);
 	}
 
+	// ── GET /api/manage/me/tags?organizationId= ───────────────────────────────
+
+	/// <summary>
+	/// The caller's own credential requirements in one org: what the org asks for, where they
+	/// stand, and whether they can satisfy it themselves right now (#19).
+	///
+	/// Exists so a refusal can become a PROMPT. Being told "still needed: Liability waiver. Ask an
+	/// admin" is a dead end for the one credential the volunteer is actually able to provide; the
+	/// page uses this to offer signing it on the spot instead.
+	/// </summary>
+	[Function("GetMyTags")]
+	public async Task<HttpResponseData> GetMyTags(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/me/tags")] HttpRequestData req)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+		var orgId = string.IsNullOrWhiteSpace(query["organizationId"]) ? ctx.TenantId : query["organizationId"]!;
+
+		var me = await cosmos.GetUserByExternalIdAsync(ctx.UserId, orgId);
+		var tenant = await cosmos.GetTenantAsync(orgId);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Organization not found");
+
+		var now = DateTime.UtcNow;
+		var isMinor = me != null && IntakeValidation.IsMinor(me);
+
+		var tags = tenant.UserTags
+			.Where(t => string.Equals(t.Status, "active", StringComparison.OrdinalIgnoreCase))
+			.Select(t =>
+			{
+				var state = me?.Tags.FirstOrDefault(s => string.Equals(s.TagId, t.Id, StringComparison.OrdinalIgnoreCase));
+				var current = state?.IsCurrentAt(now) == true;
+				return (object)new
+				{
+					id = t.Id,
+					label = t.Label,
+					description = t.Description,
+					enforcement = t.Enforcement,
+					evidence = t.Evidence,
+					status = state?.Status ?? TagStatuses.None,
+					completedAt = state?.CompletedAt,
+					expiresAt = state?.ExpiresAt,
+					current,
+					// Everything the client needs to decide whether to offer a "sign it now" prompt,
+					// rather than re-deriving the policy in JavaScript.
+					canSelfAttest = !current && t.SelfAttestable && !isMinor
+						&& string.Equals(t.Evidence, TagEvidence.Attestation, StringComparison.OrdinalIgnoreCase),
+				};
+			})
+			.ToList();
+
+		return await HttpHelper.OkJson(req, new { organizationId = orgId, isMinor, tags });
+	}
+
+	// ── POST /api/manage/me/tags/{tagId}/attest?organizationId= ───────────────
+
+	/// <summary>
+	/// The volunteer signs one of their org's credentials themselves (#19).
+	///
+	/// Narrow on purpose — three independent guards, because the general rule stays "tags are
+	/// admin-attested": the tag must be opted in (<see cref="TenantUserTag.SelfAttestable"/>), it
+	/// must be an attestation rather than a document (a file cannot be produced by ticking a box),
+	/// and the signer must be an adult. A MINOR cannot sign for themselves; theirs is recorded by
+	/// an admin, so refusing here strands nobody.
+	/// </summary>
+	[Function("AttestMyTag")]
+	public async Task<HttpResponseData> AttestMyTag(
+		[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/me/tags/{tagId}/attest")] HttpRequestData req,
+		string tagId)
+	{
+		var (ctx, authError) = await AuthMiddleware.ValidateRequest(req, authConfig, logger);
+		if (ctx == null) return authError!;
+
+		var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+		var orgId = string.IsNullOrWhiteSpace(query["organizationId"]) ? ctx.TenantId : query["organizationId"]!;
+
+		var tenant = await cosmos.GetTenantAsync(orgId);
+		if (tenant == null) return await HttpHelper.Error(req, HttpStatusCode.NotFound, "Organization not found");
+
+		var definition = tenant.UserTags.FirstOrDefault(t => string.Equals(t.Id, tagId, StringComparison.OrdinalIgnoreCase));
+		if (definition == null || !string.Equals(definition.Status, "active", StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "This organization has no such credential");
+
+		if (!definition.SelfAttestable)
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden,
+				"This credential is recorded by an organization admin, not by you.");
+
+		if (!string.Equals(definition.Evidence, TagEvidence.Attestation, StringComparison.OrdinalIgnoreCase))
+			return await HttpHelper.Error(req, HttpStatusCode.Conflict,
+				"This credential needs a document to be uploaded, so it can't be agreed to here.");
+
+		var me = await cosmos.GetUserByExternalIdAsync(ctx.UserId, orgId);
+		if (me == null)
+			return await HttpHelper.Error(req, HttpStatusCode.NotFound, "You are not a member of this organization");
+
+		if (IntakeValidation.IsMinor(me))
+			return await HttpHelper.Error(req, HttpStatusCode.Forbidden,
+				"A parent or guardian has to agree to this on your behalf. Ask an admin to record it.");
+
+		var now = DateTime.UtcNow;
+		var state = me.Tags.FirstOrDefault(t => string.Equals(t.TagId, tagId, StringComparison.OrdinalIgnoreCase));
+		if (state == null) { state = new UserTagState { TagId = definition.Id }; me.Tags.Add(state); }
+
+		state.Status = TagStatuses.Complete;
+		state.CompletedAt = now;
+		// Same rule as the admin path: stamped from the policy in force NOW and then left alone,
+		// so changing the org's expiry later cannot retroactively expire someone.
+		state.ExpiresAt = definition.ExpiresAfterDays.HasValue ? now.AddDays(definition.ExpiresAfterDays.Value) : null;
+		state.Note = "Agreed to online by the volunteer";
+
+		await cosmos.UpsertUserWithPartitionFallbackAsync(me);
+		logger.LogInformation("[UserTags] {Actor} self-attested \"{Label}\" in org {OrgId}", ctx.UserId, definition.Label, orgId);
+
+		return await HttpHelper.OkJson(req, new
+		{
+			tagId = definition.Id,
+			label = definition.Label,
+			status = state.Status,
+			completedAt = state.CompletedAt,
+			expiresAt = state.ExpiresAt,
+		});
+	}
+
 	private sealed record CreateVolunteerRequest(
 		string? DisplayName, string? FirstName, string? LastName, string? PersonType,
 		string Email, string? OrganizationId, List<string>? GroupIds);

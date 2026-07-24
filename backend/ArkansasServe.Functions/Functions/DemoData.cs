@@ -56,7 +56,9 @@ public static class DemoData
 			Branding = new TenantBranding { PrimaryColor = "#6d28d9" }, // purple — exercises palette override
 			UserTags =
 			[
-				new TenantUserTag { Id = TagWaiver, Label = "Liability waiver", Enforcement = TagEnforcement.BlockCheckIn, ExpiresAfterDays = 365, Status = "active" },
+				// Self-attestable: a waiver is signed by the volunteer, so it can be agreed to at
+				// check-in (#19). The other two stay admin-recorded.
+				new TenantUserTag { Id = TagWaiver, Label = "Liability waiver", Enforcement = TagEnforcement.BlockCheckIn, ExpiresAfterDays = 365, Status = "active", SelfAttestable = true },
 				new TenantUserTag { Id = TagBgCheck, Label = "Background check", Enforcement = TagEnforcement.Advisory, Status = "active" },
 				new TenantUserTag { Id = TagTraining, Label = "Safety training", Enforcement = TagEnforcement.BlockRegistration, Status = "active" },
 			],
