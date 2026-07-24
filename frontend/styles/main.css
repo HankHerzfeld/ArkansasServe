@@ -380,8 +380,34 @@ table.table.dataTable > thead > tr > th.dt-orderable-desc { cursor: pointer; }
   );
   overflow-y: auto;
 }
+/* A form-heavy dialog — the event editor — is unreadable squeezed into 520px on a
+   desktop window: nearly every row wraps and the whole form becomes one long scroll.
+   Opt-in rather than raising the base width, so small confirm dialogs stay small.
+   min() means the phone is unaffected: 92vw dominates well before 900px. */
+.modal-lg { width: min(92vw, 900px); }
+
 .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; }
 .modal-footer { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.25rem; }
+
+/* ── Form grids ──────────────────────────────────────────────────────────────
+   Multi-column form rows that COLLAPSE to one column on a phone.
+   These were inline `display:grid` styles, which no media query can reach — so on a
+   375px screen a two-up row gave each input ~160px and a three-up row ~100px, which
+   is where the event form stopped being readable on a phone. Same columns as before
+   on a wide screen; one column below the phone breakpoint. */
+.form-grid-2,
+.form-grid-3,
+.form-grid-zip { display: grid; gap: 1rem; }
+.form-grid-2   { grid-template-columns: 1fr 1fr; }
+.form-grid-3   { grid-template-columns: 1fr 1fr 1fr; }
+/* ZIP is narrower than the town/county it sits beside. */
+.form-grid-zip { grid-template-columns: 1fr 1.4fr 1.4fr; }
+
+@media (max-width: 640px) {
+  .form-grid-2,
+  .form-grid-3,
+  .form-grid-zip { grid-template-columns: 1fr; }
+}
 
 /* ── Loading spinner ─────────────────────────────────────────────────────── */
 .spinner {

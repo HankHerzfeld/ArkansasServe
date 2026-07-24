@@ -69,7 +69,9 @@
 
 <!-- Create / Edit Event Modal -->
 <div class="modal-overlay" id="event-modal">
-  <div class="modal" style="max-width:600px;">
+  <!-- modal-lg: this form has ~20 fields, and at the base 520px nearly every row wrapped on a
+       desktop window. Width is min(92vw, 900px), so the phone layout is unchanged. -->
+  <div class="modal modal-lg">
     <div class="modal-title" id="event-modal-title">New Event</div>
     <input type="hidden" id="edit-event-id">
     <input type="hidden" id="edit-org-id">
@@ -88,7 +90,7 @@
     </div>
     <!-- External-listing attribution. Shown only when the Informational toggle is on. -->
     <div id="evt-host-fields" style="display:none;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+      <div class="form-grid-2">
         <div class="form-group">
           <label for="evt-host-name">Hosted by (organization) *</label>
           <input type="text" id="evt-host-name" placeholder="e.g. Little Rock Food Bank">
@@ -103,7 +105,7 @@
       <label>Description</label>
       <textarea id="evt-description" placeholder="What will volunteers be doing?"></textarea>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+    <div class="form-grid-2">
       <div class="form-group">
         <label>Start Date & Time *</label>
         <input type="datetime-local" id="evt-start">
@@ -128,7 +130,7 @@
       <label>Location *</label>
       <input type="text" id="evt-location" placeholder="123 Main St, Little Rock, AR">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1.4fr 1.4fr;gap:1rem;">
+    <div class="form-grid-zip">
       <div class="form-group">
         <label for="evt-zip">ZIP</label>
         <input type="text" id="evt-zip" inputmode="numeric" maxlength="10" placeholder="72201">
@@ -147,7 +149,7 @@
          case the server keeps whatever the bundled ZIP dataset resolved (#16). -->
     <input type="hidden" id="evt-latitude">
     <input type="hidden" id="evt-longitude">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+    <div class="form-grid-3">
       <div class="form-group" id="evt-hours-group">
         <label>Hours Credit</label>
         <input type="number" id="evt-hours" min="0.5" step="0.5" value="2">
@@ -184,7 +186,7 @@
       <label for="evt-external-url">External info link (optional)</label>
       <input type="url" id="evt-external-url" placeholder="https://…">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+    <div class="form-grid-3">
       <div class="form-group">
         <label for="evt-contact-name">Contact name (optional)</label>
         <input type="text" id="evt-contact-name">
