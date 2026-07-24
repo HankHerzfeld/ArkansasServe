@@ -33,7 +33,11 @@
     }
   });
 
+  // The code most recently tried, so the waiver prompt can retry check-in without a re-scan.
+  let lastCode = null;
+
   async function attempt(code) {
+    lastCode = code;
     show(loading());
     hide(resultBox());
     hide(manualBox());
@@ -41,10 +45,84 @@
       const res = await Api.CheckIn.self(eventId, { organizationId: orgId, code });
       showSuccess(res);
     } catch (err) {
+      // A missing waiver is the ONE refusal here the volunteer can clear themselves (#19), and
+      // they are standing at the venue — so offer to sign it now rather than sending them to
+      // find an admin. Everything else (expired code, not registered) falls through unchanged.
+      const signable = await selfSignableBlockers();
+      if (signable.length) { showWaiverPrompt(signable, err.message); return; }
+
       // The server messages are specific and worth surfacing verbatim: expired code, not
       // registered, missing a required tag. Offer manual re-entry so a stale link can be retried.
       showError(err.message || 'Could not check you in.', { allowManual: true });
     }
+  }
+
+  // Credentials this org lets the volunteer sign themselves that are currently blocking check-in.
+  // Any failure here returns nothing: a lookup problem must not turn one refusal into a worse one.
+  async function selfSignableBlockers() {
+    try {
+      const data = await Api.Tags.mine(orgId);
+      return (data.tags || []).filter(t => t.canSelfAttest && !t.current
+        && String(t.enforcement || '').toLowerCase() === 'blockcheckin');
+    } catch {
+      return [];
+    }
+  }
+
+  function showWaiverPrompt(tags, originalMessage) {
+    hide(loading());
+    hide(manualBox());
+    const box = resultBox();
+    box.innerHTML = '';
+    box.appendChild(el('div', { style: 'font-size:2.5rem;line-height:1;margin-bottom:.5rem;', text: '📝' }));
+    box.appendChild(el('div', { class: 'modal-title', style: 'margin-bottom:.25rem;', text: 'One thing first' }));
+    box.appendChild(el('p', {
+      style: 'color:var(--gray-600);',
+      text: originalMessage || 'This organization needs your agreement before you can check in.',
+    }));
+
+    // One tick per credential — a single "I agree to everything" box would be a worse record of
+    // what was actually agreed to.
+    const rows = tags.map((t) => {
+      const row = el('div', { style: 'text-align:left;border:1px solid var(--gray-200);border-radius:var(--radius);padding:.6rem;margin:.6rem 0;' });
+      const label = el('label', { style: 'display:flex;gap:.5rem;align-items:flex-start;font-weight:600;cursor:pointer;' });
+      const cb = el('input', { type: 'checkbox' });
+      label.appendChild(cb);
+      label.appendChild(el('span', { text: `I have read and agree to the ${t.label}.` }));
+      row.appendChild(label);
+      if (t.description) {
+        row.appendChild(el('div', { style: 'font-size:.85rem;color:var(--gray-600);margin-top:.3rem;', text: t.description }));
+      }
+      box.appendChild(row);
+      return { cb, tag: t };
+    });
+
+    const status = el('div', { style: 'font-size:.85rem;color:var(--red);margin-top:.5rem;display:none;' });
+    const go = el('button', { class: 'btn btn-primary', style: 'margin-top:.5rem;', text: 'Agree and check in' });
+    go.addEventListener('click', async () => {
+      if (!rows.every(r => r.cb.checked)) {
+        status.style.display = 'block';
+        status.textContent = 'Please tick each box to agree.';
+        return;
+      }
+      go.disabled = true;
+      go.textContent = 'Saving…';
+      status.style.display = 'none';
+      try {
+        for (const r of rows) await Api.Tags.attest(r.tag.id, orgId);
+      } catch (e) {
+        go.disabled = false;
+        go.textContent = 'Agree and check in';
+        status.style.display = 'block';
+        status.textContent = e.message || 'That could not be saved. Please try again.';
+        return;
+      }
+      attempt(lastCode); // straight back into check-in — no re-scan
+    });
+
+    box.appendChild(go);
+    box.appendChild(status);
+    show(box);
   }
 
   function showSuccess(res) {

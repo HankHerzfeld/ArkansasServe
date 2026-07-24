@@ -58,6 +58,23 @@ public class TenantUserTag
 	/// </summary>
 	[JsonPropertyName("evidence")]
 	public string Evidence { get; set; } = TagEvidence.Attestation;
+
+	/// <summary>
+	/// Whether the PERSON may record this themselves (#19 waiver prompting), rather than an admin
+	/// recording it for them.
+	///
+	/// DEFAULTS FALSE, and that default is the important part. Tags are admin-attested facts by
+	/// design — "a self-attested background check is not a background check" (see
+	/// VolunteerFunctions.SetVolunteerTag). A WAIVER is the exception: it is a thing the volunteer
+	/// signs, so being asked to sign it at the moment they are blocked is the whole feature. An
+	/// org opts a specific tag in; everything existing stays admin-only and unchanged.
+	///
+	/// Self-attestation additionally requires <see cref="Evidence"/> = attestation (a document tag
+	/// needs an upload, not a tick) and an adult signer — a minor cannot sign for themselves, so
+	/// theirs is recorded by an admin (or, later, a guardian).
+	/// </summary>
+	[JsonPropertyName("selfAttestable")]
+	public bool SelfAttestable { get; set; }
 }
 
 /// <summary>How a person proves they hold a tag (#19). Attestation is the default; document is opt-in per tag.</summary>

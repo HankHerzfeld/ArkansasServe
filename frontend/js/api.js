@@ -168,6 +168,10 @@ const Api = (() => {
     // One member's STATE against a tag (GroupAdmin+). data: { status, note?, completedAt?, expiresAt? }
     setMember: (memberId, orgId, tagId, data) =>
       request('PUT', `/manage/volunteers/${encodeURIComponent(memberId)}/tags/${encodeURIComponent(tagId)}?organizationId=${encodeURIComponent(orgId)}`, data),
+    // The CALLER's own requirements + state in one org, and signing one themselves (#19).
+    // Only a tag the org marked self-attestable can be signed this way — see AttestMyTag.
+    mine:   (orgId)        => request('GET',  `/manage/me/tags?organizationId=${encodeURIComponent(orgId)}`),
+    attest: (tagId, orgId) => request('POST', `/manage/me/tags/${encodeURIComponent(tagId)}/attest?organizationId=${encodeURIComponent(orgId)}`),
   };
 
   // ── Admin oversight / assignments (#13) ───────────────────────────────────
