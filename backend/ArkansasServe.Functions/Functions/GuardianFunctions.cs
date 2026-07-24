@@ -416,11 +416,24 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 	private async Task<List<object>> ChildrenViewAsync(Guardian guardian)
 	{
 		var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		// Upcoming events in each org that need their OWN approval (#20 carve-out). Sent with the
+		// children so the page can offer a decision — without this the family sees a refusal at
+		// sign-up and has no button anywhere that clears it.
+		var carveOuts = new Dictionary<string, List<Event>>(StringComparer.OrdinalIgnoreCase);
+		var now = DateTime.UtcNow;
+
 		foreach (var orgId in guardian.Links.Select(l => l.OrganizationId).Distinct(StringComparer.OrdinalIgnoreCase))
 		{
 			if (string.IsNullOrWhiteSpace(orgId)) continue;
 			var tenant = await cosmos.GetTenantAsync(orgId);
 			if (!string.IsNullOrWhiteSpace(tenant?.Name)) names[orgId] = tenant!.Name;
+
+			carveOuts[orgId] = (await cosmos.GetEventsByOrgAsync(orgId))
+				.Where(e => e.StartDateTime >= now
+					&& string.Equals(e.Status, "Open", StringComparison.OrdinalIgnoreCase)
+					&& GuardianGate.RequiresFreshApproval(e))
+				.OrderBy(e => e.StartDateTime)
+				.ToList();
 		}
 
 		return guardian.Links.Select(l => (object)new
@@ -430,6 +443,39 @@ public class GuardianFunctions(CosmosService cosmos, AuthConfig authConfig, ILog
 			organizationName = names.TryGetValue(l.OrganizationId ?? string.Empty, out var n) ? n : "this organization",
 			minorName = l.MinorName,
 			consent = ConsentView(guardian, l),
+			eventApprovals = EventApprovalsView(guardian, l, carveOuts),
+		}).ToList();
+	}
+
+	/// <summary>
+	/// The carve-out events in this child's org, each with the guardian's current decision. Says
+	/// WHY each one needs its own approval, so "but I already consented" has a visible answer.
+	/// </summary>
+	private static List<object> EventApprovalsView(
+		Guardian g, GuardianLink l, IReadOnlyDictionary<string, List<Event>> carveOuts)
+	{
+		if (string.IsNullOrWhiteSpace(l.OrganizationId)
+			|| !carveOuts.TryGetValue(l.OrganizationId!, out var events)) return [];
+
+		return events.Select(e =>
+		{
+			var a = g.EventApprovals.FirstOrDefault(x =>
+				string.Equals(x.MinorUserId, l.MinorUserId, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(x.OrganizationId, l.OrganizationId, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(x.EventId, e.Id, StringComparison.OrdinalIgnoreCase));
+
+			return (object)new
+			{
+				eventId = e.Id,
+				title = e.Title,
+				startDateTime = e.StartDateTime,
+				endDateTime = e.EndDateTime,
+				reason = e.RequiresFreshGuardianApproval
+					? "The organizer asked for approval for this event specifically."
+					: "This event runs overnight or across more than one day.",
+				approved = a?.IsActive() ?? false,
+				status = a?.Status,
+			};
 		}).ToList();
 	}
 

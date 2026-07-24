@@ -51,6 +51,96 @@
     return { ok: res.ok, status: res.status, data };
   }
 
+  // "Sat, 8 Aug 2026, 18:00 – Sun, 9 Aug 2026, 10:00" — the span is the point for an overnight
+  // event, so the end is shown even when it is on another day.
+  function formatWhen(evt) {
+    const opts = { dateStyle: 'medium', timeStyle: 'short' };
+    const s = evt.startDateTime ? new Date(evt.startDateTime) : null;
+    const e = evt.endDateTime ? new Date(evt.endDateTime) : null;
+    if (!s || isNaN(s)) return '';
+    if (!e || isNaN(e)) return s.toLocaleString([], opts);
+    return `${s.toLocaleString([], opts)} – ${e.toLocaleString([], opts)}`;
+  }
+
+  // Per-event approval (#20 carve-out). Some events need their own yes even when general consent
+  // is on file; this is where the guardian gives it, so the refusal at sign-up has a button that
+  // clears it rather than being a dead end.
+  function renderEventApprovals(child, row) {
+    const events = child.eventApprovals || [];
+    if (!events.length) return;
+
+    const withdrawn = String(child.consent?.status || '').toLowerCase() === 'revoked';
+
+    row.appendChild(el('div', {
+      text: 'Events needing your approval',
+      style: 'font-weight:600;font-size:.9rem;margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--gray-200);',
+    }));
+    row.appendChild(el('div', {
+      text: 'These events need their own approval, separately from general consent.',
+      style: 'font-size:.8rem;color:var(--gray-600);margin-bottom:.5rem;',
+    }));
+    // Approving an event while consent is withdrawn would record a yes that changes nothing —
+    // the withdrawal still blocks sign-up. Say so instead of letting them discover it later.
+    if (withdrawn) {
+      row.appendChild(el('div', {
+        text: 'You have withdrawn consent for this organization, so approving a single event will not let them sign up. Give consent above first.',
+        style: 'font-size:.8rem;color:var(--amber);margin-bottom:.5rem;',
+      }));
+    }
+
+    events.forEach((evt) => {
+      const approved = evt.approved === true;
+      const box = el('div', { style: 'border:1px solid var(--gray-200);border-radius:var(--radius);padding:.55rem;margin-bottom:.45rem;' });
+
+      box.appendChild(el('div', { text: evt.title || 'Event', style: 'font-weight:600;font-size:.9rem;' }));
+      const when = formatWhen(evt);
+      if (when) box.appendChild(el('div', { text: when, style: 'font-size:.8rem;color:var(--gray-600);' }));
+      if (evt.reason) box.appendChild(el('div', { text: evt.reason, style: 'font-size:.8rem;color:var(--gray-600);margin:.2rem 0 .4rem;' }));
+
+      box.appendChild(el('div', {
+        text: approved ? 'Approved' : 'Not approved yet',
+        style: `font-size:.85rem;font-weight:600;margin-bottom:.4rem;color:${approved ? 'var(--green)' : 'var(--gray-700)'};`,
+      }));
+
+      const status = el('div', { style: 'font-size:.8rem;margin-top:.4rem;display:none;' });
+      const btn = el('button', {
+        class: approved ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm',
+        type: 'button',
+        text: approved ? 'Withdraw approval' : 'Approve this event',
+        onclick: async () => {
+          btn.disabled = true;
+          btn.textContent = approved ? 'Withdrawing…' : 'Approving…';
+          const res = await post('/api/guardian/consent', {
+            sessionToken: session?.token,
+            minorUserId: child.minorUserId,
+            organizationId: child.organizationId,
+            action: approved ? 'revoke' : 'grant',
+            eventId: evt.eventId,
+          });
+
+          if (!res.ok) {
+            status.style.display = 'block';
+            status.style.color = 'var(--red)';
+            status.textContent = res.status === 401
+              ? 'Your session has ended. Please ask the organization for a new link.'
+              : (res.data?.error || res.data?.message || 'That could not be saved. Please try again.');
+            btn.disabled = false;
+            btn.textContent = approved ? 'Withdraw approval' : 'Approve this event';
+            return;
+          }
+
+          evt.status = res.data?.status;
+          evt.approved = String(res.data?.status || '').toLowerCase() === 'granted';
+          renderChildren();
+        },
+      });
+
+      box.appendChild(btn);
+      box.appendChild(status);
+      row.appendChild(box);
+    });
+  }
+
   function renderChildren() {
     const wrap = $('children');
     wrap.innerHTML = '';
@@ -124,6 +214,7 @@
 
       row.appendChild(btn);
       row.appendChild(status);
+      renderEventApprovals(child, row);
       wrap.appendChild(row);
     });
   }
