@@ -544,6 +544,8 @@ public class EventFunctions(CosmosService cosmos, BlobService blob, ZipLookup zi
 		if (Has("groupId"))         existing.GroupId = body.GroupId;
 		if (Has("visibility") && !string.IsNullOrWhiteSpace(body.Visibility)) existing.Visibility = body.Visibility;
 		if (Has("status"))          existing.Status = body.Status;
+		// #20 carve-out: the org's per-event "needs fresh guardian approval" switch.
+		if (Has("requiresFreshGuardianApproval")) existing.RequiresFreshGuardianApproval = body.RequiresFreshGuardianApproval;
 
 		var updated = await cosmos.UpdateEventAsync(existing);
 		return await HttpHelper.OkJson(req, updated);

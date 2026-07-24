@@ -61,7 +61,9 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			if (IntakeValidation.IsMinor(self))
 			{
 				var guardians = await cosmos.GetGuardiansForMinorAsync(self.Id, evt.OrganizationId);
-				var consent = GuardianGate.Evaluate(self, org, guardians, evt.OrganizationId);
+				// Per-event carve-out included: an org-flagged or overnight event needs FRESH
+				// approval on top of standing consent (#20 remainder).
+				var consent = GuardianGate.EvaluateForEvent(self, org, guardians, evt.OrganizationId, evt);
 				if (consent != GuardianGate.Outcome.Allowed)
 					return await HttpHelper.Error(req, HttpStatusCode.Conflict, GuardianGate.MessageFor(consent));
 			}
@@ -468,11 +470,13 @@ public class RegistrationFunctions(CosmosService cosmos, AuthConfig authConfig, 
 			{
 				if (!IntakeValidation.IsMinor(user)) continue;
 				var guardians = await cosmos.GetGuardiansForMinorAsync(user.Id, evt.OrganizationId);
-				var outcome = GuardianGate.Evaluate(user, gateOrg, guardians, evt.OrganizationId);
+				var outcome = GuardianGate.EvaluateForEvent(user, gateOrg, guardians, evt.OrganizationId, evt);
 				if (outcome == GuardianGate.Outcome.Withdrawn)
 					consentBlocked.Add($"{DisplayNameOf(user)} (guardian withdrew consent)");
 				else if (outcome == GuardianGate.Outcome.Missing)
 					consentBlocked.Add($"{DisplayNameOf(user)} (no guardian consent on file)");
+				else if (outcome == GuardianGate.Outcome.EventApprovalMissing)
+					consentBlocked.Add($"{DisplayNameOf(user)} (needs guardian approval for this event)");
 			}
 			if (consentBlocked.Count > 0)
 				return await HttpHelper.Error(req, HttpStatusCode.Conflict,

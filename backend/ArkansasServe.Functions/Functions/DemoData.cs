@@ -289,7 +289,8 @@ public static class DemoData
 	public const string EvtExternal = "demo-event-external"; // one-sided external listing
 	public const string EvtSeries1  = "demo-event-series-1"; // two occurrences share a seriesId
 	public const string EvtSeries2  = "demo-event-series-2";
-	public const string EvtGuardian = "demo-event-guardian"; // School event needing fresh guardian approval
+	public const string EvtGuardian = "demo-event-guardian"; // School event FLAGGED for fresh guardian approval
+	public const string EvtOvernight = "demo-event-overnight"; // spans 2 local days -> carve-out by computation
 	public const string EvtTagGated = "demo-event-tag";      // Faith org — its blockReg/blockCheckIn tags apply
 	public const string EvtPast     = "demo-event-past";     // archived, for post-event hour logging
 	public const string EvtFull     = "demo-event-full";     // maxSlots reached
@@ -332,8 +333,13 @@ public static class DemoData
 		var series2 = Ev(EvtSeries2, OrgAlpha, NameAlpha, "Demo Weekly Tutoring (occurrence 2)", now.AddDays(10), 2, "Youth & Education");
 		series2.SeriesId = "demo-series-weekly";
 
-		var guardian = Ev(EvtGuardian, School, NameSchool, "Demo Overnight Trip (fresh guardian approval)", now.AddDays(14), 5, "Youth & Education");
+		var guardian = Ev(EvtGuardian, School, NameSchool, "Demo Flagged Trip (fresh guardian approval)", now.AddDays(14), 5, "Youth & Education");
 		guardian.RequiresFreshGuardianApproval = true;
+
+		// The OTHER carve-out trigger: spans more than one Central local day, so fresh approval is
+		// required by computation even though the flag is off. Ends a full day after it starts.
+		var overnight = Ev(EvtOvernight, School, NameSchool, "Demo Overnight Lock-In (spans two days)", now.AddDays(16), 6, "Youth & Education");
+		overnight.EndDateTime = overnight.StartDateTime.AddDays(1);
 
 		var tagGated = Ev(EvtTagGated, OrgFaith, NameFaith, "Demo Faith Service (tag-gated)", now.AddDays(8), 2, "Worship & Congregational Life");
 
@@ -345,7 +351,7 @@ public static class DemoData
 		full.MaxSlots = 2;
 		full.CurrentSlots = 2;
 
-		return [hosted, external, series1, series2, guardian, tagGated, past, full];
+		return [hosted, external, series1, series2, guardian, overnight, tagGated, past, full];
 	}
 
 	public static List<EventRegistration> BuildRegistrations()
