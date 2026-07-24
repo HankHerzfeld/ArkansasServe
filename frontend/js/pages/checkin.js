@@ -49,7 +49,7 @@
       // they are standing at the venue — so offer to sign it now rather than sending them to
       // find an admin. Everything else (expired code, not registered) falls through unchanged.
       const signable = await selfSignableBlockers();
-      if (signable.length) { showWaiverPrompt(signable, err.message); return; }
+      if (signable.length) { showWaiverPrompt(signable); return; }
 
       // The server messages are specific and worth surfacing verbatim: expired code, not
       // registered, missing a required tag. Offer manual re-entry so a stale link can be retried.
@@ -69,16 +69,19 @@
     }
   }
 
-  function showWaiverPrompt(tags, originalMessage) {
+  function showWaiverPrompt(tags) {
     hide(loading());
     hide(manualBox());
     const box = resultBox();
     box.innerHTML = '';
     box.appendChild(el('div', { style: 'font-size:2.5rem;line-height:1;margin-bottom:.5rem;', text: '📝' }));
     box.appendChild(el('div', { class: 'modal-title', style: 'margin-bottom:.25rem;', text: 'One thing first' }));
+    // Deliberately NOT the server's refusal text. That message ends "an event admin can record
+    // it", which is true in general but flatly contradicts the tick-boxes below offering to do it
+    // themselves — which is the whole point of being prompted here.
     box.appendChild(el('p', {
       style: 'color:var(--gray-600);',
-      text: originalMessage || 'This organization needs your agreement before you can check in.',
+      text: 'This organization needs your agreement before you can check in. You can do that right here.',
     }));
 
     // One tick per credential — a single "I agree to everything" box would be a worse record of
