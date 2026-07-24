@@ -113,6 +113,17 @@
         <input type="datetime-local" id="evt-end">
       </div>
     </div>
+    <!-- #20 carve-out: a minor needs FRESH, per-event guardian approval on top of any standing
+         consent. Sits under the dates on purpose — an overnight/multi-day event triggers this
+         automatically from those dates; the toggle is for events an organizer decides need it
+         regardless. Meaningless on an informational listing, so it hides with the other
+         registration fields (syncListingType). -->
+    <div class="form-group" id="evt-guardian-approval-group" style="padding:.6rem .75rem;background:var(--gray-100,#f3f4f6);border-radius:var(--radius);">
+      <label style="display:flex;align-items:center;gap:.5rem;font-weight:600;margin-bottom:.25rem;">
+        <input type="checkbox" id="evt-guardian-approval"> Require fresh guardian approval for this event
+      </label>
+      <small style="color:var(--gray-600);">A minor will need a parent or guardian to approve this event specifically, even if consent is already on file. Events running overnight or across more than one day already require this automatically.</small>
+    </div>
     <div class="form-group">
       <label>Location *</label>
       <input type="text" id="evt-location" placeholder="123 Main St, Little Rock, AR">
